@@ -101,21 +101,20 @@ func NewAuthController() *AuthController {
 }
 
 func (a *AuthController) LoginShow(ctx router.Context) error {
-
 	return ctx.Render(a.Routes.Login, router.ViewContext{
 		"errors": nil,
 		"record": nil,
 	})
 }
+
 func (a *AuthController) LoginPost(ctx router.Context) error {
-
 	return ctx.Render(a.Routes.Login, router.ViewContext{
 		"errors": nil,
 		"record": nil,
 	})
 }
-func (a *AuthController) LogOut(ctx router.Context) error {
 
+func (a *AuthController) LogOut(ctx router.Context) error {
 	return ctx.Render(a.Routes.Login, router.ViewContext{
 		"errors": nil,
 		"record": nil,
@@ -123,11 +122,8 @@ func (a *AuthController) LogOut(ctx router.Context) error {
 }
 
 func (a *AuthController) RegistrationShow(ctx router.Context) error {
-
-	errors := map[string]string{}
-
 	return ctx.Render(a.Views.Register, router.ViewContext{
-		"errors": errors,
+		"errors": map[string]string{},
 		"record": RegisterUserMessage{},
 	})
 }
@@ -197,9 +193,9 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 		Password:  payload.Password,
 	}
 
-	ph := RegisterUserHandler{repo: a.Repo}
+	registerUser := RegisterUserHandler{repo: a.Repo}
 
-	if err := ph.Execute(ctx.Context(), req); err != nil {
+	if err := registerUser.Execute(ctx.Context(), req); err != nil {
 		a.Logger.Error("order get error: ", "error", err)
 
 		return flash.WithError(ctx, router.ViewContext{
@@ -294,11 +290,11 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 		},
 	}
 
-	ph := InitializePasswordResetHandler{
+	initPwdReset := InitializePasswordResetHandler{
 		repo: a.Repo,
 	}
 
-	if err := ph.Execute(ctx.Context(), req); err != nil {
+	if err := initPwdReset.Execute(ctx.Context(), req); err != nil {
 		a.Logger.Error("order get error: ", "error", err)
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Error(),
@@ -347,9 +343,9 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 		},
 	}
 
-	ph := AccountVerificationHandler{repo: a.Repo}
+	accountVerify := AccountVerificationHandler{repo: a.Repo}
 
-	if err := ph.Execute(ctx.Context(), input); err != nil {
+	if err := accountVerify.Execute(ctx.Context(), input); err != nil {
 		fmt.Println("verification error " + err.Error())
 		errors["verification"] = err.Error()
 		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
@@ -447,9 +443,9 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 		Password: payload.Password,
 	}
 
-	ph := FinalizePasswordResetHandler{repo: a.Repo}
+	finalizePwdReset := FinalizePasswordResetHandler{repo: a.Repo}
 
-	if err := ph.Execute(ctx.Context(), input); err != nil {
+	if err := finalizePwdReset.Execute(ctx.Context(), input); err != nil {
 		errors["validation"] = err.Error()
 		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
 			"errors": errors,
