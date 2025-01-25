@@ -26,7 +26,7 @@ var ErrUnableToMapClaims = errors.New("unable to map claims")
 // ErrUnableToParseData parse error
 var ErrUnableToParseData = errors.New("unable to parse data")
 
-type authenticator struct {
+type Auther struct {
 	provider        IdentityProvider
 	signingKey      string
 	tokenExpiration int
@@ -37,7 +37,7 @@ type authenticator struct {
 // TODO: do not return interfaces, return structs
 // NewAuthenticator returns a new authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) Authenticator {
-	return authenticator{
+	return &Auther{
 		provider:        provider,
 		signingKey:      opts.GetSigningKey(),
 		tokenExpiration: opts.GetTokenExpiration(),
@@ -46,7 +46,7 @@ func NewAuthenticator(provider IdentityProvider, opts Config) Authenticator {
 	}
 }
 
-func (s authenticator) Login(ctx context.Context, identifier, password string) (string, error) {
+func (s Auther) Login(ctx context.Context, identifier, password string) (string, error) {
 	var err error
 	var identity Identity
 
@@ -66,7 +66,7 @@ func (s authenticator) Login(ctx context.Context, identifier, password string) (
 	return s.generateJWT(identity)
 }
 
-func (s authenticator) Impersonate(ctx context.Context, identifier string) (string, error) {
+func (s Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
 	var err error
 	var identity Identity
 
@@ -86,7 +86,7 @@ func (s authenticator) Impersonate(ctx context.Context, identifier string) (stri
 	return s.generateJWT(identity)
 }
 
-func (s authenticator) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
+func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
 	var err error
 	var identity Identity
 
@@ -96,7 +96,7 @@ func (s authenticator) IdentityFromSession(ctx context.Context, session Session)
 	return identity, nil
 }
 
-func (s authenticator) SessionFromToken(raw string) (Session, error) {
+func (s Auther) SessionFromToken(raw string) (Session, error) {
 	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
@@ -117,7 +117,7 @@ func (s authenticator) SessionFromToken(raw string) (Session, error) {
 	return sessionFromClaims(*claims)
 }
 
-func (s authenticator) generateJWT(identity Identity) (string, error) {
+func (s Auther) generateJWT(identity Identity) (string, error) {
 	claims := jwt.MapClaims{
 		"iss": s.issuer,
 		"sub": identity.ID(),
