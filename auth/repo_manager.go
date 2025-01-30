@@ -10,7 +10,7 @@ import (
 type RepositoryManager interface {
 	repository.Validator
 	repository.TransactionManager
-	Users() repository.Repository[*User]
+	Users() Users
 	PasswordResets() repository.Repository[*PasswordReset]
 }
 
@@ -35,34 +35,6 @@ func NewPasswordResetsRepository(db *bun.DB) repository.Repository[*PasswordRese
 	return repository.NewRepository(db, handlers)
 }
 
-func NewUsersRepository(db *bun.DB) repository.Repository[*User] {
-	handlers := repository.ModelHandlers[*User]{
-		NewRecord: func() *User {
-			return &User{}
-		},
-		GetID: func(record *User) uuid.UUID {
-			if record == nil {
-				return uuid.Nil
-			}
-
-			return record.ID
-		},
-		SetID: func(record *User, id uuid.UUID) {
-			record.ID = id
-		},
-		GetIdentifier: func() string {
-			return "email"
-		},
-	}
-	return repository.NewRepository(db, handlers)
+func NewUsersRepository(db *bun.DB) Users {
+	return &users{db}
 }
-
-var ResetUserPasswordSQL = `UPDATE "users" AS "usr"
-SET
-	"is_email_verified" = TRUE,
-	"password_hash" = ?
-WHERE
-	"usr"."deleted_at" IS NULL
-AND (
-	"usr"."id" = ?
-) RETURNING *;`
