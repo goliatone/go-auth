@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/goliatone/go-router"
 	"github.com/google/uuid"
 )
 
@@ -25,6 +26,22 @@ type Authenticator interface {
 	IdentityFromSession(ctx context.Context, session Session) (Identity, error)
 }
 
+type LoginPayload interface {
+	GetIdentifier() string
+	GetPassword() string
+	GetExtendedSession() bool
+}
+
+type HTTPAuthenticator interface {
+	Middleware
+	Login(c router.Context, payload LoginPayload) error
+	Logout(c router.Context)
+	SetRedirect(c router.Context)
+	GetRedirect(c router.Context, def ...string) string
+	GetRedirectOrDefault(c router.Context) string
+	MakeClientRouteAuthErrorHandler(optionalAuth bool) func(c router.Context, err error) error
+}
+
 // Identity holds the attributes of an identity
 type Identity interface {
 	ID() string
@@ -35,7 +52,7 @@ type Identity interface {
 
 // Config holds auth options
 type Config interface {
-	GetSigningKey() string
+	GetSigningKey() []byte
 	GetSigningMethod() string
 	GetContextKey() string
 	GetTokenExpiration() int
