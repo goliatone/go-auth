@@ -28,7 +28,7 @@ var ErrUnableToParseData = errors.New("unable to parse data")
 
 type Auther struct {
 	provider        IdentityProvider
-	signingKey      string
+	signingKey      []byte
 	tokenExpiration int
 	issuer          string
 	audience        jwt.ClaimStrings
