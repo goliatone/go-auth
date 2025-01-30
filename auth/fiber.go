@@ -14,11 +14,11 @@ import (
 )
 
 type Middleware interface {
-	Impersonate(c *fiber.Ctx, identifier string) error
-	ProtectedRoute(cfg Config, errorHandler func(*fiber.Ctx, error)) func(ctx *fiber.Ctx) error
+	Impersonate(c router.Context, identifier string) error
+	ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) func(ctx router.Context) error
 }
 
-func GetSession(c *fiber.Ctx, key string) (Session, error) {
+func GetFiberSession(c *fiber.Ctx, key string) (Session, error) {
 	cookie := c.Locals(key)
 	if cookie == nil {
 		return nil, ErrUnableToFindSession
@@ -36,23 +36,56 @@ func GetSession(c *fiber.Ctx, key string) (Session, error) {
 	return sessionFromClaims(claims)
 }
 
-func RegisterAuthRoutes[T any](app router.Router[T]) {
-	controller := NewAuthController()
+func GetRouterSession(c router.Context, key string) (Session, error) {
+	cookie := c.Locals(key)
+	if cookie == nil {
+		return nil, ErrUnableToFindSession
+	}
 
-	app.Get(controller.Routes.Login, controller.LoginShow)
-	app.Post(controller.Routes.Login, controller.LoginPost)
-	// app.Post(controller.Routes.Login, limitReq, controller.AuthLoginPost)
+	user, ok := cookie.(*jwt.Token)
+	if user == nil || !ok {
+		return nil, ErrUnableToDecodeSession
+	}
 
-	app.Get(controller.Routes.Logout, controller.LogOut)
+	claims, ok := user.Claims.(jwt.MapClaims)
+	if claims == nil || !ok {
+		return nil, ErrUnableToMapClaims
+	}
 
-	app.Get(controller.Routes.Register, controller.RegistrationShow)
-	app.Post(controller.Routes.Register, controller.RegistrationCreate)
+	return sessionFromClaims(claims)
+}
 
-	app.Get(controller.Routes.PasswordReset, controller.PasswordResetGet)
-	app.Post(controller.Routes.PasswordReset, controller.PasswordResetPost)
+func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOption) {
 
-	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetForm)
-	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetExecute)
+	controller := NewAuthController(opts...)
+
+	app.
+		Get(controller.Routes.Login, controller.LoginShow).
+		SetName("sign-in.get")
+	app.
+		Post(
+			controller.Routes.Login,
+			// limitReq,
+			controller.LoginPost,
+		).
+		SetName("sign-in.post")
+
+	app.Get(controller.Routes.Logout, controller.LogOut).SetName("sign-out.get")
+
+	app.Get(controller.Routes.Register, controller.RegistrationShow).
+		SetName("register.get")
+	app.Post(controller.Routes.Register, controller.RegistrationCreate).
+		SetName("register.post")
+
+	app.Get(controller.Routes.PasswordReset, controller.PasswordResetGet).
+		SetName("pwd-reset.get")
+	app.Post(controller.Routes.PasswordReset, controller.PasswordResetPost).
+		SetName("pwd-reset.post")
+
+	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetForm).
+		SetName("pwd-reset-do.get")
+	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetExecute).
+		SetName("pwd-reset-do.post")
 }
 
 type AuthControllerRoutes struct {
@@ -76,15 +109,20 @@ type Logger interface {
 }
 
 type AuthController struct {
-	Debug  bool
-	Logger Logger
-	Repo   RepositoryManager
-	Routes *AuthControllerRoutes
-	Views  *AuthControllerViews
+	Debug        bool
+	Logger       Logger
+	Repo         RepositoryManager
+	Routes       *AuthControllerRoutes
+	Views        *AuthControllerViews
+	Auther       HTTPAuthenticator
+	ErrorHandler router.ErrorHandler
 }
 
-func NewAuthController() *AuthController {
-	return &AuthController{
+type AuthControllerOption func(*AuthController) *AuthController
+
+func NewAuthController(opts ...AuthControllerOption) *AuthController {
+	c := &AuthController{
+		ErrorHandler: defaultErrHandler,
 		Routes: &AuthControllerRoutes{
 			Login:         "/login",
 			Logout:        "/logout",
@@ -98,27 +136,97 @@ func NewAuthController() *AuthController {
 			PasswordReset: "password_reset",
 		},
 	}
+
+	for _, opt := range opts {
+		c = opt(c)
+	}
+
+	return c
 }
 
 func (a *AuthController) LoginShow(ctx router.Context) error {
-	return ctx.Render(a.Routes.Login, router.ViewContext{
+	return ctx.Render(a.Views.Login, router.ViewContext{
 		"errors": nil,
 		"record": nil,
 	})
+}
+
+// LoginRequest payload
+type LoginRequest struct {
+	Identifier string `form:"identifier" json:"identifier"`
+	Password   string `form:"password" json:"password"`
+	RememberMe bool   `form:"remember_me" json:"remember_me"`
+}
+
+// GetIdentifier returns the identifier
+func (r LoginRequest) GetIdentifier() string {
+	return r.Identifier
+}
+
+// GetPassword will return the password
+func (r LoginRequest) GetPassword() string {
+	return r.Password
+}
+
+// GetExtendedSession will return the password
+func (r LoginRequest) GetExtendedSession() bool {
+	return r.RememberMe
+}
+
+// Validate will run validation rules
+func (r LoginRequest) Validate() error {
+	return validation.ValidateStruct(&r,
+		validation.Field(
+			&r.Identifier,
+			validation.Required,
+			is.Email,
+		),
+		validation.Field(
+			&r.Password,
+			validation.Required,
+		),
+	)
 }
 
 func (a *AuthController) LoginPost(ctx router.Context) error {
-	return ctx.Render(a.Routes.Login, router.ViewContext{
-		"errors": nil,
-		"record": nil,
-	})
+	payload := new(LoginRequest)
+	errors := map[string]string{}
+
+	if err := ctx.Bind(payload); err != nil {
+		return a.ErrorHandler(ctx, err)
+	}
+
+	if err := payload.Validate(); err != nil {
+		return ctx.Render(a.Views.Login, router.ViewContext{
+			"record":     payload,
+			"validation": err.Error(),
+		})
+	}
+
+	if a.Debug {
+		fmt.Println("======= AUTH LOGIN ======")
+		fmt.Println(print.MaybePrettyJSON(payload))
+		fmt.Println("=========================")
+	}
+
+	if err := a.Auther.Login(ctx, payload); err != nil {
+		errors["authentication"] = "Authentication Error"
+		return ctx.Render(a.Views.Login, router.ViewContext{
+			"errors":  errors,
+			"payload": payload,
+		})
+	}
+
+	redirect := a.Auther.GetRedirect(ctx, "/")
+
+	fmt.Println("redirecting to: " + redirect)
+
+	return ctx.Redirect(redirect, router.StatusSeeOther)
 }
 
 func (a *AuthController) LogOut(ctx router.Context) error {
-	return ctx.Render(a.Routes.Login, router.ViewContext{
-		"errors": nil,
-		"record": nil,
-	})
+	a.Auther.Logout(ctx)
+	return ctx.Redirect("/", router.StatusTemporaryRedirect)
 }
 
 func (a *AuthController) RegistrationShow(ctx router.Context) error {
@@ -475,4 +583,10 @@ func ValidateStringEquals(str string) validation.RuleFunc {
 		}
 		return nil
 	}
+}
+
+func defaultErrHandler(c router.Context, err error) error {
+	return c.Render("errors/500", router.ViewContext{
+		"message": err.Error(),
+	})
 }
