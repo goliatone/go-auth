@@ -13,7 +13,7 @@ import (
 
 type mngr struct {
 	db             *bun.DB
-	users          repository.Repository[*auth.User]
+	users          auth.Users
 	passwordResets repository.Repository[*auth.PasswordReset]
 }
 
@@ -51,7 +51,7 @@ func (m mngr) RunInTx(ctx context.Context, opts *sql.TxOptions, f func(ctx conte
 	}
 }
 
-func (m mngr) Users() repository.Repository[*auth.User] {
+func (m mngr) Users() auth.Users {
 	return m.users
 }
 
