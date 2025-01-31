@@ -60,8 +60,11 @@ func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOptio
 	controller := NewAuthController(opts...)
 
 	app.
-		Get(controller.Routes.Login, controller.LoginShow).
+		Get(controller.Routes.Login,
+			controller.LoginShow,
+		).
 		SetName("sign-in.get")
+
 	app.
 		Post(
 			controller.Routes.Login,
@@ -120,8 +123,15 @@ type AuthController struct {
 
 type AuthControllerOption func(*AuthController) *AuthController
 
+type defLogger struct{}
+
+func (d defLogger) Error(format string, args ...any) {
+	fmt.Printf("[ERR] "+format, args...)
+}
+
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
+		Logger:       defLogger{},
 		ErrorHandler: defaultErrHandler,
 		Routes: &AuthControllerRoutes{
 			Login:         "/login",
@@ -139,6 +149,14 @@ func NewAuthController(opts ...AuthControllerOption) *AuthController {
 
 	for _, opt := range opts {
 		c = opt(c)
+	}
+
+	if c.Repo == nil {
+		panic("Missing RepositoryManager in auth controller...")
+	}
+
+	if c.Auther == nil {
+		panic("Missing HTTPAuthenticator in auth controller...")
 	}
 
 	return c
@@ -191,12 +209,15 @@ func (r LoginRequest) Validate() error {
 func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
 	errors := map[string]string{}
+	fmt.Println("--- Login Post")
 
 	if err := ctx.Bind(payload); err != nil {
+		fmt.Println("--- Login Post: error bind" + err.Error())
 		return a.ErrorHandler(ctx, err)
 	}
 
 	if err := payload.Validate(); err != nil {
+		fmt.Println("--- Login Post: error valid" + err.Error())
 		return ctx.Render(a.Views.Login, router.ViewContext{
 			"record":     payload,
 			"validation": err.Error(),
