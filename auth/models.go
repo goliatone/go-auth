@@ -12,7 +12,7 @@ type UserRole = string
 
 const (
 	// RoleGuest is an guest role
-	RoleGuest UserRole = "gest"
+	RoleGuest UserRole = "guest"
 	// RoleCustomer us a customer
 	RoleCustomer UserRole = "customer"
 	RoleViewer   UserRole = "viewer"
