@@ -19,6 +19,7 @@ type mngr struct {
 
 func NewRepositoryManager(db *bun.DB) auth.RepositoryManager {
 	return &mngr{
+		db:             db,
 		users:          auth.NewUsersRepository(db),
 		passwordResets: auth.NewPasswordResetsRepository(db),
 	}
