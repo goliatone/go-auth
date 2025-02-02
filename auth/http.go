@@ -43,17 +43,19 @@ func NewRouteController(auther Authenticator, cfg Config) (*RouteController, err
 	return a, nil
 }
 
-func (a *RouteController) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) func(router.Context) error {
-	return jwtware.New(jwtware.Config{
-		ErrorHandler: errorHandler,
-		SigningKey: jwtware.SigningKey{
-			Key:    cfg.GetSigningKey(),
-			JWTAlg: cfg.GetSigningMethod(),
-		},
-		AuthScheme:  cfg.GetAuthScheme(),
-		ContextKey:  cfg.GetContextKey(),
-		TokenLookup: cfg.GetTokenLookup(),
-	})
+func (a *RouteController) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
+	return func(hf router.HandlerFunc) router.HandlerFunc {
+		return jwtware.New(jwtware.Config{
+			ErrorHandler: errorHandler,
+			SigningKey: jwtware.SigningKey{
+				Key:    cfg.GetSigningKey(),
+				JWTAlg: cfg.GetSigningMethod(),
+			},
+			AuthScheme:  cfg.GetAuthScheme(),
+			ContextKey:  cfg.GetContextKey(),
+			TokenLookup: cfg.GetTokenLookup(),
+		})
+	}
 }
 
 func (a *RouteController) Login(ctx router.Context, payload LoginPayload) error {
