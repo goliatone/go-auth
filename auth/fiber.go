@@ -15,7 +15,7 @@ import (
 
 type Middleware interface {
 	Impersonate(c router.Context, identifier string) error
-	ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) func(ctx router.Context) error
+	ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc
 }
 
 func GetFiberSession(c *fiber.Ctx, key string) (Session, error) {
