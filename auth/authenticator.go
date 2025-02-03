@@ -74,7 +74,7 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 	var err error
 	var identity Identity
 
-	if identity, err = s.provider.FindIdentityByIdentifier(ctx, session.UserID()); err != nil {
+	if identity, err = s.provider.FindIdentityByIdentifier(ctx, session.GetUserID()); err != nil {
 		return nil, fmt.Errorf("unauthorized: %w", err)
 	}
 	return identity, nil
