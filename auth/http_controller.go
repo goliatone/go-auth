@@ -18,25 +18,7 @@ type Middleware interface {
 	ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc
 }
 
-func GetFiberSession(c *fiber.Ctx, key string) (Session, error) {
-	cookie := c.Locals(key)
-	if cookie == nil {
-		return nil, ErrUnableToFindSession
-	}
-
-	user, ok := cookie.(*jwt.Token)
-	if user == nil || !ok {
-		return nil, ErrUnableToDecodeSession
-	}
-
-	claims, ok := user.Claims.(jwt.MapClaims)
-	if claims == nil || !ok {
-		return nil, ErrUnableToMapClaims
-	}
-	return sessionFromClaims(claims)
-}
-
-func GetRouterSession(c router.Context, key string) (Session, error) {
+func GetRouterSession(c router.Context, key string) (*SessionObject, error) {
 	cookie := c.Locals(key)
 	if cookie == nil {
 		return nil, ErrUnableToFindSession
