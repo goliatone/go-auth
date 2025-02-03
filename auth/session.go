@@ -8,54 +8,54 @@ import (
 	"github.com/google/uuid"
 )
 
-var _ Session = session{}
+var _ Session = &SessionObject{}
 
-type session struct {
-	userID         string
-	audience       []string
-	issuer         string
-	issuedAt       *time.Time
-	expirationDate *time.Time
-	data           map[string]any
+type SessionObject struct {
+	UserID         string         `json:"user_id,omitempty"`
+	Audience       []string       `json:"audience,omitempty"`
+	Issuer         string         `json:"issuer,omitempty"`
+	IssuedAt       *time.Time     `json:"issued_at,omitempty"`
+	ExpirationDate *time.Time     `json:"expiration_date,omitempty"`
+	Data           map[string]any `json:"data,omitempty"`
 }
 
-func (s session) UserID() string {
-	return s.userID
+func (s *SessionObject) GetUserID() string {
+	return s.UserID
 }
 
-func (s session) UserUUID() (uuid.UUID, error) {
-	return uuid.Parse(s.userID)
+func (s *SessionObject) GetUserUUID() (uuid.UUID, error) {
+	return uuid.Parse(s.UserID)
 }
 
-func (s session) Audience() []string {
-	return s.audience
+func (s *SessionObject) GetAudience() []string {
+	return s.Audience
 }
 
-func (s session) Issuer() string {
-	return s.issuer
+func (s *SessionObject) GetIssuer() string {
+	return s.Issuer
 }
 
-func (s session) IssuedAt() *time.Time {
-	return s.issuedAt
+func (s *SessionObject) GetIssuedAt() *time.Time {
+	return s.IssuedAt
 }
 
-func (s session) Data() map[string]any {
-	return s.data
+func (s *SessionObject) GetData() map[string]any {
+	return s.Data
 }
 
 // TODO: enable only in development!
-func (s session) String() string {
+func (s SessionObject) String() string {
 	return fmt.Sprintf(
 		"user=%s aud=%v iss=%s iat=%s data=%v",
-		s.userID,
-		s.audience,
-		s.issuer,
-		s.issuedAt.Format(time.RFC1123),
-		s.data,
+		s.UserID,
+		s.Audience,
+		s.Issuer,
+		s.IssuedAt.Format(time.RFC1123),
+		s.Data,
 	)
 }
 
-func sessionFromClaims(claims jwt.Claims) (Session, error) {
+func sessionFromClaims(claims jwt.Claims) (*SessionObject, error) {
 	sub, err := claims.GetSubject()
 	if err != nil {
 		return nil, ErrUnableToParseData
@@ -86,13 +86,13 @@ func sessionFromClaims(claims jwt.Claims) (Session, error) {
 		return nil, ErrUnableToParseData
 	}
 
-	return session{
-		userID:         sub,
-		audience:       aud,
-		issuer:         iss,
-		data:           dat,
-		issuedAt:       &iat.Time,
-		expirationDate: &eat.Time,
+	return &SessionObject{
+		UserID:         sub,
+		Audience:       aud,
+		Issuer:         iss,
+		Data:           dat,
+		IssuedAt:       &iat.Time,
+		ExpirationDate: &eat.Time,
 	}, nil
 }
 
