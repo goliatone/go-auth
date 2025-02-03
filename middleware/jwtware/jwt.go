@@ -19,17 +19,18 @@ var (
 )
 
 type Config struct {
-	Filter         func(router.Context) bool
-	SuccessHandler router.HandlerFunc
-	ErrorHandler   router.ErrorHandler
-	SigningKey     SigningKey
-	SigningKeys    map[string]SigningKey
-	ContextKey     string
-	Claims         jwt.Claims
-	TokenLookup    string
-	AuthScheme     string
-	KeyFunc        jwt.Keyfunc
-	JWKSetURLs     []string
+	Filter              func(router.Context) bool
+	SuccessHandler      router.HandlerFunc
+	ErrorHandler        router.ErrorHandler
+	SigningKey          SigningKey
+	SigningKeys         map[string]SigningKey
+	ContextKey          string
+	Claims              jwt.Claims
+	TokenLookup         string
+	AuthScheme          string
+	KeyFunc             jwt.Keyfunc
+	JWKSetURLs          []string
+	LocalTokenSerilizer func(*jwt.Token) any
 }
 
 type SigningKey struct {
@@ -66,8 +67,9 @@ func New(config ...Config) router.HandlerFunc {
 			claims := reflect.New(ct).Interface().(jwt.Claims)
 			t, err = jwt.ParseWithClaims(a, claims, cfg.KeyFunc)
 		}
+
 		if err == nil && t.Valid {
-			ctx.Locals(cfg.ContextKey, t)
+			ctx.Locals(cfg.ContextKey, cfg.LocalTokenSerilizer(t))
 			return cfg.SuccessHandler(ctx)
 		}
 
@@ -136,6 +138,12 @@ func getCfg(config []Config) (cfg Config) {
 			}
 		} else {
 			cfg.KeyFunc = signingKeyFunc(cfg.SigningKey)
+		}
+	}
+
+	if cfg.LocalTokenSerilizer == nil {
+		cfg.LocalTokenSerilizer = func(t *jwt.Token) any {
+			return t
 		}
 	}
 
