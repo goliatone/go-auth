@@ -10,12 +10,12 @@ import (
 
 // Session holds attributes that are part of an auth session
 type Session interface {
-	UserID() string
-	UserUUID() (uuid.UUID, error)
-	Audience() []string
-	Issuer() string
-	IssuedAt() *time.Time
-	Data() map[string]any
+	GetUserID() string
+	GetUserUUID() (uuid.UUID, error)
+	GetAudience() []string
+	GetIssuer() string
+	GetIssuedAt() *time.Time
+	GetData() map[string]any
 }
 
 // Authenticator holds methods to deal with authentication
