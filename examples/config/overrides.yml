@@ -1,0 +1,27 @@
+views:
+  - name: dir_os
+    override: DirOS
+  - name: dir_fs
+    override: DirFS
+  - name: js_path
+    override: JSPath
+  - name: assets_fs
+    override: AssetsFS
+    type: fs.FS
+    setter: true
+  - name: templates_fs
+    override: TemplatesFS
+    type: fs.FS
+    setter: true
+  - name: template_functions
+    override: TemplateFunctions
+    type: map[string]any
+    setter: true
+persistence:
+  - name: dsn
+    override: DSN
+auth:
+  - name: extended_token_duration
+    type: int
+  - name: token_expiration
+    type: int
