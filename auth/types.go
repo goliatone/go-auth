@@ -52,7 +52,7 @@ type Identity interface {
 
 // Config holds auth options
 type Config interface {
-	GetSigningKey() []byte
+	GetSigningKey() string
 	GetSigningMethod() string
 	GetContextKey() string
 	GetTokenExpiration() int
