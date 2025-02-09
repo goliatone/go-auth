@@ -23,7 +23,7 @@ type Auther struct {
 func NewAuthenticator(provider IdentityProvider, opts Config) Authenticator {
 	return &Auther{
 		provider:        provider,
-		signingKey:      opts.GetSigningKey(),
+		signingKey:      []byte(opts.GetSigningKey()),
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
