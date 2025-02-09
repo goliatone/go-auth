@@ -1,0 +1,34 @@
+{
+  "persistence": {
+    "debug": true,
+    "driver": "sqlite",
+    "server": "file",
+    "dsn": "file:test.db?cache=shared",
+    "ping_timeout_expression": "10s",
+    "otel_identifier": "test"
+  },
+  "auth": {
+    "signing_key": "fc714085-5026-49ec-a374-647e459dbee4",
+    "signing_method": "HS256",
+    "context_key": "jwt",
+    "token_expiration": 24,
+    "extended_token_duration": 48,
+    "token_lookup": "header:Authorization,cookie:jwt",
+    "auth_scheme": "Bearer",
+    "issuer": "c8e",
+    "audience": ["c8e:user"],
+    "rejected_route_key": "rejected_route",
+    "rejected_route_default": "/login"
+  },
+  "views": {
+    "css_path": "./public/css/",
+    "js_path": "./public/js/",
+    "reload": true,
+    "debug": true,
+    "embed": false,
+    "ext": ".html",
+    "dir_os": "./views",
+    "dir_fs": "./views",
+    "remove_path_prefix": "public/"
+  }
+}
