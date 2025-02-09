@@ -48,7 +48,7 @@ func (a *RouteController) ProtectedRoute(cfg Config, errorHandler func(router.Co
 		return jwtware.New(jwtware.Config{
 			ErrorHandler: errorHandler,
 			SigningKey: jwtware.SigningKey{
-				Key:    cfg.GetSigningKey(),
+				Key:    []byte(cfg.GetSigningKey()),
 				JWTAlg: cfg.GetSigningMethod(),
 			},
 			AuthScheme:  cfg.GetAuthScheme(),
