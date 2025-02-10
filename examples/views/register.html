@@ -1,0 +1,152 @@
+{% extends "layouts/auth.html" %}
+
+{% block content %}
+<style>
+    .loading-button svg {
+        display: none;
+    }
+    .loading.loading-button svg {
+        display: inline-block;
+    }
+
+    .loading.loading-button span {
+        display: none;
+    }
+</style>
+<div class="w-full min-h-screen flex flex-col align-middle justify-center items-center xp-8">
+    <div
+        data-controller="loading_animation"
+        data-action="click->loading_animation#filterEvent"
+        data-loading_animation-loading-class="loading"
+        class="grid md:grid-cols-2 items-center gap-10 xmax-w-6xl w-full">
+
+        <div class="flex flex-col justify-center bg-orchata-950 w-full min-h-screen text-orchata-500 p-14 shadow max-w-6xl">
+            <div class="max-w-lg mx-auto">
+                <div>
+                    <img class="w-64 logo -ml-4 mb-12" src="/logo_light.svg" alt="brand logo">
+                </div>
+
+                <h2 class="text-4xl lg:text-5xl font-black lg:leading-[55px]">Register for Exclusive Benefits</h2>
+                <p class="text-sm mt-6">Create an profile account to place orders, create a subscription, book our categring services, or sending a gift card to a friend.</p>
+                <p class="text-sm mt-8">Already have an account? <a href="/login" class="text-blue-500 font-semibold hover:underline ml-1">Sign In here</a></p>
+            </div>
+        </div>
+
+        <form
+            action="/register" method="post"
+            class="group flex flex-col gap-8 p-8 pl-0" novalidate>
+
+            <h3 class="text-3xl font-bold">Create An Account</h3>
+
+            {% for error in errors %}
+            <div class="bg-red-50 border border-red-400 rounded p-4 shadow font-medium">
+                <p>Error: {{error}}</p>
+            </div>
+            {% endfor %}
+
+            <div class="flex flex-col gap-2">
+                <label class="font-medium" for="first_name">First Name</label>
+                <input type="text" name="first_name" value="{{record.first_name}}" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.first_name, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="Enter First Name">
+                <span class="mt-2 {{conditional_str(validation.first_name, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                    Please enter a valid first name: {{validation.first_name}}
+                </span>
+            </div>
+            <div class="flex flex-col gap-2">
+                <label class="font-medium" for="last_name">Last Name</label>
+                <input type="text" name="last_name" value="{{record.last_name}}" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.last_name, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="Enter Last Name">
+                <span class="mt-2 {{conditional_str(validation.last_name, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                    Please enter a valid last name: {{validation.last_name}}
+                </span>
+            </div>
+            <div class="flex flex-col gap-2">
+                <label class="font-medium" for="email">Email</label>
+                <!-- <input type="email" name="email" value="{{record.email}}" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.email, 'border-red-500', '')}} focus:ring-0" placeholder="user@example.com" pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$"> -->
+                <input type="email" name="email" value="{{record.email}}" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.email, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="user@example.com" >
+                <span class="mt-2 {{conditional_str(validation.email, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                    Please enter a valid email address: {{validation.email}}
+                </span>
+            </div>
+            <div class="flex flex-col gap-2">
+                <label class="font-medium" for="phone_number">Phone Number</label>
+                <input value="{{record.phone_number}}" data-controller="input_mask" data-input_mask-mask-value="+{1} (000) 000-0000" type="text" name="phone_number" class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.phone_number, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="Enter Phone Number"/>
+                <span class="mt-2 {{conditional_str(validation.phone_number, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                    Please enter a valid phone number: {{validation.phone_number}}
+                </span>
+            </div>
+
+            <div data-controller="inputs_matcher" class="flex flex-col gap-8">
+                <div data-controller="password_visibility" class="flex flex-col gap-2">
+                    <label class="font-medium" for="password">Password</label>
+                    <div class="flex flex-col relative">
+                        <input data-password_visibility-target="input" data-inputs_matcher-target="source" type="password" name="password" value="{{record.password}}" minlength="10" maxlength="100" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.password, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="Password">
+                        <button data-action="password_visibility#toggle" class="absolute inset-y-0 right-0 pr-4 flex items-center cursor-pointer text-gray-400" type="button">
+                            <span data-password_visibility-target="icon">
+                                <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 13C6.6 5 17.4 5 21 13" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M12 17C10.3431 17 9 15.6569 9 14C9 12.3431 10.3431 11 12 11C13.6569 11 15 12.3431 15 14C15 15.6569 13.6569 17 12 17Z" fill="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                            <span data-password_visibility-target="icon" class="hidden">
+                                <svg width="24px" height="24px" viewBox="0 0 24 24" stroke-width="1.5" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M19.5 16L17.0248 12.6038" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M12 17.5V14" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M4.5 16L6.96895 12.6124" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M3 8C6.6 16 17.4 16 21 8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                        </button>
+                    </div>
+                    <span class="mt-2 {{conditional_str(validation.password, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                        Please enter a valid password. Min length is 10 characters: {{validation.password}}
+                    </span>
+                </div>
+                <div data-controller="password_visibility" class="flex flex-col gap-2">
+                    <label class="font-medium" for="confirm_password">Confirm Password</label>
+                    <div class="flex flex-col relative">
+                        <input data-password_visibility-target="input" data-inputs_matcher-target="copy" type="password" name="confirm_password" value="{{record.confirm_password}}" required class="w-full peer rounded invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 {{conditional_str(validation.confirm_password, 'border-red-500', '')}} valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 focus:ring-0" placeholder="Confirm password">
+                        <button data-action="password_visibility#toggle" class="absolute inset-y-0 right-0 pr-4 flex items-center cursor-pointer text-gray-400" type="button">
+                            <span data-password_visibility-target="icon">
+                                <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M3 13C6.6 5 17.4 5 21 13" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M12 17C10.3431 17 9 15.6569 9 14C9 12.3431 10.3431 11 12 11C13.6569 11 15 12.3431 15 14C15 15.6569 13.6569 17 12 17Z" fill="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                            <span data-password_visibility-target="icon" class="hidden">
+                                <svg width="24px" height="24px" viewBox="0 0 24 24" stroke-width="1.5" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M19.5 16L17.0248 12.6038" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M12 17.5V14" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M4.5 16L6.96895 12.6124" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    <path d="M3 8C6.6 16 17.4 16 21 8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                        </button>
+                    </div>
+                    <span class="mt-2 {{conditional_str(validation.confirm_password, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+                        Please make sure it matches your password: {{validation.confirm_password}}
+                    </span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <input type="checkbox" id="remember_me" name="remember_me" class="h-4 w-4 shrink-0 rounded ring-0 focus:ring-0 cursor-pointer" />
+                <label for="remember_me" class="ml-3 block text-sm cursor-pointer">
+                    I accept the <a href="/terms-conditions" class="text-blue-500 font-semibold hover:underline ml-1">Terms & Conditions</a>
+                </label>
+            </div>
+            <div>
+                <button
+                    data-loading_animation-target="button"
+                    type="submit" class="loading-button w-full py-2.5 px-8 inline-flex items-center justify-center text-sm font-semibold rounded text-white bg-orchata-950 hover:bg-[#222] focus:outline-none transition-all group-invalid:pointer-events-none group-invalid:opacity-30">
+                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="pointer-events-none">
+                        Sign Up
+                    </span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

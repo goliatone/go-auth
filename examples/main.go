@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/goliatone/go-auth/auth"
-	"github.com/goliatone/go-auth/examples/config"
+	"github.com/goliatone/go-auth"
+	"github.com/goliatone/go-auth-examples/config"
 	repo "github.com/goliatone/go-auth/repository"
 	gconfig "github.com/goliatone/go-config/config"
 	"github.com/goliatone/go-persistence-bun"
@@ -211,7 +211,6 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 			ac.Debug = true
 			ac.Auther = httpAuth
 			ac.Repo = repo
-			// ac.Repo = app.repo
 			return ac
 		})
 
@@ -230,13 +229,13 @@ func WaitExitSignal() os.Signal {
 
 /////
 
-type userRecord struct {
-	ID             uuid.UUID  `json:"id" form:"id"`
-	FirstName      string     `json:"first_name" form:"first_name"`
-	LastName       string     `json:"last_name" form:"last_name"`
-	Username       string     `json:"username" form:"username"`
-	Email          string     `json:"email" form:"email"`
-	Phone          string     `json:"phone_number" form:"phone_number"`
+type UserRecord struct {
+	ID             uuid.UUID  `json:"id"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	Username       string     `json:"username"`
+	Email          string     `json:"email"`
+	Phone          string     `json:"phone_number"`
 	EmailValidated bool       `json:"is_email_verified"`
 	DeletedAt      *time.Time `json:"deleted_at"`
 	ResetedAt      *time.Time `json:"reseted_at"`
@@ -244,8 +243,8 @@ type userRecord struct {
 	UpdatedAt      *time.Time `json:"updated_at"`
 }
 
-func NewUserDTO(user *auth.User) userRecord {
-	return userRecord{
+func NewUserDTO(user *auth.User) UserRecord {
+	return UserRecord{
 		ID:             user.ID,
 		FirstName:      user.FirstName,
 		LastName:       user.LastName,
@@ -265,12 +264,16 @@ func ProfileShow(app *App) func(c router.Context) error {
 		cookie := c.Cookies(contextKey)
 		session, err := app.auth.SessionFromToken(cookie)
 		if err != nil {
-			return c.Render("error", fiber.Map{})
+			return c.Render("errors/500", fiber.Map{
+				"message": err.Error(),
+			})
 		}
 
 		user, err := app.repo.Users().GetByID(c.Context(), session.GetUserID())
 		if err != nil {
-			return c.Render("error", fiber.Map{})
+			return c.Render("errors/500", fiber.Map{
+				"message": err.Error(),
+			})
 		}
 
 		return c.Render("profile", fiber.Map{
