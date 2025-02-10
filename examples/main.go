@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/goliatone/go-auth/auth"
-	"github.com/goliatone/go-auth/examples/config"
+	"github.com/goliatone/go-auth"
+	"github.com/goliatone/go-auth-examples/config"
 	repo "github.com/goliatone/go-auth/repository"
 	gconfig "github.com/goliatone/go-config/config"
 	"github.com/goliatone/go-persistence-bun"
