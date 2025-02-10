@@ -1,0 +1,27 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon_dark.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Auth | {{title}}</title>
+    {{ css("main-*.css") | safe }}
+  </head>
+  <body class="flex flex-col min-h-screen font-montserrat bg-light">
+    <!-- {% include "partials/header.html" %} -->
+    <div class="pt-10 mt-2"></div>
+    {% block content %}
+    {% endblock %}
+
+    <code>
+      is valid? {{jwt.SigningString()}}
+      <pre>
+        {{to_json(jwt)}}
+      </pre>
+    </code>
+    <!-- {% include "partials/footer.html" %} -->
+    {{ js("main-*.js") | safe }}
+
+  </body>
+</html>

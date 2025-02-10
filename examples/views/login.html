@@ -1,0 +1,82 @@
+{% extends "layouts/auth.html" %}
+
+{% block content %}
+<div class="flex flex-col h-[calc(100vh-250px)] justify-center items-center p-8">
+  <div class="mb-6">
+    <img class="w-64 logo" src="/logo_dark.svg" alt="brand logo">
+  </div>
+  <form action="/login" method="post" class="group flex flex-col gap-8 max-w-md bg-white p-8 rounded shadow" novalidate>
+    <div class="inline-flex flex-col gap-y-2">
+      <h3 class="text-3xl font-bold">Sign In</h3>
+     <span class="text-sm"> Don't have an account? <a href="/register" class="text-blue-500 font-semibold hover:underline ml-1">Sign Up</a></span>
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <label class="font-medium" for="identifier">Email</label>
+      <input type="email" id="identifier" name="identifier" value="{{record.email}}" placeholder="Enter your email" required class="rounded ring-0 peer invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 {{conditional_str(validation.email, 'border-red-500', '')}}">
+      <span class="mt-2 {{conditional_str(validation.email, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+        Please enter a valid email address: {{validation.email}}
+    </span>
+    </div>
+    <span></span>
+    <div class="flex flex-col gap-2">
+      <label class="font-medium" for="password">Password</label>
+      <div>
+        <div data-controller="password_visibility" class="flex flex-col relative">
+          <input data-password_visibility-target="input" required class="rounded ring-0 peer invalid:[&:not(:placeholder-shown):not(:focus)]:border-red-500 valid:[&:not(:placeholder-shown):not(:focus)]:border-lime-500 {{conditional_str(validation.password, 'border-red-500', '')}}" type="password" id="password" name="password" placeholder="Password" minlength="8" maxlength="100" >
+          <button data-action="password_visibility#toggle" class="absolute inset-y-0 right-0 pr-4 flex items-center cursor-pointer text-gray-400" type="button">
+          <span data-password_visibility-target="icon">
+            <svg width="24px" height="24px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 13C6.6 5 17.4 5 21 13" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M12 17C10.3431 17 9 15.6569 9 14C9 12.3431 10.3431 11 12 11C13.6569 11 15 12.3431 15 14C15 15.6569 13.6569 17 12 17Z" fill="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          <span data-password_visibility-target="icon" class="hidden">
+            <svg width="24px" height="24px" viewBox="0 0 24 24" stroke-width="1.5" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19.5 16L17.0248 12.6038" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M12 17.5V14" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M4.5 16L6.96895 12.6124" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              <path d="M3 8C6.6 16 17.4 16 21 8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+        </button>
+        </div>
+        <span class="mt-2 {{conditional_str(validation.password, '', 'hidden')}} text-xs italic text-red-500 peer-[&:not(:placeholder-shown):not(:focus):invalid]:block">
+          Password requried: {{validation.password}}
+        </span>
+      </div>
+    </div>
+
+    <div class="flex flex-row justify-between text-sm gap-x-6">
+      <div class="flex items-center gap-1">
+        <input type="checkbox" id="remember_me" name="remember_me" class="h-4 w-4 shrink-0 rounded ring-0 focus:ring-0 cursor-pointer" {{conditional_str(record.remember_me, 'checked', '')}} />
+        <label for="remember_me" class="ml-3 block cursor-pointer">
+          Remember me
+        </label>
+      </div>
+
+      <div>
+        <a href="/password-reset" class="text-blue-500 font-semibold hover:underline ml-1">Forgot password?</a>
+      </div>
+    </div>
+
+    <div
+        data-controller="loading_animation"
+        data-action="click->loading_animation#filterEvent"
+        data-loading_animation-loading-class="loading">
+      <button
+          data-loading_animation-target="button"
+          type="submit" class="loading-button w-full py-2.5 px-8 inline-flex items-center justify-center text-sm font-semibold rounded text-white  bg-[#333] hover:bg-[#222] focus:outline-none transition-all group-invalid:pointer-events-none group-invalid:opacity-30">
+          <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="pointer-events-none">
+            Sign In
+          </span>
+      </button>
+    </div>
+
+  </form>
+</div>
+{% endblock %}
