@@ -6,7 +6,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/goliatone/go-auth/auth"
+	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/uptrace/bun"
 )
