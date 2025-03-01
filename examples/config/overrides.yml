@@ -11,7 +11,7 @@ views:
     setter: true
   - name: templates_fs
     override: TemplatesFS
-    type: fs.FS
+    type: "[]fs.FS"
     setter: true
   - name: template_functions
     override: TemplateFunctions
