@@ -104,6 +104,10 @@ func (v Views) GetDebug() bool {
 	return v.Debug
 }
 
+func (v Views) GetDevDir() string {
+	return v.DevDir
+}
+
 func (v Views) GetDirFS() string {
 	return v.DirFS
 }
@@ -136,6 +140,6 @@ func (v Views) GetTemplateFunctions() map[string]any {
 	return v.TemplateFunctions
 }
 
-func (v Views) GetTemplatesFS() fs.FS {
+func (v Views) GetTemplatesFS() []fs.FS {
 	return v.TemplatesFS
 }
