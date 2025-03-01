@@ -115,8 +115,11 @@ func ProtectedRoutes(app *App) {
 
 func WithHTTPServer(ctx context.Context, app *App) error {
 	srv := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		engine, err := router.InitializeViewEngine(app.config.Raw().GetViews())
+		if err != nil {
+			panic(err)
+		}
 
-		engine := router.InitializeViewEngine(app.config.Raw().GetViews())
 		return router.DefaultFiberOptions(fiber.New(fiber.Config{
 			UnescapePath:      true,
 			EnablePrintRoutes: true,
