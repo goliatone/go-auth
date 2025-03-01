@@ -29,6 +29,7 @@
     "ext": ".html",
     "dir_os": "./views",
     "dir_fs": "./views",
+    "dev_dir": "",
     "remove_path_prefix": "public/"
   }
 }
