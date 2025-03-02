@@ -683,44 +683,25 @@ func TestPasswordResetPost_Success(t *testing.T) {
 	mockUsers.AssertExpectations(t)
 }
 
-func TestPasswordResetForm(t *testing.T) {
-	controller, mockRepo, mockUsers, mockPasswordResets, _, adapter := setupTestController(t)
+func TestPasswordResetForm_Invalid(t *testing.T) {
+	controller, mockRepo, _, mockPasswordResets, _, adapter := setupTestController(t)
 	r := adapter.Router()
 
 	resetID := uuid.New().String()
-	resetTime := time.Now()
-	userID := uuid.New()
-	passwordReset := &auth.PasswordReset{
-		ID:        uuid.MustParse(resetID),
-		Status:    auth.ResetRequestedStatus,
-		CreatedAt: &resetTime,
-		UserID:    &userID,
-	}
 
 	mockRepo.On("PasswordResets").Return(mockPasswordResets).Once()
-
-	mockRepo.On("Users").Return(mockUsers).Once()
-
 	mockPasswordResets.
 		On("GetByID", mock.Anything, resetID, mock.Anything).
-		Return(passwordReset, nil).Once()
-
-	expectedReset := auth.MarkPasswordAsReseted(passwordReset.ID)
-	mockUsers.
-		On("RawTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return([]*auth.User{}, nil).Once()
-
-	mockPasswordResets.
-		On("UpdateTx", mock.Anything, mock.Anything, expectedReset).
-		Return(expectedReset, nil).Once()
+		Return(nil, repository.ErrRecordNotFound).Once()
 
 	mockRepo.
 		On("RunInTx", mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
-			fn := args.Get(2).(func(context.Context, bun.Tx) error)
-			fn(context.Background(), bun.Tx{})
+			cb := args.Get(2).(func(context.Context, bun.Tx) error)
+			cb(context.Background(), bun.Tx{})
 		}).
-		Return(nil).Once()
+		Return(nil).
+		Once()
 
 	r.Get("/password-reset/:uuid", controller.PasswordResetForm)
 
@@ -729,9 +710,8 @@ func TestPasswordResetForm(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-	mockRepo.AssertExpectations(t)
-	mockPasswordResets.AssertExpectations(t)
-	mockUsers.AssertExpectations(t)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), `Invalid or expired password reset request`)
 }
 
 func TestPasswordResetExecute_Success(t *testing.T) {
