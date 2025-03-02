@@ -39,7 +39,7 @@ type SigningKey struct {
 }
 
 func New(config ...Config) router.HandlerFunc {
-	cfg := getCfg(config)
+	cfg := GetDefaultConfig(config...)
 	return func(ctx router.Context) error {
 		if cfg.Filter != nil && cfg.Filter(ctx) {
 			return ctx.Next()
@@ -77,7 +77,7 @@ func New(config ...Config) router.HandlerFunc {
 	}
 }
 
-func getCfg(config []Config) (cfg Config) {
+func GetDefaultConfig(config ...Config) (cfg Config) {
 	if len(config) > 0 {
 		cfg = config[0]
 	}
