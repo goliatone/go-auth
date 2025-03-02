@@ -268,11 +268,10 @@ func (r RegistrationCreatePayload) Validate() error {
 }
 
 func (a *AuthController) RegistrationCreate(ctx router.Context) error {
-
-	errors := map[string]any{}
 	payload := new(RegistrationCreatePayload)
 
 	if err := ctx.Bind(payload); err != nil {
+		errors := map[string]string{}
 		errors["form"] = "Failed to parse form"
 		a.Logger.Error("register user parse payload: ", "error", err)
 		return flash.WithError(ctx, router.ViewContext{
@@ -285,6 +284,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := payload.Validate(); err != nil {
+		errors := FormatValidationErrorToMap(err)
 		a.Logger.Error("register user validate payload: ", "error", err)
 
 		return flash.WithError(ctx, router.ViewContext{
@@ -305,7 +305,6 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	registerUser := RegisterUserHandler{repo: a.Repo}
-
 	if err := registerUser.Execute(ctx.Context(), req); err != nil {
 		a.Logger.Error("order get error: ", "error", err)
 
@@ -363,8 +362,7 @@ func (r PasswordResetRequestPayload) Validate() error {
 }
 
 func (a *AuthController) PasswordResetPost(ctx router.Context) error {
-
-	errors := map[string]any{}
+	errors := map[string]string{}
 	payload := new(PasswordResetRequestPayload)
 
 	if err := ctx.Bind(payload); err != nil {
@@ -381,7 +379,7 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("register user validate payload: ", "error", err)
-
+		errors := FormatValidationErrorToMap(err)
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Error(),
 			"system_message": "Error validating payload",
@@ -540,6 +538,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("register user validate payload: ", "error", err)
+		errors = FormatValidationErrorToMap(err)
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Error(),
 			"system_message": "Error validating payload",
@@ -579,7 +578,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 
 // ValidateStringEquals will check that both values match
 func ValidateStringEquals(str string) validation.RuleFunc {
-	return func(value interface{}) error {
+	return func(value any) error {
 		s, _ := value.(string)
 		if s != str {
 			return errors.New("values must match")
