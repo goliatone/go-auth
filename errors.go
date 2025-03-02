@@ -36,3 +36,34 @@ func IsMalformedError(err error) bool {
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
 }
+
+// FormatValidationErrorToMap will take an error that stringified
+// returns something like this:
+// confirm_password: the length must be between 10 and 100; email: must be a valid email address; password: the length must be between 10 and 100
+func FormatValidationErrorToMap(err error) map[string]string {
+	out := map[string]string{}
+	raw := err.Error()
+
+	if !strings.Contains(raw, ";") {
+		out["error"] = raw
+		return out
+	}
+
+	parts := strings.Split(raw, ";")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(kv[0])
+		value := strings.TrimSpace(kv[1])
+		out[key] = value
+	}
+
+	return out
+}
