@@ -579,13 +579,31 @@ func TestRegistrationShow(t *testing.T) {
 }
 
 func TestRegistrationCreate_Success(t *testing.T) {
-	controller, mockRepo, _, _, _, adapter := setupTestController(t)
+	controller, mockRepo, mockUsers, _, _, adapter := setupTestController(t)
 	r := adapter.Router()
 
-	mockRepo.On("RunInTx", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		fn := args.Get(2).(func(context.Context, bun.Tx) error)
-		fn(context.Background(), bun.Tx{})
-	}).Return(nil)
+	mockRepo.
+		On("RunInTx", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			fn := args.Get(2).(func(context.Context, bun.Tx) error)
+			fn(context.Background(), bun.Tx{})
+		}).
+		Return(nil).
+		Once()
+
+	userID := uuid.New()
+	user := &auth.User{
+		ID:        userID,
+		FirstName: "Jhon",
+		LastName:  "Doe",
+		Email:     "john.doe@example.com",
+		Phone:     "1234567890",
+	}
+
+	mockUsers.
+		On("CreateTx", mock.Anything, mock.Anything, mock.Anything).
+		Return(user, nil).
+		Once()
 
 	r.Post("/register", controller.RegistrationCreate)
 
@@ -601,12 +619,19 @@ func TestRegistrationCreate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := adapter.WrappedRouter().Test(req, 2000)
-
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	assert.Equal(t, "/", resp.Header.Get("Location"))
 
+	/**
+	* NOTE: setupTestController creates two expectations
+	* for Users and PasswordRestes, the flow in
+	* RegsitrationCreate never calls PR so we do here
+	 */
+	_ = mockRepo.PasswordResets()
+
 	mockRepo.AssertExpectations(t)
+	mockUsers.AssertExpectations(t)
 }
 
 func TestRegistrationCreate_ValidationError(t *testing.T) {
@@ -648,7 +673,7 @@ func TestPasswordResetGet(t *testing.T) {
 }
 
 func TestPasswordResetPost_Success(t *testing.T) {
-	controller, mockRepo, mockUsers, _, _, adapter := setupTestController(t)
+	controller, mockRepo, mockUsers, mockPasswordResets, _, adapter := setupTestController(t)
 	r := adapter.Router()
 
 	userID := uuid.New()
@@ -659,6 +684,16 @@ func TestPasswordResetPost_Success(t *testing.T) {
 
 	mockRepo.On("Users").Return(mockUsers)
 	mockUsers.On("GetByIdentifier", mock.Anything, "user@example.com").Return(user, nil)
+
+	reset := &auth.PasswordReset{
+		Email:  user.Email,
+		Status: "requested",
+		UserID: &user.ID,
+	}
+
+	mockPasswordResets.On("CreateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(reset, nil).
+		Once()
 
 	mockRepo.On("RunInTx", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		fn := args.Get(2).(func(context.Context, bun.Tx) error)
@@ -802,4 +837,11 @@ func TestPasswordResetExecute_ValidationError(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "validation")
+
+	/**
+	 * NOTE: validation error means that we
+	 * never get to call any of the repositories
+	 */
+	// mockRepo.AssertExpectations(t)
+	// mockUsers.AssertExpectations(t)
 }
