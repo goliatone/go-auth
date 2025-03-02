@@ -57,7 +57,7 @@ func (m *MockHTTPAuthenticator) MakeClientRouteAuthErrorHandler(optionalAuth boo
 
 func (m *MockHTTPAuthenticator) ProtectedRoute(cfg auth.Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
 	args := m.Called(cfg, errorHandler)
-	return args.Get(0).(router.MiddlewareFunc)
+	return args.Get(0).(func(router.HandlerFunc) router.HandlerFunc)
 }
 
 func (m *MockHTTPAuthenticator) Impersonate(c router.Context, identifier string) error {
@@ -844,4 +844,121 @@ func TestPasswordResetExecute_ValidationError(t *testing.T) {
 	 */
 	// mockRepo.AssertExpectations(t)
 	// mockUsers.AssertExpectations(t)
+}
+
+type AuthConfig struct {
+	Audience              []string `json:"audience" koanf:"audience"`
+	AuthScheme            string   `json:"auth_scheme" koanf:"auth_scheme"`
+	ContextKey            string   `json:"context_key" koanf:"context_key"`
+	ExtendedTokenDuration int      `json:"extended_token_duration" koanf:"extended_token_duration"`
+	Issuer                string   `json:"issuer" koanf:"issuer"`
+	RejectedRouteDefault  string   `json:"rejected_route_default" koanf:"rejected_route_default"`
+	RejectedRouteKey      string   `json:"rejected_route_key" koanf:"rejected_route_key"`
+	SigningKey            string   `json:"signing_key" koanf:"signing_key"`
+	SigningMethod         string   `json:"signing_method" koanf:"signing_method"`
+	TokenExpiration       int      `json:"token_expiration" koanf:"token_expiration"`
+	TokenLookup           string   `json:"token_lookup" koanf:"token_lookup"`
+}
+
+// Auth Getters
+
+func (a AuthConfig) GetAudience() []string {
+	return a.Audience
+}
+
+func (a AuthConfig) GetAuthScheme() string {
+	return a.AuthScheme
+}
+
+func (a AuthConfig) GetContextKey() string {
+	return a.ContextKey
+}
+
+func (a AuthConfig) GetExtendedTokenDuration() int {
+	return a.ExtendedTokenDuration
+}
+
+func (a AuthConfig) GetIssuer() string {
+	return a.Issuer
+}
+
+func (a AuthConfig) GetRejectedRouteDefault() string {
+	return a.RejectedRouteDefault
+}
+
+func (a AuthConfig) GetRejectedRouteKey() string {
+	return a.RejectedRouteKey
+}
+
+func (a AuthConfig) GetSigningKey() string {
+	return a.SigningKey
+}
+
+func (a AuthConfig) GetSigningMethod() string {
+	return a.SigningMethod
+}
+
+func (a AuthConfig) GetTokenExpiration() int {
+	return a.TokenExpiration
+}
+
+func (a AuthConfig) GetTokenLookup() string {
+	return a.TokenLookup
+}
+
+func TestProtectedRoutes(t *testing.T) {
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New()
+	})
+	r := adapter.Router()
+
+	mockAuth := new(MockHTTPAuthenticator)
+
+	cfg := AuthConfig{}
+
+	errorHandler := func(c router.Context, err error) error {
+		return c.Status(401).SendString("Unauthorized")
+	}
+
+	protectedMiddleware := func(router.HandlerFunc) router.HandlerFunc {
+		return func(c router.Context) error {
+			if c.Query("token", "") != "valid" {
+				return c.Status(401).SendString("Unauthorized")
+			}
+			return c.Next()
+		}
+	}
+
+	mockAuth.
+		On("ProtectedRoute", cfg, mock.Anything).
+		Return(protectedMiddleware).
+		Once()
+
+	profileHandler := func(c router.Context) error {
+		return c.SendString("Profile Data")
+	}
+
+	protected := mockAuth.ProtectedRoute(cfg, errorHandler)
+
+	r.Get("/me", profileHandler, protected)
+
+	// --- Unauthorized Request ---
+	// No "token" parameter; middleware should block access.
+	req := httptest.NewRequest("GET", "/me", nil)
+	resp, err := adapter.WrappedRouter().Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Unauthorized")
+
+	// --- Authorized Request ---
+	// Provide the "token=valid" query parameter so that the middleware allows access.
+	req = httptest.NewRequest("GET", "/me?token=valid", nil)
+	resp, err = adapter.WrappedRouter().Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, _ = io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Profile Data")
+
+	mockAuth.AssertExpectations(t)
 }
