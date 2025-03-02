@@ -22,11 +22,17 @@ var ErrUnableToParseData = errors.New("unable to parse data")
 
 // IsTokenExpiredError will check for expired tokens
 func IsTokenExpiredError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "token is expired")
 }
 
 // IsMalformedError will check for error message
 func IsMalformedError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
 }
