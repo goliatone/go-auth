@@ -165,7 +165,7 @@ func TestJWTWare_BasicHeaderExtraction(t *testing.T) {
 			return ctx.Next()
 		},
 		ErrorHandler: func(ctx router.Context, err error) error {
-			return ctx.Status(http.StatusUnauthorized).SendString("Unauthorized: " + err.Error())
+			return err
 		},
 		// it will look for Authorization: Bearer <token>
 	}
@@ -217,6 +217,9 @@ func TestJWTWare_ExpiredToken(t *testing.T) {
 		SigningKey: jwtware.SigningKey{
 			Key:    signingKey,
 			JWTAlg: jwtAlg,
+		},
+		ErrorHandler: func(c router.Context, err error) error {
+			return err
 		},
 	}
 	middleware := jwtware.New(cfg)
@@ -418,7 +421,7 @@ func TestJWTWare_JWKSetURL(t *testing.T) {
         {
           "kty": "oct",
           "kid": "local-jwk",
-          "k":   "c2VjcmV0LWtleS1ieXRlcw",  // base64 for "secret-key-bytes"
+          "k":   "c2VjcmV0LWtleS1ieXRlcw",
           "alg": "HS256"
         }
       ]
@@ -465,10 +468,12 @@ func TestJWTWare_JWKSetURL(t *testing.T) {
 
 // Example to show how a custom KeyFunc can override everything:
 func TestJWTWare_CustomKeyfunc(t *testing.T) {
-	// We'll define a custom KeyFunc that always returns an error.
 	cfg := jwtware.Config{
 		KeyFunc: func(token *jwt.Token) (any, error) {
 			return nil, errors.New("forced error from custom KeyFunc")
+		},
+		ErrorHandler: func(c router.Context, err error) error {
+			return err
 		},
 	}
 	middleware := jwtware.New(cfg)
@@ -481,6 +486,7 @@ func TestJWTWare_CustomKeyfunc(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected forced error from custom KeyFunc, got nil")
 	}
+
 	if !strings.Contains(err.Error(), "forced error") {
 		t.Errorf("expected KeyFunc forced error message, got: %v", err)
 	}
