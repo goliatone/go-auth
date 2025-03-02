@@ -2,22 +2,27 @@ package auth_test
 
 import (
 	"context"
-	"errors"
+	"database/sql"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/django/v3"
 	"github.com/goliatone/go-auth"
+	"github.com/goliatone/go-repository-bun"
 	"github.com/goliatone/go-router"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 )
 
-// MockHTTPAuthenticator implements HTTPAuthenticator
 type MockHTTPAuthenticator struct {
 	mock.Mock
 }
@@ -45,14 +50,14 @@ func (m *MockHTTPAuthenticator) GetRedirectOrDefault(c router.Context) string {
 	return args.String(0)
 }
 
-func (m *MockHTTPAuthenticator) ProtectedRoute(cfg auth.Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
-	args := m.Called(cfg, errorHandler)
-	return args.Get(0).(router.MiddlewareFunc)
-}
-
 func (m *MockHTTPAuthenticator) MakeClientRouteAuthErrorHandler(optionalAuth bool) func(c router.Context, err error) error {
 	args := m.Called(optionalAuth)
 	return args.Get(0).(func(c router.Context, err error) error)
+}
+
+func (m *MockHTTPAuthenticator) ProtectedRoute(cfg auth.Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
+	args := m.Called(cfg, errorHandler)
+	return args.Get(0).(router.MiddlewareFunc)
 }
 
 func (m *MockHTTPAuthenticator) Impersonate(c router.Context, identifier string) error {
@@ -60,57 +65,49 @@ func (m *MockHTTPAuthenticator) Impersonate(c router.Context, identifier string)
 	return args.Error(0)
 }
 
-// MockRepoManager implements RepositoryManager
-type MockRepoManager struct {
+type MockRepositoryManager struct {
 	mock.Mock
 }
 
-func (m *MockRepoManager) Validate() error {
+func (m *MockRepositoryManager) Validate() error {
 	args := m.Called()
 	return args.Error(0)
 }
 
-func (m *MockRepoManager) MustValidate() {
+func (m *MockRepositoryManager) MustValidate() {
 	m.Called()
 }
 
-func (m *MockRepoManager) RunInTx(ctx context.Context, opts any, f func(ctx context.Context, tx any) error) error {
+func (m *MockRepositoryManager) RunInTx(ctx context.Context, opts *sql.TxOptions, f func(context.Context, bun.Tx) error) error {
 	args := m.Called(ctx, opts, f)
 	return args.Error(0)
 }
 
-func (m *MockRepoManager) Users() auth.Users {
+func (m *MockRepositoryManager) Users() auth.Users {
 	args := m.Called()
 	return args.Get(0).(auth.Users)
 }
 
-func (m *MockRepoManager) PasswordResets() any {
+func (m *MockRepositoryManager) PasswordResets() repository.Repository[*auth.PasswordReset] {
 	args := m.Called()
-	return args.Get(0)
+	return args.Get(0).(repository.Repository[*auth.PasswordReset])
 }
 
-// MockUsers implements Users interface
 type MockUsers struct {
 	mock.Mock
 }
 
 func (m *MockUsers) Raw(ctx context.Context, sql string, args ...any) ([]*auth.User, error) {
 	mockArgs := m.Called(ctx, sql, args)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).([]*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) RawTx(ctx context.Context, tx any, sql string, args ...any) ([]*auth.User, error) {
+func (m *MockUsers) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, sql, args)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).([]*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) Get(ctx context.Context, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) Get(ctx context.Context, criteria ...repository.SelectCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, criteria)
 	if mockArgs.Get(0) == nil {
 		return nil, mockArgs.Error(1)
@@ -118,7 +115,7 @@ func (m *MockUsers) Get(ctx context.Context, criteria ...any) (*auth.User, error
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetByID(ctx context.Context, id string, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) GetByID(ctx context.Context, id string, criteria ...repository.SelectCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, id, criteria)
 	if mockArgs.Get(0) == nil {
 		return nil, mockArgs.Error(1)
@@ -134,7 +131,7 @@ func (m *MockUsers) GetByIdentifier(ctx context.Context, identifier string) (*au
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetByIdentifierTx(ctx context.Context, tx any, identifier string) (*auth.User, error) {
+func (m *MockUsers) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, identifier)
 	if mockArgs.Get(0) == nil {
 		return nil, mockArgs.Error(1)
@@ -147,7 +144,7 @@ func (m *MockUsers) TrackAttemptedLogin(ctx context.Context, user *auth.User) er
 	return args.Error(0)
 }
 
-func (m *MockUsers) TrackAttemptedLoginTx(ctx context.Context, tx any, user *auth.User) error {
+func (m *MockUsers) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *auth.User) error {
 	args := m.Called(ctx, tx, user)
 	return args.Error(0)
 }
@@ -157,88 +154,58 @@ func (m *MockUsers) TrackSucccessfulLogin(ctx context.Context, user *auth.User) 
 	return args.Error(0)
 }
 
-func (m *MockUsers) TrackSucccessfulLoginTx(ctx context.Context, tx any, user *auth.User) error {
+func (m *MockUsers) TrackSucccessfulLoginTx(ctx context.Context, tx bun.IDB, user *auth.User) error {
 	args := m.Called(ctx, tx, user)
 	return args.Error(0)
 }
 
 func (m *MockUsers) Register(ctx context.Context, user *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, user)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) RegisterTx(ctx context.Context, tx any, user *auth.User) (*auth.User, error) {
+func (m *MockUsers) RegisterTx(ctx context.Context, tx bun.IDB, user *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, user)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetOrRegisterTx(ctx context.Context, tx any, record *auth.User) (*auth.User, error) {
+func (m *MockUsers) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) CreateTx(ctx context.Context, tx any, record *auth.User) (*auth.User, error) {
+func (m *MockUsers) CreateTx(ctx context.Context, tx bun.IDB, record *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
 func (m *MockUsers) GetOrCreate(ctx context.Context, record *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, record)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetOrCreateTx(ctx context.Context, tx any, record *auth.User) (*auth.User, error) {
+func (m *MockUsers) GetOrCreateTx(ctx context.Context, tx bun.IDB, record *auth.User) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) Update(ctx context.Context, record *auth.User, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) Update(ctx context.Context, record *auth.User, criteria ...repository.UpdateCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, record, criteria)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) UpdateTx(ctx context.Context, tx any, record *auth.User, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) UpdateTx(ctx context.Context, tx bun.IDB, record *auth.User, criteria ...repository.UpdateCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record, criteria)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) Upsert(ctx context.Context, record *auth.User, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) Upsert(ctx context.Context, record *auth.User, criteria ...repository.UpdateCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, record, criteria)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) UpsertTx(ctx context.Context, tx any, record *auth.User, criteria ...any) (*auth.User, error) {
+func (m *MockUsers) UpsertTx(ctx context.Context, tx bun.IDB, record *auth.User, criteria ...repository.UpdateCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record, criteria)
-	if mockArgs.Get(0) == nil {
-		return nil, mockArgs.Error(1)
-	}
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
@@ -247,56 +214,236 @@ func (m *MockUsers) ResetPassword(ctx context.Context, id uuid.UUID, passwordHas
 	return args.Error(0)
 }
 
-func (m *MockUsers) ResetPasswordTx(ctx context.Context, tx any, id uuid.UUID, passwordHash string) error {
+func (m *MockUsers) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
 	args := m.Called(ctx, tx, id, passwordHash)
 	return args.Error(0)
 }
 
-func setupFiberTest() (*fiber.App, *httptest.Server) {
-	app := fiber.New()
-
-	app.Get("/render-test", func(c *fiber.Ctx) error {
-		return c.SendString("Render Test")
-	})
-
-	return app, httptest.NewServer(app.Handler())
+type MockPasswordResets struct {
+	mock.Mock
+	count int
 }
 
-// Helper to create a fiber context for testing
-func createFiberTestContext(app *fiber.App, method, path string, body url.Values) (*fiber.Ctx, error) {
-	var req *http.Request
-	var err error
+func (m *MockPasswordResets) Raw(ctx context.Context, sql string, args ...any) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, sql, args)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
 
-	if body != nil {
-		req, err = http.NewRequest(
-			method,
-			path,
-			strings.NewReader(body.Encode()),
-		)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	} else {
-		req, err = http.NewRequest(method, path, nil)
-		if err != nil {
-			return nil, err
-		}
+func (m *MockPasswordResets) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, sql, args)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) Get(ctx context.Context, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
 	}
-
-	return app.Test(req)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
 }
 
-func TestAuthControllerLoginPost(t *testing.T) {
-	app, server := setupFiberTest()
-	defer server.Close()
+func (m *MockPasswordResets) GetTx(ctx context.Context, tx bun.IDB, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
 
-	mockRepo := new(MockRepoManager)
+func (m *MockPasswordResets) GetByID(ctx context.Context, id string, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, id, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, id, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) List(ctx context.Context, criteria ...repository.SelectCriteria) ([]*auth.PasswordReset, int, error) {
+	mockArgs := m.Called(ctx, criteria)
+	records := mockArgs.Get(0).([]*auth.PasswordReset)
+	// Returning the pre-set count
+	return records, m.count, mockArgs.Error(2)
+}
+
+func (m *MockPasswordResets) ListTx(ctx context.Context, tx bun.IDB, criteria ...repository.SelectCriteria) ([]*auth.PasswordReset, int, error) {
+	mockArgs := m.Called(ctx, tx, criteria)
+	records := mockArgs.Get(0).([]*auth.PasswordReset)
+	return records, m.count, mockArgs.Error(2)
+}
+
+func (m *MockPasswordResets) Count(ctx context.Context, criteria ...repository.SelectCriteria) (int, error) {
+	mockArgs := m.Called(ctx, criteria)
+	return m.count, mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) CountTx(ctx context.Context, tx bun.IDB, criteria ...repository.SelectCriteria) (int, error) {
+	mockArgs := m.Called(ctx, tx, criteria)
+	return m.count, mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) Create(ctx context.Context, record *auth.PasswordReset, criteria ...repository.InsertCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) CreateTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset, criteria ...repository.InsertCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) CreateMany(ctx context.Context, records []*auth.PasswordReset, criteria ...repository.InsertCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) CreateManyTx(ctx context.Context, tx bun.IDB, records []*auth.PasswordReset, criteria ...repository.InsertCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) GetOrCreate(ctx context.Context, record *auth.PasswordReset) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, record)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) GetOrCreateTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, record)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) GetByIdentifier(ctx context.Context, identifier string, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, identifier, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...repository.SelectCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, identifier, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) Update(ctx context.Context, record *auth.PasswordReset, criteria ...repository.UpdateCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpdateTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset, criteria ...repository.UpdateCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpdateMany(ctx context.Context, records []*auth.PasswordReset, criteria ...repository.UpdateCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpdateManyTx(ctx context.Context, tx bun.IDB, records []*auth.PasswordReset, criteria ...repository.UpdateCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) Upsert(ctx context.Context, record *auth.PasswordReset, criteria ...repository.UpdateCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpsertTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset, criteria ...repository.UpdateCriteria) (*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, record, criteria)
+	return mockArgs.Get(0).(*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpsertMany(ctx context.Context, records []*auth.PasswordReset, criteria ...repository.UpdateCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) UpsertManyTx(ctx context.Context, tx bun.IDB, records []*auth.PasswordReset, criteria ...repository.UpdateCriteria) ([]*auth.PasswordReset, error) {
+	mockArgs := m.Called(ctx, tx, records, criteria)
+	return mockArgs.Get(0).([]*auth.PasswordReset), mockArgs.Error(1)
+}
+
+func (m *MockPasswordResets) Delete(ctx context.Context, record *auth.PasswordReset) error {
+	mockArgs := m.Called(ctx, record)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) DeleteTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset) error {
+	mockArgs := m.Called(ctx, tx, record)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) DeleteMany(ctx context.Context, criteria ...repository.DeleteCriteria) error {
+	mockArgs := m.Called(ctx, criteria)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) DeleteManyTx(ctx context.Context, tx bun.IDB, criteria ...repository.DeleteCriteria) error {
+	mockArgs := m.Called(ctx, tx, criteria)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) DeleteWhere(ctx context.Context, criteria ...repository.DeleteCriteria) error {
+	mockArgs := m.Called(ctx, criteria)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) DeleteWhereTx(ctx context.Context, tx bun.IDB, criteria ...repository.DeleteCriteria) error {
+	mockArgs := m.Called(ctx, tx, criteria)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) ForceDelete(ctx context.Context, record *auth.PasswordReset) error {
+	mockArgs := m.Called(ctx, record)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) ForceDeleteTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset) error {
+	mockArgs := m.Called(ctx, tx, record)
+	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) Handlers() repository.ModelHandlers[*auth.PasswordReset] {
+	// Depending on your tests you might want to return a valid ModelHandlers or simply a zero value.
+	mockArgs := m.Called()
+	return mockArgs.Get(0).(repository.ModelHandlers[*auth.PasswordReset])
+}
+
+func setupTestController(_ *testing.T) (*auth.AuthController, *MockRepositoryManager, *MockUsers, *MockPasswordResets, *MockHTTPAuthenticator, router.Server[*fiber.App]) {
+	mockRepo := new(MockRepositoryManager)
 	mockUsers := new(MockUsers)
+	mockPasswordResets := new(MockPasswordResets)
 	mockHTTPAuth := new(MockHTTPAuthenticator)
 
 	mockRepo.On("Users").Return(mockUsers)
-	mockRepo.On("Validate").Return(nil)
+	mockRepo.On("PasswordResets").Return(mockPasswordResets)
+
+	engine := django.New("./testdata/views", ".html")
+
+	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
+		return fiber.New(fiber.Config{
+			Views:             engine,
+			PassLocalsToViews: true,
+		})
+	})
 
 	controller := auth.NewAuthController(
 		func(c *auth.AuthController) *auth.AuthController {
@@ -307,69 +454,372 @@ func TestAuthControllerLoginPost(t *testing.T) {
 		},
 	)
 
-	// Register login route
-	app.Post("/login", controller.LoginPost)
+	return controller, mockRepo, mockUsers, mockPasswordResets, mockHTTPAuth, adapter
+}
 
-	t.Run("Successful login", func(t *testing.T) {
-		// Setup form data
-		form := url.Values{}
-		form.Add("identifier", "test@example.com")
-		form.Add("password", "password123")
+func TestLoginShow(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
 
-		// Setup HTTP Auth expectations
-		mockHTTPAuth.On("Login", mock.Anything, mock.MatchedBy(func(p auth.LoginPayload) bool {
-			return p.GetIdentifier() == "test@example.com" &&
-				p.GetPassword() == "password123"
-		})).Return(nil).Once()
+	r.Get("/login", controller.LoginShow)
 
-		mockHTTPAuth.On("GetRedirect", mock.Anything, []string{"/"}).Return("/dashboard").Once()
+	req := httptest.NewRequest("GET", "/login", nil)
+	resp, err := adapter.WrappedRouter().Test(req)
 
-		// Make request
-		resp, err := http.PostForm(server.URL+"/login", form)
-		assert.NoError(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
 
-		// Assert redirect on success
-		assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
-		assert.Equal(t, "/dashboard", resp.Header.Get("Location"))
+func TestLoginPost_ValidCredentials(t *testing.T) {
+	controller, _, _, _, mockHTTPAuth, adapter := setupTestController(t)
+	r := adapter.Router()
 
-		// Verify expectations
-		mockHTTPAuth.AssertExpectations(t)
-	})
+	mockHTTPAuth.On("Login", mock.Anything, mock.MatchedBy(func(payload auth.LoginPayload) bool {
+		return payload.GetIdentifier() == "user@example.com" && payload.GetPassword() == "password123"
+	})).Return(nil)
 
-	t.Run("Invalid login credentials", func(t *testing.T) {
-		// Setup form data with invalid credentials
-		form := url.Values{}
-		form.Add("identifier", "invalid@example.com")
-		form.Add("password", "wrongpassword")
+	mockHTTPAuth.On("GetRedirect", mock.Anything, []string{"/"}).Return("/dashboard")
 
-		// Setup HTTP Auth expectations - login fails
-		mockHTTPAuth.On("Login", mock.Anything, mock.MatchedBy(func(p auth.LoginPayload) bool {
-			return p.GetIdentifier() == "invalid@example.com" &&
-				p.GetPassword() == "wrongpassword"
-		})).Return(errors.New("authentication failed")).Once()
+	r.Post("/login", controller.LoginPost)
 
-		// Make request
-		resp, err := http.PostForm(server.URL+"/login", form)
-		assert.NoError(t, err)
+	form := url.Values{}
+	form.Add("identifier", "user@example.com")
+	form.Add("password", "password123")
+	form.Add("remember_me", "true")
 
-		// Should not redirect on failure, should render login page with errors
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		// Verify expectations
-		mockHTTPAuth.AssertExpectations(t)
-	})
+	resp, err := adapter.WrappedRouter().Test(req)
 
-	t.Run("Invalid form data", func(t *testing.T) {
-		// Setup invalid form data (missing password)
-		form := url.Values{}
-		form.Add("identifier", "test@example.com")
-		// No password
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	assert.Equal(t, "/dashboard", resp.Header.Get("Location"))
 
-		// Make request
-		resp, err := http.PostForm(server.URL+"/login", form)
-		assert.NoError(t, err)
+	mockHTTPAuth.AssertExpectations(t)
+}
 
-		// Should not redirect, should render login page with validation errors
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-	})
+func TestLoginPost_InvalidCredentials(t *testing.T) {
+	controller, _, _, _, mockHTTPAuth, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	mockHTTPAuth.On("Login", mock.Anything, mock.MatchedBy(func(payload auth.LoginPayload) bool {
+		return payload.GetIdentifier() == "user@example.com" && payload.GetPassword() == "wrongpassword"
+	})).Return(auth.ErrMismatchedHashAndPassword)
+
+	r.Post("/login", controller.LoginPost)
+
+	form := url.Values{}
+	form.Add("identifier", "user@example.com")
+	form.Add("password", "wrongpassword")
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "Authentication Error")
+
+	mockHTTPAuth.AssertExpectations(t)
+}
+
+func TestLoginPost_InvalidForm(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	r.Post("/login", controller.LoginPost)
+
+	form := url.Values{}
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "validation")
+}
+
+func TestLogout(t *testing.T) {
+	controller, _, _, _, mockHTTPAuth, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	mockHTTPAuth.On("Logout", mock.Anything).Return()
+
+	r.Get("/logout", controller.LogOut)
+
+	req := httptest.NewRequest("GET", "/logout", nil)
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Equal(t, "/", resp.Header.Get("Location"))
+
+	mockHTTPAuth.AssertExpectations(t)
+}
+
+func TestRegistrationShow(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	r.Get("/register", controller.RegistrationShow)
+
+	req := httptest.NewRequest("GET", "/register", nil)
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestRegistrationCreate_Success(t *testing.T) {
+	controller, mockRepo, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	mockRepo.On("RunInTx", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		fn := args.Get(2).(func(context.Context, bun.Tx) error)
+		fn(context.Background(), bun.Tx{})
+	}).Return(nil)
+
+	r.Post("/register", controller.RegistrationCreate)
+
+	form := url.Values{}
+	form.Add("first_name", "John")
+	form.Add("last_name", "Doe")
+	form.Add("email", "john.doe@example.com")
+	form.Add("phone_number", "1234567890")
+	form.Add("password", "password123456")
+	form.Add("confirm_password", "password123456")
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req, 2000)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusSeeOther, resp.StatusCode)
+	assert.Equal(t, "/", resp.Header.Get("Location"))
+
+	mockRepo.AssertExpectations(t)
+}
+
+func TestRegistrationCreate_ValidationError(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	r.Post("/register", controller.RegistrationCreate)
+
+	form := url.Values{}
+	form.Add("first_name", "John")
+	form.Add("last_name", "Doe")
+	form.Add("email", "invalid-email")
+	form.Add("password", "short")
+	form.Add("confirm_password", "different")
+
+	req := httptest.NewRequest("POST", "/register", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "validation")
+}
+
+func TestPasswordResetGet(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	r.Get("/password-reset", controller.PasswordResetGet)
+
+	req := httptest.NewRequest("GET", "/password-reset", nil)
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestPasswordResetPost_Success(t *testing.T) {
+	controller, mockRepo, mockUsers, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	userID := uuid.New()
+	user := &auth.User{
+		ID:    userID,
+		Email: "user@example.com",
+	}
+
+	mockRepo.On("Users").Return(mockUsers)
+	mockUsers.On("GetByIdentifier", mock.Anything, "user@example.com").Return(user, nil)
+
+	mockRepo.On("RunInTx", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		fn := args.Get(2).(func(context.Context, bun.Tx) error)
+		fn(context.Background(), bun.Tx{})
+	}).Return(nil)
+
+	r.Post("/password-reset", controller.PasswordResetPost)
+
+	form := url.Values{}
+	form.Add("email", "user@example.com")
+	form.Add("stage", auth.ResetInit)
+
+	req := httptest.NewRequest("POST", "/password-reset", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	mockRepo.AssertExpectations(t)
+	mockUsers.AssertExpectations(t)
+}
+
+func TestPasswordResetForm(t *testing.T) {
+	controller, mockRepo, mockUsers, mockPasswordResets, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	resetID := uuid.New().String()
+	resetTime := time.Now()
+	userID := uuid.New()
+	passwordReset := &auth.PasswordReset{
+		ID:        uuid.MustParse(resetID),
+		Status:    auth.ResetRequestedStatus,
+		CreatedAt: &resetTime,
+		UserID:    &userID,
+	}
+
+	mockRepo.On("PasswordResets").Return(mockPasswordResets).Once()
+
+	mockRepo.On("Users").Return(mockUsers).Once()
+
+	mockPasswordResets.
+		On("GetByID", mock.Anything, resetID, mock.Anything).
+		Return(passwordReset, nil).Once()
+
+	expectedReset := auth.MarkPasswordAsReseted(passwordReset.ID)
+	mockUsers.
+		On("RawTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*auth.User{}, nil).Once()
+
+	mockPasswordResets.
+		On("UpdateTx", mock.Anything, mock.Anything, expectedReset).
+		Return(expectedReset, nil).Once()
+
+	mockRepo.
+		On("RunInTx", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			fn := args.Get(2).(func(context.Context, bun.Tx) error)
+			fn(context.Background(), bun.Tx{})
+		}).
+		Return(nil).Once()
+
+	r.Get("/password-reset/:uuid", controller.PasswordResetForm)
+
+	req := httptest.NewRequest("GET", "/password-reset/"+resetID, nil)
+	resp, err := adapter.WrappedRouter().Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	mockRepo.AssertExpectations(t)
+	mockPasswordResets.AssertExpectations(t)
+	mockUsers.AssertExpectations(t)
+}
+
+func TestPasswordResetExecute_Success(t *testing.T) {
+	controller, mockRepo, mockUsers, mockPasswordResets, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	resetID := uuid.New().String()
+	resetTime := time.Now()
+	userID := uuid.New()
+	passwordReset := &auth.PasswordReset{
+		ID:        uuid.MustParse(resetID),
+		Status:    auth.ResetRequestedStatus,
+		CreatedAt: &resetTime,
+		UserID:    &userID,
+	}
+
+	/////////////////////////////////////////////////
+	/// We are mocking the calls inside the file:
+	/// command_password_reset_finalize.go
+	/////////////////////////////////////////////////
+
+	// Setup for the PasswordResets methods
+	mockRepo.On("PasswordResets").Return(mockPasswordResets)
+	mockPasswordResets.
+		On("GetByID", mock.Anything, resetID, mock.Anything).
+		Return(passwordReset, nil)
+	// Expect an update call to mark the password reset as used
+	mockPasswordResets.
+		On("UpdateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(passwordReset, nil)
+
+	// Setup for the Users methods
+	// Assuming you have a Users mock available (mockUsers) from setupTestController
+	mockRepo.On("Users").Return(mockUsers)
+	// Expect the RawTx call to update the user's password
+	mockUsers.
+		On("RawTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]*auth.User{}, nil)
+
+	// Setup RunInTx, which wraps all these calls in a transaction
+	mockRepo.
+		On("RunInTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			fn := args.Get(2).(func(context.Context, bun.Tx) error)
+			fn(context.Background(), bun.Tx{})
+		}).
+		Return(nil)
+
+	r.Post("/password-reset/:uuid", controller.PasswordResetExecute)
+
+	form := url.Values{}
+	form.Add("stage", auth.ChangingPassword)
+	form.Add("password", "newpassword12345")
+	form.Add("confirm_password", "newpassword12345")
+
+	req := httptest.NewRequest("POST", "/password-reset/"+resetID, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req, 2000)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	mockRepo.AssertExpectations(t)
+	mockPasswordResets.AssertExpectations(t)
+	mockUsers.AssertExpectations(t)
+}
+
+func TestPasswordResetExecute_ValidationError(t *testing.T) {
+	controller, _, _, _, _, adapter := setupTestController(t)
+	r := adapter.Router()
+
+	resetID := uuid.New().String()
+
+	r.Post("/password-reset/:uuid", controller.PasswordResetExecute)
+
+	form := url.Values{}
+	form.Add("stage", auth.ChangingPassword)
+	form.Add("password", "short")
+	form.Add("confirm_password", "different")
+
+	req := httptest.NewRequest("POST", "/password-reset/"+resetID, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "validation")
 }
