@@ -9,17 +9,18 @@ import (
 	"github.com/goliatone/go-router"
 )
 
-type RouteController struct {
+type RouteAuthenticator struct {
 	auth                   Authenticator
 	cfg                    Config
 	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
-	AuthErrorHandler       func(c router.Context) error
-	ErrorHandler           func(c router.Context, err error) error
+	// TODO: make functions
+	AuthErrorHandler func(c router.Context) error
+	ErrorHandler     func(c router.Context, err error) error
 }
 
-func NewRouteController(auther Authenticator, cfg Config) (*RouteController, error) {
+func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator, error) {
 	cookieDuration := 24 * time.Hour
 	if cfg.GetTokenExpiration() > 0 {
 		cookieDuration = time.Duration(cfg.GetTokenExpiration()) * time.Hour
@@ -30,7 +31,7 @@ func NewRouteController(auther Authenticator, cfg Config) (*RouteController, err
 		extendedCookieDuration = time.Duration(cfg.GetExtendedTokenDuration()) * time.Hour
 	}
 
-	a := &RouteController{
+	a := &RouteAuthenticator{
 		cfg:                    cfg,
 		auth:                   auther,
 		cookieDuration:         cookieDuration,
@@ -43,7 +44,15 @@ func NewRouteController(auther Authenticator, cfg Config) (*RouteController, err
 	return a, nil
 }
 
-func (a *RouteController) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
+func (a RouteAuthenticator) GetCookieDuration() time.Duration {
+	return a.cookieDuration
+}
+
+func (a RouteAuthenticator) GetExtendedCookieDuration() time.Duration {
+	return a.extendedCookieDuration
+}
+
+func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
 	return func(hf router.HandlerFunc) router.HandlerFunc {
 		return jwtware.New(jwtware.Config{
 			ErrorHandler: errorHandler,
@@ -58,7 +67,7 @@ func (a *RouteController) ProtectedRoute(cfg Config, errorHandler func(router.Co
 	}
 }
 
-func (a *RouteController) Login(ctx router.Context, payload LoginPayload) error {
+func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
 		return fmt.Errorf("err authenticating payload: %w", err)
@@ -71,11 +80,11 @@ func (a *RouteController) Login(ctx router.Context, payload LoginPayload) error 
 	return nil
 }
 
-func (a *RouteController) Logout(ctx router.Context) {
+func (a *RouteAuthenticator) Logout(ctx router.Context) {
 	a.cookieDel(ctx, a.cfg.GetContextKey())
 }
 
-func (a *RouteController) MakeClientRouteAuthErrorHandler(optional bool) func(router.Context, error) error {
+func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func(router.Context, error) error {
 	return func(ctx router.Context, err error) error {
 		if IsMalformedError(err) {
 			// Some routes might optionally be protected
@@ -88,7 +97,7 @@ func (a *RouteController) MakeClientRouteAuthErrorHandler(optional bool) func(ro
 	}
 }
 
-func (a *RouteController) GetRedirect(ctx router.Context, def ...string) string {
+func (a *RouteAuthenticator) GetRedirect(ctx router.Context, def ...string) string {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
 	r := ctx.Cookies(rejectedRoute)
 	if r == "" {
@@ -98,7 +107,7 @@ func (a *RouteController) GetRedirect(ctx router.Context, def ...string) string 
 	return r
 }
 
-func (a *RouteController) GetRedirectOrDefault(ctx router.Context) string {
+func (a *RouteAuthenticator) GetRedirectOrDefault(ctx router.Context) string {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
 	refererHeader := string(ctx.Referer())
 
@@ -110,7 +119,7 @@ func (a *RouteController) GetRedirectOrDefault(ctx router.Context) string {
 	return r
 }
 
-func (a *RouteController) SetRedirect(ctx router.Context) {
+func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
 	ctx.Cookie(&router.Cookie{
 		Name:     rejectedRoute,
@@ -120,7 +129,7 @@ func (a *RouteController) SetRedirect(ctx router.Context) {
 	})
 }
 
-func (a *RouteController) Impersonate(c router.Context, identifier string) error {
+func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) error {
 	token, err := a.auth.Impersonate(c.Context(), identifier)
 	if err != nil {
 		return fmt.Errorf("authentication error: %w", err)
@@ -129,7 +138,7 @@ func (a *RouteController) Impersonate(c router.Context, identifier string) error
 	return nil
 }
 
-func (a *RouteController) setCookieToken(c router.Context, val string, duration time.Duration) {
+func (a *RouteAuthenticator) setCookieToken(c router.Context, val string, duration time.Duration) {
 	c.Cookie(&router.Cookie{
 		Name:     a.cfg.GetContextKey(),
 		Value:    val,
@@ -138,7 +147,7 @@ func (a *RouteController) setCookieToken(c router.Context, val string, duration 
 	})
 }
 
-func (a *RouteController) cookieDel(c router.Context, name string) {
+func (a *RouteAuthenticator) cookieDel(c router.Context, name string) {
 	c.Cookie(&router.Cookie{
 		Name:     name,
 		Value:    "",
@@ -147,12 +156,12 @@ func (a *RouteController) cookieDel(c router.Context, name string) {
 	})
 }
 
-func (a *RouteController) defaultAuthErrHandler(c router.Context) error {
+func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context) error {
 	a.SetRedirect(c)
 	return c.Redirect("/login", http.StatusSeeOther)
 }
 
-func (a *RouteController) defaultErrHandler(c router.Context, err error) error {
+func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) error {
 	return c.Render("errors/500", router.ViewContext{
 		"message": err.Error(),
 	})
