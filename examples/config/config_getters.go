@@ -92,6 +92,10 @@ func (p Persistence) GetServer() string {
 
 // Views Getters
 
+func (v Views) GetAssetsDir() string {
+	return v.AssetsDir
+}
+
 func (v Views) GetAssetsFS() fs.FS {
 	return v.AssetsFS
 }

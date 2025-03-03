@@ -34,6 +34,7 @@ type Persistence struct {
 }
 
 type Views struct {
+	AssetsDir         string         `json:"assets_dir" koanf:"assets_dir"`
 	AssetsFS          fs.FS          `json:"assets_fs" koanf:"assets_fs"`
 	CSSPath           string         `json:"css_path" koanf:"css_path"`
 	Debug             bool           `json:"debug" koanf:"debug"`
