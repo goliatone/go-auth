@@ -15,9 +15,9 @@ type RouteAuthenticator struct {
 	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
-	// TODO: make functions
-	AuthErrorHandler func(c router.Context) error
-	ErrorHandler     func(c router.Context, err error) error
+	Logger                 Logger
+	AuthErrorHandler       func(c router.Context) error            // TODO: make functions
+	ErrorHandler           func(c router.Context, err error) error // TODO: make functions
 }
 
 func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator, error) {
@@ -40,6 +40,7 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 
 	a.ErrorHandler = a.defaultErrHandler
 	a.AuthErrorHandler = a.defaultAuthErrHandler
+	a.Logger = defLogger{}
 
 	return a, nil
 }
@@ -70,12 +71,15 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
+		a.Logger.Error("Login error: %s", err)
 		return fmt.Errorf("err authenticating payload: %w", err)
 	}
+
 	duration := a.cookieDuration
 	if payload.GetExtendedSession() {
 		duration = a.extendedCookieDuration
 	}
+
 	a.setCookieToken(ctx, token, duration)
 	return nil
 }
@@ -87,12 +91,14 @@ func (a *RouteAuthenticator) Logout(ctx router.Context) {
 func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func(router.Context, error) error {
 	return func(ctx router.Context, err error) error {
 		if IsMalformedError(err) {
-			// Some routes might optionally be protected
-			if optional {
+			a.Logger.Info("DefaultAuthErrHandler malformed error: %s", err)
+			if optional { // some routes might optionally be protected
+				a.Logger.Info("DefaultAuthErrHandler skip malformed error")
 				return ctx.Next()
 			}
 			return a.AuthErrorHandler(ctx)
 		}
+		a.Logger.Error("DefaultAuthErrHandler route error handler: %s", err)
 		return a.ErrorHandler(ctx, err)
 	}
 }
@@ -132,6 +138,7 @@ func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) error {
 	token, err := a.auth.Impersonate(c.Context(), identifier)
 	if err != nil {
+		a.Logger.Error("Impersonate authentication error: %s", err)
 		return fmt.Errorf("authentication error: %w", err)
 	}
 	a.setCookieToken(c, token, a.cookieDuration)
