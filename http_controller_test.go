@@ -269,7 +269,6 @@ func (m *MockPasswordResets) GetByIDTx(ctx context.Context, tx bun.IDB, id strin
 func (m *MockPasswordResets) List(ctx context.Context, criteria ...repository.SelectCriteria) ([]*auth.PasswordReset, int, error) {
 	mockArgs := m.Called(ctx, criteria)
 	records := mockArgs.Get(0).([]*auth.PasswordReset)
-	// Returning the pre-set count
 	return records, m.count, mockArgs.Error(2)
 }
 
@@ -422,7 +421,6 @@ func (m *MockPasswordResets) ForceDeleteTx(ctx context.Context, tx bun.IDB, reco
 }
 
 func (m *MockPasswordResets) Handlers() repository.ModelHandlers[*auth.PasswordReset] {
-	// Depending on your tests you might want to return a valid ModelHandlers or simply a zero value.
 	mockArgs := m.Called()
 	return mockArgs.Get(0).(repository.ModelHandlers[*auth.PasswordReset])
 }
@@ -942,8 +940,10 @@ func TestProtectedRoutes(t *testing.T) {
 
 	r.Get("/me", profileHandler, protected)
 
-	// --- Unauthorized Request ---
-	// No "token" parameter; middleware should block access.
+	/**
+	 * UNAUTHORIZED REQUEST
+	 * No "token" parameter -> middleware block access
+	 */
 	req := httptest.NewRequest("GET", "/me", nil)
 	resp, err := adapter.WrappedRouter().Test(req)
 	require.NoError(t, err)
@@ -951,8 +951,10 @@ func TestProtectedRoutes(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Unauthorized")
 
-	// --- Authorized Request ---
-	// Provide the "token=valid" query parameter so that the middleware allows access.
+	/**
+	 * AUTHORIZED REQUEST
+	 * "token=valid" -> middleware grant access
+	 */
 	req = httptest.NewRequest("GET", "/me?token=valid", nil)
 	resp, err = adapter.WrappedRouter().Test(req)
 	require.NoError(t, err)
