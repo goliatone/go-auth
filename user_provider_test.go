@@ -12,29 +12,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockUserTracker implements UserTracker
-type MockUserTracker struct {
-	mock.Mock
-}
-
-func (m *MockUserTracker) GetByIdentifier(ctx context.Context, identifier string) (*auth.User, error) {
-	args := m.Called(ctx, identifier)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*auth.User), args.Error(1)
-}
-
-func (m *MockUserTracker) TrackAttemptedLogin(ctx context.Context, user *auth.User) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
-}
-
-func (m *MockUserTracker) TrackSucccessfulLogin(ctx context.Context, user *auth.User) error {
-	args := m.Called(ctx, user)
-	return args.Error(0)
-}
-
 func TestUserProviderVerifyIdentity(t *testing.T) {
 	ctx := context.Background()
 	mockTracker := new(MockUserTracker)
