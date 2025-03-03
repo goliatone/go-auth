@@ -87,12 +87,6 @@ type AuthControllerViews struct {
 	PasswordReset string
 }
 
-type Logger interface {
-	// Debug(format string, args ...any)
-	// Info(format string, args ...any)
-	Error(format string, args ...any)
-}
-
 type AuthController struct {
 	Debug        bool
 	Logger       Logger
@@ -104,12 +98,6 @@ type AuthController struct {
 }
 
 type AuthControllerOption func(*AuthController) *AuthController
-
-type defLogger struct{}
-
-func (d defLogger) Error(format string, args ...any) {
-	fmt.Printf("[ERR] "+format, args...)
-}
 
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
