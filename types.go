@@ -2,11 +2,18 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/goliatone/go-router"
 	"github.com/google/uuid"
 )
+
+type Logger interface {
+	Debug(format string, args ...any)
+	Info(format string, args ...any)
+	Error(format string, args ...any)
+}
 
 // Session holds attributes that are part of an auth session
 type Session interface {
@@ -75,4 +82,25 @@ type IdentityProvider interface {
 type PasswordAuthenticator interface {
 	HashPassword(password string) (string, error)
 	ComparePasswordAndHash(password, hash string) error
+}
+
+type defLogger struct{}
+
+func (d defLogger) Error(format string, args ...any) {
+	fmt.Printf("[ERR] AUTH "+newline(format), args...)
+}
+
+func (d defLogger) Info(format string, args ...any) {
+	fmt.Printf("[INF] AUTH "+newline(format), args...)
+}
+
+func (d defLogger) Debug(format string, args ...any) {
+	fmt.Printf("[DBG] AUTH "+newline(format), args...)
+}
+
+func newline(s string) string {
+	if len(s) > 0 && s[len(s)-1] != '\n' {
+		s += "\n"
+	}
+	return s
 }
