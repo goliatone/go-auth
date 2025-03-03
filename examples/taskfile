@@ -97,6 +97,12 @@ function gen:go {
     lgr exec -- go generate ./config/
 }
 
+function dev:run {
+    gen:go
+    lgr exec -- go build -o mh || exit 1
+    ./mh
+}
+
 ##
 ## ########################################
 ##           Version Management
