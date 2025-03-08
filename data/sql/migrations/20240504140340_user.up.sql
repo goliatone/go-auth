@@ -6,6 +6,7 @@ CREATE TABLE users (
 	first_name TEXT NOT NULL,
 	last_name TEXT NOT NULL,
 	username TEXT NOT NULL,
+	profile_pcitre TEXT,
 	email TEXT NOT NULL UNIQUE,
 	-- phone_number TEXT NULL UNIQUE,
 	phone_number TEXT,
