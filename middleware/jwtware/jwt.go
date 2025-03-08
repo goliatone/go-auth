@@ -213,6 +213,10 @@ func jwtFromHeader(header string, authScheme string) func(c router.Context) (str
 	return func(c router.Context) (string, error) {
 		a := c.GetString(header, "")
 		l := len(authScheme)
+		if l == 0 {
+			fmt.Println("[WARNING] Missing auth scheme in config definition")
+			return "", ErrJWTMissingOrMalformed
+		}
 		if len(a) > l+1 && strings.EqualFold(a[:l], authScheme) {
 			return strings.TrimSpace(a[l:]), nil
 		}
