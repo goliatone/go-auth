@@ -127,6 +127,7 @@ func (a *RouteAuthenticator) GetRedirectOrDefault(ctx router.Context) string {
 
 func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
+	a.Logger.Info("set redirect %s to %s", rejectedRoute, ctx.OriginalURL())
 	ctx.Cookie(&router.Cookie{
 		Name:     rejectedRoute,
 		Value:    ctx.OriginalURL(),
@@ -164,11 +165,18 @@ func (a *RouteAuthenticator) cookieDel(c router.Context, name string) {
 }
 
 func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context) error {
+	a.Logger.Info("=> default auth err handler: redirect to %s /login", c.Method())
 	a.SetRedirect(c)
-	return c.Redirect("/login", http.StatusSeeOther)
+
+	statusCode := http.StatusSeeOther
+	if c.Method() == string(router.GET) {
+		statusCode = http.StatusFound
+	}
+	return c.Redirect("/login", statusCode)
 }
 
 func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) error {
+	a.Logger.Info("default err handler: render 500 error")
 	return c.Render("errors/500", router.ViewContext{
 		"message": err.Error(),
 	})
