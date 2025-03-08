@@ -29,6 +29,7 @@ type User struct {
 	FirstName      string     `bun:"first_name,notnull" json:"first_name,omitempty"`
 	LastName       string     `bun:"last_name,notnull" json:"last_name,omitempty"`
 	Username       string     `bun:"username,notnull,unique" json:"username,omitempty"`
+	ProfilePicture string     `bun:"profile_picture,notnull,unique" json:"profile_picture,omitempty"`
 	Email          string     `bun:"email,notnull,unique" json:"email,omitempty"`
 	Phone          string     `bun:"phone_number" json:"phone_number,omitempty"`
 	PasswordHash   string     `bun:"password_hash" json:"password_hash,omitempty"`
