@@ -111,9 +111,10 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 
 	if cfg.TokenLookup == "" {
 		cfg.TokenLookup = defaultTokenLookup
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = "Bearer"
-		}
+	}
+
+	if cfg.AuthScheme == "" {
+		cfg.AuthScheme = "Bearer"
 	}
 
 	if cfg.KeyFunc == nil {
@@ -181,9 +182,15 @@ func keyfuncOptions(givenKeys map[string]keyfunc.GivenKey) keyfunc.Options {
 
 func (cfg *Config) getExtractors() []jwtExtractor {
 	extractors := make([]jwtExtractor, 0)
+	// header:Authorization,cookie:jwt,query:auth_token,param:token
 	rootParts := strings.Split(cfg.TokenLookup, ",")
 	for _, rootPart := range rootParts {
+		//header:Authorization
 		parts := strings.Split(strings.TrimSpace(rootPart), ":")
+
+		for i, el := range parts {
+			parts[i] = strings.TrimSpace(el)
+		}
 
 		switch parts[0] {
 		case "header":
