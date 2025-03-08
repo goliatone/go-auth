@@ -491,3 +491,94 @@ func TestJWTWare_CustomKeyfunc(t *testing.T) {
 		t.Errorf("expected KeyFunc forced error message, got: %v", err)
 	}
 }
+
+func TestJWTWare_Extractors(t *testing.T) {
+	signingKey := []byte("test-secret")
+
+	// Generate a valid token using your helper.
+	validToken := generateToken(t, jwt.SigningMethodHS256, signingKey, jwt.MapClaims{
+		"sub": "12345",
+	})
+
+	cfg := jwtware.GetDefaultConfig(jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    signingKey,
+			JWTAlg: jwt.SigningMethodHS256.Alg(),
+		},
+		ErrorHandler: func(c router.Context, err error) error {
+			fmt.Printf("ERROR in middleware: %v\n", err)
+			return err
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			fmt.Println("SUCCESS: calling Next()")
+			return ctx.Next()
+		},
+		// This instructs the middleware to look in multiple places, in order:
+		// 1. Authorization header
+		// 2. Query param "jwt"
+		// 3. URL param "token"
+		// 4. Cookie named "jwt_cookie"
+		TokenLookup: "header:Authorization,query:jwt,param:token,cookie:jwt_cookie",
+	})
+
+	middleware := jwtware.New(cfg)
+
+	tests := []struct {
+		name      string
+		setToken  func(*mockContext)
+		wantError bool
+	}{
+		{
+			name: "token in header -> success",
+			setToken: func(ctx *mockContext) {
+				ctx.headers["Authorization"] = "Bearer " + validToken
+			},
+		},
+		{
+			name: "token in query -> success",
+			setToken: func(ctx *mockContext) {
+				ctx.queries["jwt"] = validToken
+			},
+		},
+		{
+			name: "token in param -> success",
+			setToken: func(ctx *mockContext) {
+				ctx.params["token"] = validToken
+			},
+		},
+		{
+			name: "token in cookie -> success",
+			setToken: func(ctx *mockContext) {
+				ctx.cookies["jwt_cookie"] = validToken
+			},
+		},
+		{
+			name:      "no token anywhere -> error",
+			setToken:  func(ctx *mockContext) {},
+			wantError: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := NewMockContext()
+			tc.setToken(ctx)
+
+			err := middleware(ctx)
+			if tc.wantError {
+				if err == nil {
+					t.Errorf("expected an error, but got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			if !ctx.nextInvoked {
+				t.Errorf("middleware did not call Next() on success")
+			}
+		})
+	}
+}
