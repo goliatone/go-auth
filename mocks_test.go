@@ -328,7 +328,7 @@ func (m *MockContext) ParamsInt(key string, defaultValue int) int {
 	return args.Int(0)
 }
 
-func (m *MockContext) Query(key string, defaultValue string) string {
+func (m *MockContext) Query(key string, defaultValue ...string) string {
 	args := m.Called(key, defaultValue)
 	return args.String(0)
 }
