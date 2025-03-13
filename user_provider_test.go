@@ -205,11 +205,10 @@ func TestUserProviderValidation(t *testing.T) {
 	provider := auth.NewUserProvider(mockTracker)
 
 	validRoles := []string{
+		auth.RoleOwner,
 		auth.RoleAdmin,
-		auth.RoleCustomer,
-		auth.RoleEditor,
+		auth.RoleMember,
 		auth.RoleGuest,
-		auth.RoleViewer,
 	}
 
 	for _, role := range validRoles {
