@@ -202,7 +202,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 
 	app.SetAuthenticator(athenticator)
 
-	httpAuth, err := auth.NewRouteController(athenticator, cfg)
+	httpAuth, err := auth.NewHTTPAuthenticator(athenticator, cfg)
 	if err != nil {
 		return err
 	}
