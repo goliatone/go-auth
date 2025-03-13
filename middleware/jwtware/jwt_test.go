@@ -42,12 +42,15 @@ func (m *mockContext) Method() string                         { return "GET" }
 func (m *mockContext) Path() string                           { return "/" }
 func (m *mockContext) Param(name string, dv ...string) string { return m.params[name] }
 func (m *mockContext) ParamsInt(key string, dv int) int       { return dv }
-func (m *mockContext) Query(name string, dv string) string {
+func (m *mockContext) Query(name string, dv ...string) string {
 	val, ok := m.queries[name]
-	if !ok {
-		return dv
+	if ok {
+		return val
 	}
-	return val
+	if len(dv) > 0 {
+		return dv[0]
+	}
+	return ""
 }
 func (m *mockContext) QueryInt(name string, dv int) int { return dv }
 func (m *mockContext) Queries() map[string]string       { return m.queries }
