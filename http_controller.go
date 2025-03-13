@@ -45,7 +45,7 @@ func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOptio
 		Get(controller.Routes.Login,
 			controller.LoginShow,
 		).
-		SetName("sign-in.get")
+		SetName("auth.sign-in.get")
 
 	app.
 		Post(
@@ -53,24 +53,35 @@ func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOptio
 			// limitReq,
 			controller.LoginPost,
 		).
-		SetName("sign-in.post")
+		SetName("auth.sign-in.post")
 
-	app.Get(controller.Routes.Logout, controller.LogOut).SetName("sign-out.get")
+	app.Get(controller.Routes.Logout,
+		controller.LogOut).
+		SetName("auth.sign-out.get")
 
-	app.Get(controller.Routes.Register, controller.RegistrationShow).
-		SetName("register.get")
-	app.Post(controller.Routes.Register, controller.RegistrationCreate).
-		SetName("register.post")
+	app.Get(controller.Routes.Register,
+		controller.RegistrationShow).
+		SetName("auth.register.get")
 
-	app.Get(controller.Routes.PasswordReset, controller.PasswordResetGet).
-		SetName("pwd-reset.get")
-	app.Post(controller.Routes.PasswordReset, controller.PasswordResetPost).
-		SetName("pwd-reset.post")
+	app.Post(controller.Routes.Register,
+		controller.RegistrationCreate).
+		SetName("auth.register.post")
 
-	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetForm).
-		SetName("pwd-reset-do.get")
-	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetExecute).
-		SetName("pwd-reset-do.post")
+	app.Get(controller.Routes.PasswordReset,
+		controller.PasswordResetGet).
+		SetName("auth.pwd-reset.get")
+
+	app.Post(controller.Routes.PasswordReset,
+		controller.PasswordResetPost).
+		SetName("auth.pwd-reset.post")
+
+	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
+		controller.PasswordResetForm).
+		SetName("auth.pwd-reset-do.get")
+
+	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
+		controller.PasswordResetExecute).
+		SetName("auth.pwd-reset-do.post")
 }
 
 type AuthControllerRoutes struct {
@@ -179,7 +190,7 @@ func (r LoginRequest) Validate() error {
 func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
 	errors := map[string]string{}
-	fmt.Println("--- Login Post")
+	fmt.Println("--- Login Post: " + ctx.Header("X-Request-ID"))
 
 	if err := ctx.Bind(payload); err != nil {
 		fmt.Println("--- Login Post: error bind" + err.Error())
@@ -196,7 +207,8 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 
 	if a.Debug {
 		fmt.Println("======= AUTH LOGIN ======")
-		fmt.Println(print.MaybePrettyJSON(payload))
+		fmt.Printf("X-Request-ID: %v", ctx.Locals("requestid"))
+		fmt.Println(print.MaybeSecureJSON(payload))
 		fmt.Println("=========================")
 	}
 
