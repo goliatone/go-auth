@@ -39,21 +39,13 @@ type SigningKey struct {
 }
 
 func New(config ...Config) router.HandlerFunc {
-	cfg := getCfg(config)
+	cfg := GetDefaultConfig(config...)
 	return func(ctx router.Context) error {
 		if cfg.Filter != nil && cfg.Filter(ctx) {
 			return ctx.Next()
 		}
-		var a string
-		var err error
 
-		for _, extractor := range cfg.getExtractors() {
-			a, err = extractor(ctx)
-			if a != "" && err == nil {
-				break
-			}
-		}
-
+		a, err := ExtractRawTokenFromContext(ctx, cfg.getExtractors())
 		if err != nil {
 			return cfg.ErrorHandler(ctx, err)
 		}
@@ -77,7 +69,21 @@ func New(config ...Config) router.HandlerFunc {
 	}
 }
 
-func getCfg(config []Config) (cfg Config) {
+func ExtractRawTokenFromContext(ctx router.Context, extractors []JWTExtractor) (string, error) {
+	var raw string
+	var err error
+
+	for _, extractor := range extractors {
+		raw, err = extractor(ctx)
+		if raw != "" && err == nil {
+			break
+		}
+	}
+
+	return raw, err
+}
+
+func GetDefaultConfig(config ...Config) (cfg Config) {
 	if len(config) > 0 {
 		cfg = config[0]
 	}
@@ -111,9 +117,10 @@ func getCfg(config []Config) (cfg Config) {
 
 	if cfg.TokenLookup == "" {
 		cfg.TokenLookup = defaultTokenLookup
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = "Bearer"
-		}
+	}
+
+	if cfg.AuthScheme == "" {
+		cfg.AuthScheme = "Bearer"
 	}
 
 	if cfg.KeyFunc == nil {
@@ -179,15 +186,31 @@ func keyfuncOptions(givenKeys map[string]keyfunc.GivenKey) keyfunc.Options {
 	}
 }
 
-func (cfg *Config) getExtractors() []jwtExtractor {
-	extractors := make([]jwtExtractor, 0)
-	rootParts := strings.Split(cfg.TokenLookup, ",")
+func (cfg *Config) getExtractors() []JWTExtractor {
+	return GetExtractors(cfg.TokenLookup, cfg.AuthScheme)
+}
+
+func GetExtractors(tokenLookup string, authSchemes ...string) []JWTExtractor {
+	extractors := make([]JWTExtractor, 0)
+
+	authScheme := "Bearer"
+	if len(authSchemes) > 0 {
+		authScheme = authSchemes[0]
+	}
+
+	// header:Authorization,cookie:jwt,query:auth_token,param:token
+	rootParts := strings.Split(tokenLookup, ",")
 	for _, rootPart := range rootParts {
+		//header:Authorization
 		parts := strings.Split(strings.TrimSpace(rootPart), ":")
+
+		for i, el := range parts {
+			parts[i] = strings.TrimSpace(el)
+		}
 
 		switch parts[0] {
 		case "header":
-			extractors = append(extractors, jwtFromHeader(parts[1], cfg.AuthScheme))
+			extractors = append(extractors, jwtFromHeader(parts[1], authScheme))
 		case "query":
 			extractors = append(extractors, jwtFromQuery(parts[1]))
 		case "param":
@@ -196,16 +219,22 @@ func (cfg *Config) getExtractors() []jwtExtractor {
 			extractors = append(extractors, jwtFromCookie(parts[1]))
 		}
 	}
+
 	return extractors
 }
 
-type jwtExtractor func(c router.Context) (string, error)
+type JWTExtractor func(c router.Context) (string, error)
 
 // jwtFromHeader returns a function that extracts token from the request header.
 func jwtFromHeader(header string, authScheme string) func(c router.Context) (string, error) {
 	return func(c router.Context) (string, error) {
 		a := c.GetString(header, "")
 		l := len(authScheme)
+		if l == 0 {
+			fmt.Println("[WARNING] Missing auth scheme in config definition")
+			return "", ErrJWTMissingOrMalformed
+		}
+		authScheme = strings.TrimSpace(authScheme)
 		if len(a) > l+1 && strings.EqualFold(a[:l], authScheme) {
 			return strings.TrimSpace(a[l:]), nil
 		}

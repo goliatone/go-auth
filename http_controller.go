@@ -45,7 +45,7 @@ func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOptio
 		Get(controller.Routes.Login,
 			controller.LoginShow,
 		).
-		SetName("sign-in.get")
+		SetName("auth.sign-in.get")
 
 	app.
 		Post(
@@ -53,24 +53,35 @@ func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOptio
 			// limitReq,
 			controller.LoginPost,
 		).
-		SetName("sign-in.post")
+		SetName("auth.sign-in.post")
 
-	app.Get(controller.Routes.Logout, controller.LogOut).SetName("sign-out.get")
+	app.Get(controller.Routes.Logout,
+		controller.LogOut).
+		SetName("auth.sign-out.get")
 
-	app.Get(controller.Routes.Register, controller.RegistrationShow).
-		SetName("register.get")
-	app.Post(controller.Routes.Register, controller.RegistrationCreate).
-		SetName("register.post")
+	app.Get(controller.Routes.Register,
+		controller.RegistrationShow).
+		SetName("auth.register.get")
 
-	app.Get(controller.Routes.PasswordReset, controller.PasswordResetGet).
-		SetName("pwd-reset.get")
-	app.Post(controller.Routes.PasswordReset, controller.PasswordResetPost).
-		SetName("pwd-reset.post")
+	app.Post(controller.Routes.Register,
+		controller.RegistrationCreate).
+		SetName("auth.register.post")
 
-	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetForm).
-		SetName("pwd-reset-do.get")
-	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset), controller.PasswordResetExecute).
-		SetName("pwd-reset-do.post")
+	app.Get(controller.Routes.PasswordReset,
+		controller.PasswordResetGet).
+		SetName("auth.pwd-reset.get")
+
+	app.Post(controller.Routes.PasswordReset,
+		controller.PasswordResetPost).
+		SetName("auth.pwd-reset.post")
+
+	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
+		controller.PasswordResetForm).
+		SetName("auth.pwd-reset-do.get")
+
+	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
+		controller.PasswordResetExecute).
+		SetName("auth.pwd-reset-do.post")
 }
 
 type AuthControllerRoutes struct {
@@ -87,12 +98,6 @@ type AuthControllerViews struct {
 	PasswordReset string
 }
 
-type Logger interface {
-	// Debug(format string, args ...any)
-	// Info(format string, args ...any)
-	Error(format string, args ...any)
-}
-
 type AuthController struct {
 	Debug        bool
 	Logger       Logger
@@ -104,12 +109,6 @@ type AuthController struct {
 }
 
 type AuthControllerOption func(*AuthController) *AuthController
-
-type defLogger struct{}
-
-func (d defLogger) Error(format string, args ...any) {
-	fmt.Printf("[ERR] "+format, args...)
-}
 
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
@@ -191,7 +190,7 @@ func (r LoginRequest) Validate() error {
 func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
 	errors := map[string]string{}
-	fmt.Println("--- Login Post")
+	fmt.Println("--- Login Post: " + ctx.Header("X-Request-ID"))
 
 	if err := ctx.Bind(payload); err != nil {
 		fmt.Println("--- Login Post: error bind" + err.Error())
@@ -208,7 +207,8 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 
 	if a.Debug {
 		fmt.Println("======= AUTH LOGIN ======")
-		fmt.Println(print.MaybePrettyJSON(payload))
+		fmt.Printf("X-Request-ID: %v", ctx.Locals("requestid"))
+		fmt.Println(print.MaybeSecureJSON(payload))
 		fmt.Println("=========================")
 	}
 
@@ -268,11 +268,10 @@ func (r RegistrationCreatePayload) Validate() error {
 }
 
 func (a *AuthController) RegistrationCreate(ctx router.Context) error {
-
-	errors := map[string]any{}
 	payload := new(RegistrationCreatePayload)
 
 	if err := ctx.Bind(payload); err != nil {
+		errors := map[string]string{}
 		errors["form"] = "Failed to parse form"
 		a.Logger.Error("register user parse payload: ", "error", err)
 		return flash.WithError(ctx, router.ViewContext{
@@ -285,6 +284,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := payload.Validate(); err != nil {
+		errors := FormatValidationErrorToMap(err)
 		a.Logger.Error("register user validate payload: ", "error", err)
 
 		return flash.WithError(ctx, router.ViewContext{
@@ -305,7 +305,6 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	registerUser := RegisterUserHandler{repo: a.Repo}
-
 	if err := registerUser.Execute(ctx.Context(), req); err != nil {
 		a.Logger.Error("order get error: ", "error", err)
 
@@ -363,8 +362,7 @@ func (r PasswordResetRequestPayload) Validate() error {
 }
 
 func (a *AuthController) PasswordResetPost(ctx router.Context) error {
-
-	errors := map[string]any{}
+	errors := map[string]string{}
 	payload := new(PasswordResetRequestPayload)
 
 	if err := ctx.Bind(payload); err != nil {
@@ -381,7 +379,7 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("register user validate payload: ", "error", err)
-
+		errors := FormatValidationErrorToMap(err)
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Error(),
 			"system_message": "Error validating payload",
@@ -540,6 +538,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("register user validate payload: ", "error", err)
+		errors = FormatValidationErrorToMap(err)
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Error(),
 			"system_message": "Error validating payload",
@@ -579,7 +578,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 
 // ValidateStringEquals will check that both values match
 func ValidateStringEquals(str string) validation.RuleFunc {
-	return func(value interface{}) error {
+	return func(value any) error {
 		s, _ := value.(string)
 		if s != str {
 			return errors.New("values must match")

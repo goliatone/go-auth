@@ -34,9 +34,11 @@ type Persistence struct {
 }
 
 type Views struct {
+	AssetsDir         string         `json:"assets_dir" koanf:"assets_dir"`
 	AssetsFS          fs.FS          `json:"assets_fs" koanf:"assets_fs"`
 	CSSPath           string         `json:"css_path" koanf:"css_path"`
 	Debug             bool           `json:"debug" koanf:"debug"`
+	DevDir            string         `json:"dev_dir" koanf:"dev_dir"`
 	DirFS             string         `json:"dir_fs" koanf:"dir_fs"`
 	DirOS             string         `json:"dir_os" koanf:"dir_os"`
 	Embed             bool           `json:"embed" koanf:"embed"`
@@ -45,7 +47,7 @@ type Views struct {
 	Reload            bool           `json:"reload" koanf:"reload"`
 	RemovePathPrefix  string         `json:"remove_path_prefix" koanf:"remove_path_prefix"`
 	TemplateFunctions map[string]any `json:"template_functions" koanf:"template_functions"`
-	TemplatesFS       fs.FS          `json:"templates_fs" koanf:"templates_fs"`
+	TemplatesFS       []fs.FS        `json:"templates_fs" koanf:"templates_fs"`
 }
 
 func (v *Views) SetAssetsFS(val fs.FS) {
@@ -56,6 +58,6 @@ func (v *Views) SetTemplateFunctions(val map[string]any) {
 	v.TemplateFunctions = val
 }
 
-func (v *Views) SetTemplatesFS(val fs.FS) {
+func (v *Views) SetTemplatesFS(val []fs.FS) {
 	v.TemplatesFS = val
 }

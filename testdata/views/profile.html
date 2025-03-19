@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Profile</title>
+</head>
+<body>
+    <h1>Profile</h1>
+    {% if record %}
+        <div>
+            <p>Name: {{ record.first_name }} {{ record.last_name }}</p>
+            <p>Email: {{ record.email }}</p>
+            <p>Username: {{ record.username }}</p>
+        </div>
+    {% endif %}
+</body>
+</html>

@@ -10,6 +10,9 @@ export LGR_NO_TIMESTAMP=true
 VERSION_FILE="./.version"
 
 # If we have a .taskenv file load it as source
+# the file should be e.g.
+# #!/bin/bash
+# export DATABASE_URL="..."
 if [ -f .taskenv ]; then
     # shellcheck disable=SC1091
     source .taskenv
@@ -89,9 +92,15 @@ function dev:env:load {
     eval "$(envset development --isolated=true)"
 }
 
+function gen:go {
+    lgr I "Running go generate..."
+    lgr exec -- go generate ./config/
+}
 
-function test:coverage {
-    go test -coverprofile=coverage.out ./... && go tool cover -func coverage.out
+function dev:run {
+    gen:go
+    lgr exec -- go build -o mh || exit 1
+    ./mh
 }
 
 ##
@@ -271,8 +280,13 @@ function release {
 
     # Fetch all changes from origin
     git fetch --all
-    # Make sure we have the latest version file
-    git checkout origin/main -- ".version"
+
+    if [ -f ".version" ]; then
+        # Make sure we have the latest version file
+        git checkout origin/main -- ".version"
+    else
+        lgr I "File .version does not exist. Skipping."
+    fi
 
     # Pull tags to make sure we have
     git pull --tags -f
@@ -284,6 +298,8 @@ function release {
 
     # Set message: default to New major|minor|patch release: vx.x.x
     message=${2:-"New ${level} release: v${tag}"}
+
+    lgr I "$message"
 
     # Update version file
     version:set "${tag}"
@@ -305,6 +321,8 @@ function release {
     git commit -m "docs: update changelog for v${tag}"
 
     git push
+
+    lgr OK "We released v${tag} 🚀 🥳"
 }
 
 ##########################################

@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.6
-	github.com/goliatone/go-auth v0.0.0-20250209192439-b20474a6d419
+	github.com/goliatone/go-auth v0.0.0-20250210192540-846ebfd26dd5
 	github.com/goliatone/go-config v0.1.0
 	github.com/goliatone/go-persistence-bun v0.0.3
 	github.com/goliatone/go-print v0.0.1

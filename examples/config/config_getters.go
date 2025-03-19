@@ -92,6 +92,10 @@ func (p Persistence) GetServer() string {
 
 // Views Getters
 
+func (v Views) GetAssetsDir() string {
+	return v.AssetsDir
+}
+
 func (v Views) GetAssetsFS() fs.FS {
 	return v.AssetsFS
 }
@@ -102,6 +106,10 @@ func (v Views) GetCSSPath() string {
 
 func (v Views) GetDebug() bool {
 	return v.Debug
+}
+
+func (v Views) GetDevDir() string {
+	return v.DevDir
 }
 
 func (v Views) GetDirFS() string {
@@ -136,6 +144,6 @@ func (v Views) GetTemplateFunctions() map[string]any {
 	return v.TemplateFunctions
 }
 
-func (v Views) GetTemplatesFS() fs.FS {
+func (v Views) GetTemplatesFS() []fs.FS {
 	return v.TemplatesFS
 }

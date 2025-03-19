@@ -146,11 +146,10 @@ var _ Identity = authIdentity{}
 
 func defaultValidator(u *User) error {
 	switch u.Role {
+	case RoleOwner:
 	case RoleAdmin:
-	case RoleCustomer:
-	case RoleEditor:
+	case RoleMember:
 	case RoleGuest:
-	case RoleViewer:
 		return nil
 	default:
 		return errors.New("unknown role")
