@@ -6,6 +6,7 @@ require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/gofiber/fiber/v2 v2.52.6
+	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/goliatone/go-command v0.1.0
 	github.com/goliatone/go-print v0.0.1
@@ -14,6 +15,7 @@ require (
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
+	github.com/stretchr/testify v1.10.0
 	github.com/uptrace/bun v1.2.9
 	golang.org/x/crypto v0.31.0
 )
@@ -22,10 +24,10 @@ require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
-	github.com/gofiber/template/django/v3 v3.1.13 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/goliatone/go-masker v0.0.1 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
@@ -38,10 +40,12 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.0 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/showa-93/go-mask v0.6.2 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.9 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
@@ -54,4 +58,5 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/protobuf v1.36.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
