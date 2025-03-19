@@ -1,7 +1,7 @@
 CREATE TABLE users (
 	id TEXT NOT NULL PRIMARY KEY,
 	user_role TEXT NOT NULL DEFAULT 'guest' CHECK (
-		user_role IN ('guest', 'customer', 'admin')
+		user_role IN ('guest', 'member', 'admin', 'owner')
 	),
 	first_name TEXT NOT NULL,
 	last_name TEXT NOT NULL,
@@ -11,6 +11,7 @@ CREATE TABLE users (
 	-- phone_number TEXT NULL UNIQUE,
 	phone_number TEXT,
 	password_hash TEXT,
+	metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
 	is_email_verified BOOLEAN DEFAULT FALSE,
 	login_attempts INTEGER DEFAULT 0,
 	login_attempt_at TIMESTAMP NULL,
@@ -20,6 +21,12 @@ CREATE TABLE users (
 	deleted_at  TIMESTAMP,
 	updated_at  TIMESTAMP
 );
+
+CREATE UNIQUE INDEX users_username_unique ON users(username text_ops);
+CREATE INDEX users_username_index ON users(username text_ops);
+CREATE UNIQUE INDEX users_email_unique ON users(email text_ops);
+CREATE INDEX users_email_index ON users(email text_ops);
+CREATE INDEX users_is_email_verified_index ON users(is_email_verified bool_ops);
 
 ---bun:split
 
