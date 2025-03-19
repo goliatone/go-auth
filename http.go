@@ -90,7 +90,7 @@ func (a *RouteAuthenticator) Logout(ctx router.Context) {
 
 func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func(router.Context, error) error {
 	return func(ctx router.Context, err error) error {
-		if IsMalformedError(err) {
+		if IsMalformedError(err) || IsTokenExpiredError(err) {
 			a.Logger.Info("DefaultAuthErrHandler malformed error: %s", err)
 			if optional { // some routes might optionally be protected
 				a.Logger.Info("DefaultAuthErrHandler skip malformed error")
@@ -98,6 +98,7 @@ func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func
 			}
 			return a.AuthErrorHandler(ctx)
 		}
+
 		a.Logger.Error("DefaultAuthErrHandler route error handler: %s", err)
 		return a.ErrorHandler(ctx, err)
 	}
