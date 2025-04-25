@@ -110,6 +110,13 @@ type AuthController struct {
 
 type AuthControllerOption func(*AuthController) *AuthController
 
+func WithControllerLogger(logger Logger) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.Logger = logger
+		return ac
+	}
+}
+
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
 		Logger:       defLogger{},
