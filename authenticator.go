@@ -32,6 +32,11 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 	}
 }
 
+func (s Auther) WithLogger(logger Logger) Auther {
+	s.Logger = logger
+	return s
+}
+
 func (s Auther) Login(ctx context.Context, identifier, password string) (string, error) {
 	var err error
 	var identity Identity
