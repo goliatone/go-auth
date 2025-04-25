@@ -27,8 +27,8 @@ github.com/golang-jwt/jwt/v5 v5.2.1 h1:OuVbFODueb089Lh128TAcimifWaLhJwVflnrgM17w
 github.com/golang-jwt/jwt/v5 v5.2.1/go.mod h1:pqrtFR0X4osieyHYxtmOUWsAWrfe1Q5UVIyoH402zdk=
 github.com/goliatone/go-command v0.1.0 h1:D7uZJ7qq5ZIqN2CPgh5UXxU/mPOxHWMmTXmsKmebPws=
 github.com/goliatone/go-command v0.1.0/go.mod h1:6cmnoCXY5Lq1cqNswRuRPgCCTH2NqkVfQjwpORotcu0=
-github.com/goliatone/go-masker v0.0.1 h1:rG9CR+1uCsNva94s92WL4ZQwRe0uiJAeoa6bWc552WU=
-github.com/goliatone/go-masker v0.0.1/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
+github.com/goliatone/go-masker v0.1.0 h1:YiNxBRC7AXpGKtUlXIoU4oj3DUfE+M2fvcDRyYC4Tt4=
+github.com/goliatone/go-masker v0.1.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
 github.com/goliatone/go-print v0.0.1 h1:dgxSJrfGslLFtyqL3cREVi5YybzP32rnlXWLFZFyJWc=
 github.com/goliatone/go-print v0.0.1/go.mod h1:KmgYDBUqlEGpO/bkm9fO2FJbVH4YTAqp3w8ecO8rq1g=
 github.com/goliatone/go-repository-bun v0.0.5 h1:DT253ZHu2uH0NSjL56JfZV74g/K9dEtOjpiVQMngH4g=

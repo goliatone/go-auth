@@ -29,7 +29,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
-	github.com/goliatone/go-masker v0.0.1 // indirect
+	github.com/goliatone/go-masker v0.1.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
