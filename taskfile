@@ -89,8 +89,11 @@ function dev:env:load {
     eval "$(envset development --isolated=true)"
 }
 
+function dev:test {
+    go test ./...
+}
 
-function test:coverage {
+function dev:cover {
     go test -coverprofile=coverage.out ./... && go tool cover -func coverage.out
 }
 
