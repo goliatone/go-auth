@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"database/sql"
+	"mime/multipart"
 
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-repository-bun"
@@ -250,6 +251,25 @@ func (m *MockContext) RedirectBack(fallback string, status ...int) error {
 func (m *MockContext) SetHeader(key, val string) router.Context {
 	m.Called(key, val)
 	return m
+}
+
+func (m *MockContext) FormFile(key string) (*multipart.FileHeader, error) {
+	args := m.Called(key)
+	return args.Get(0).(*multipart.FileHeader), args.Error(1)
+}
+
+func (m *MockContext) FormValue(key string, defaultValue ...string) string {
+	if len(defaultValue) > 0 {
+		args := m.Called(key, defaultValue[0])
+		return args.String(0)
+	}
+	args := m.Called(key)
+	return args.String(0)
+}
+
+func (m *MockContext) SendStatus(code int) error {
+	args := m.Called(code)
+	return args.Error(0)
 }
 
 func (m *MockContext) Header(key string) string {
