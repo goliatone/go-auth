@@ -33,7 +33,7 @@ func TestNewHTTPAuthenticator(t *testing.T) {
 func TestRouteAuthenticator_Login(t *testing.T) {
 	mockAuth := new(MockAuthenticator)
 	mockConfig := new(MockConfig)
-	mockCtx := new(MockContext)
+	mockCtx := router.NewMockContext()
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
@@ -66,7 +66,7 @@ func TestRouteAuthenticator_Login(t *testing.T) {
 func TestRouteAuthenticator_LoginError(t *testing.T) {
 	mockAuth := new(MockAuthenticator)
 	mockConfig := new(MockConfig)
-	mockCtx := new(MockContext)
+	mockCtx := router.NewMockContext()
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
@@ -97,7 +97,7 @@ func TestRouteAuthenticator_LoginError(t *testing.T) {
 func TestRouteAuthenticator_Logout(t *testing.T) {
 	mockAuth := new(MockAuthenticator)
 	mockConfig := new(MockConfig)
-	mockCtx := new(MockContext)
+	mockCtx := router.NewMockContext()
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
@@ -151,7 +151,7 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("SetRedirect", func(t *testing.T) {
-		mockCtx := new(MockContext)
+		mockCtx := router.NewMockContext()
 
 		mockCtx.On("OriginalURL").Return("/dashboard")
 		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
@@ -164,7 +164,7 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 	})
 
 	t.Run("GetRedirect", func(t *testing.T) {
-		mockCtx := new(MockContext)
+		mockCtx := router.NewMockContext()
 
 		mockCtx.On("Cookies", "rejected_route").Return("/dashboard")
 		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
@@ -178,7 +178,7 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 	})
 
 	t.Run("GetRedirectOrDefault", func(t *testing.T) {
-		mockCtx := new(MockContext)
+		mockCtx := router.NewMockContext()
 
 		mockCtx.On("Referer").Return("/some-referer")
 		mockCtx.On("Cookies", "rejected_route", "/some-referer").Return("")
@@ -198,7 +198,7 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 func TestRouteAuthenticator_Impersonate(t *testing.T) {
 	mockAuth := new(MockAuthenticator)
 	mockConfig := new(MockConfig)
-	mockCtx := new(MockContext)
+	mockCtx := router.NewMockContext()
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
@@ -233,7 +233,7 @@ func TestRouteAuthenticator_MakeClientRouteAuthErrorHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Optional Auth - Malformed Token", func(t *testing.T) {
-		mockCtx := new(MockContext)
+		mockCtx := router.NewMockContext()
 
 		handler := httpAuth.MakeClientRouteAuthErrorHandler(true)
 
@@ -245,7 +245,7 @@ func TestRouteAuthenticator_MakeClientRouteAuthErrorHandler(t *testing.T) {
 	})
 
 	t.Run("Required Auth - Malformed Token", func(t *testing.T) {
-		mockCtx := new(MockContext)
+		mockCtx := router.NewMockContext()
 
 		var authErrorCalled bool
 		origHandler := httpAuth.AuthErrorHandler
