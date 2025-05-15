@@ -432,9 +432,9 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 	}
 
 	if a.Debug {
-		fmt.Println("================")
-		fmt.Println(print.MaybePrettyJSON(res))
-		fmt.Println("================")
+		a.Logger.Debug("================")
+		a.Logger.Debug(print.MaybePrettyJSON(res))
+		a.Logger.Debug("================")
 	}
 
 	redirect := "/"
@@ -472,7 +472,7 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 	accountVerify := AccountVerificationHandler{repo: a.Repo}
 
 	if err := accountVerify.Execute(ctx.Context(), input); err != nil {
-		fmt.Println("verification error " + err.Error())
+		a.Logger.Error("verification error", err)
 		errors["verification"] = err.Error()
 		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
 			"errors": errors,
@@ -484,9 +484,11 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 		})
 	}
 
-	fmt.Println("======= Password Reset ======")
-	fmt.Println(print.MaybePrettyJSON(resp))
-	fmt.Println("=============================")
+	if a.Debug {
+		a.Logger.Debug("======= Password Reset ======")
+		a.Logger.Debug(print.MaybePrettyJSON(resp))
+		a.Logger.Debug("=============================")
+	}
 
 	currentStage := ChangingPassword
 	if resp.Expired || !resp.Found {
