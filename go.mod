@@ -8,10 +8,11 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/goliatone/go-command v0.1.0
-	github.com/goliatone/go-print v0.0.1
+	github.com/goliatone/go-command v0.2.0
+	github.com/goliatone/go-errors v0.3.0
+	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.0.5
-	github.com/goliatone/go-router v0.1.0
+	github.com/goliatone/go-router v0.2.3
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
@@ -20,15 +21,20 @@ require (
 	golang.org/x/crypto v0.31.0
 )
 
+
+
 require (
 	dario.cat/mergo v1.0.1 // indirect
+	github.com/alecthomas/chroma/v2 v2.16.0 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
+	github.com/goliatone/go-composite-fs v0.0.1 // indirect
 	github.com/goliatone/go-masker v0.1.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
