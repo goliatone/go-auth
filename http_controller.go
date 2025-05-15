@@ -1,13 +1,14 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/go-ozzo/ozzo-validation/is"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
@@ -180,43 +181,50 @@ func (r LoginRequest) GetExtendedSession() bool {
 }
 
 // Validate will run validation rules
-func (r LoginRequest) Validate() error {
-	return validation.ValidateStruct(&r,
-		validation.Field(
-			&r.Identifier,
-			validation.Required,
-			is.Email,
-		),
-		validation.Field(
-			&r.Password,
-			validation.Required,
-		),
-	)
+func (r LoginRequest) Validate() *errors.Error {
+	return errors.ValidateWithOzzo(func() error {
+		return validation.ValidateStruct(&r,
+			validation.Field(
+				&r.Identifier,
+				validation.Required,
+				is.Email,
+			),
+			validation.Field(
+				&r.Password,
+				validation.Required,
+			),
+		)
+	}, "Invalid login request payload")
+
 }
 
 func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
 	errors := map[string]string{}
-	fmt.Println("--- Login Post: " + ctx.Header("X-Request-ID"))
+
+	a.Logger.Debug("--- Login Post: ", "request-id", ctx.Header("X-Request-ID"))
 
 	if err := ctx.Bind(payload); err != nil {
-		fmt.Println("--- Login Post: error bind" + err.Error())
+		a.Logger.Error("Login post bind error", err)
 		return a.ErrorHandler(ctx, err)
 	}
 
 	if err := payload.Validate(); err != nil {
-		fmt.Println("--- Login Post: error valid" + err.Error())
-		return ctx.Render(a.Views.Login, router.ViewContext{
+		a.Logger.Error("Login post validation error", err)
+		return flash.WithError(ctx, router.ViewContext{
+			"error_message":  err.Message,
+			"system_message": "Error validating payload",
+		}).Render(a.Views.Login, router.ViewContext{
 			"record":     payload,
-			"validation": err.Error(),
+			"validation": err.ValiationMap(),
 		})
 	}
 
 	if a.Debug {
-		fmt.Println("======= AUTH LOGIN ======")
-		fmt.Printf("X-Request-ID: %v", ctx.Locals("requestid"))
-		fmt.Println(print.MaybeSecureJSON(payload))
-		fmt.Println("=========================")
+		a.Logger.Debug("======= AUTH LOGIN ======")
+		a.Logger.Debug("X-Request-ID", "id", ctx.Locals("requestid"))
+		a.Logger.Debug(print.MaybeSecureJSON(payload))
+		a.Logger.Debug("=========================")
 	}
 
 	if err := a.Auther.Login(ctx, payload); err != nil {
@@ -229,7 +237,7 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 
 	redirect := a.Auther.GetRedirect(ctx, "/")
 
-	fmt.Println("redirecting to: " + redirect)
+	a.Logger.Info("redirecting", "url", redirect)
 
 	return ctx.Redirect(redirect, router.StatusSeeOther)
 }
@@ -257,21 +265,23 @@ type RegistrationCreatePayload struct {
 }
 
 // Validate will validate the payload
-func (r RegistrationCreatePayload) Validate() error {
+func (r RegistrationCreatePayload) Validate() *errors.Error {
+	return errors.ValidateWithOzzo(func() error {
+		return validation.ValidateStruct(&r,
+			validation.Field(&r.FirstName, validation.Required, validation.Length(1, 200)),
+			validation.Field(&r.LastName, validation.Required, validation.Length(1, 200)),
+			validation.Field(&r.Email, validation.Required, validation.Length(6, 100), is.Email),
+			validation.Field(&r.Phone, validation.Length(10, 11), is.Digit),
+			validation.Field(&r.Password, validation.Required, validation.Length(10, 100)),
+			validation.Field(
+				&r.ConfirmPassword,
+				validation.Required,
+				validation.Length(10, 100),
+				validation.By(ValidateStringEquals(r.Password)),
+			),
+		)
+	}, "Invalid registration payload")
 
-	return validation.ValidateStruct(&r,
-		validation.Field(&r.FirstName, validation.Required, validation.Length(1, 200)),
-		validation.Field(&r.LastName, validation.Required, validation.Length(1, 200)),
-		validation.Field(&r.Email, validation.Required, validation.Length(6, 100), is.Email),
-		validation.Field(&r.Phone, validation.Length(10, 11), is.Digit),
-		validation.Field(&r.Password, validation.Required, validation.Length(10, 100)),
-		validation.Field(
-			&r.ConfirmPassword,
-			validation.Required,
-			validation.Length(10, 100),
-			validation.By(ValidateStringEquals(r.Password)),
-		),
-	)
 }
 
 func (a *AuthController) RegistrationCreate(ctx router.Context) error {
@@ -291,15 +301,13 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := payload.Validate(); err != nil {
-		errors := FormatValidationErrorToMap(err)
 		a.Logger.Error("register user validate payload: ", "error", err)
-
 		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
+			"error_message":  err.Message,
 			"system_message": "Error validating payload",
 		}).Render(a.Views.Register, router.ViewContext{
 			"record":     payload,
-			"validation": errors,
+			"validation": err.ValiationMap(),
 		})
 	}
 
@@ -351,21 +359,24 @@ type PasswordResetRequestPayload struct {
 }
 
 // Validate will validate the payload
-func (r PasswordResetRequestPayload) Validate() error {
-	return validation.ValidateStruct(&r,
-		validation.Field(
-			&r.Stage,
-			validation.Required,
-			validation.In(
-				ResetInit,
+func (r PasswordResetRequestPayload) Validate() *errors.Error {
+	return errors.ValidateWithOzzo(func() error {
+		return validation.ValidateStruct(&r,
+			validation.Field(
+				&r.Stage,
+				validation.Required,
+				validation.In(
+					ResetInit,
+				),
 			),
-		),
-		validation.Field(
-			&r.Email,
-			validation.Required,
-			is.Email,
-		),
-	)
+			validation.Field(
+				&r.Email,
+				validation.Required,
+				is.Email,
+			),
+		)
+	}, "Invalid password reset ")
+
 }
 
 func (a *AuthController) PasswordResetPost(ctx router.Context) error {
@@ -386,13 +397,12 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("register user validate payload: ", "error", err)
-		errors := FormatValidationErrorToMap(err)
 		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
+			"error_message":  err.Message,
 			"system_message": "Error validating payload",
 		}).Render(a.Views.PasswordReset, router.ViewContext{
 			"record":     payload,
-			"validation": errors,
+			"validation": err.ValiationMap(),
 		})
 	}
 
@@ -500,28 +510,29 @@ type PasswordResetVerifyPayload struct {
 }
 
 // Validate will validate the payload
-func (r PasswordResetVerifyPayload) Validate() error {
-
-	return validation.ValidateStruct(&r,
-		validation.Field(
-			&r.Stage,
-			validation.Required,
-			validation.In(
-				ChangingPassword,
+func (r PasswordResetVerifyPayload) Validate() *errors.Error {
+	return errors.ValidateWithOzzo(func() error {
+		return validation.ValidateStruct(&r,
+			validation.Field(
+				&r.Stage,
+				validation.Required,
+				validation.In(
+					ChangingPassword,
+				),
 			),
-		),
-		validation.Field(
-			&r.Password,
-			validation.Required,
-			validation.Length(10, 100),
-		),
-		validation.Field(
-			&r.ConfirmPassword,
-			validation.Required,
-			validation.Length(10, 100),
-			validation.By(ValidateStringEquals(r.Password)),
-		),
-	)
+			validation.Field(
+				&r.Password,
+				validation.Required,
+				validation.Length(10, 100),
+			),
+			validation.Field(
+				&r.ConfirmPassword,
+				validation.Required,
+				validation.Length(10, 100),
+				validation.By(ValidateStringEquals(r.Password)),
+			),
+		)
+	}, "Invalid password reset payload")
 }
 
 func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
@@ -544,14 +555,13 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("register user validate payload: ", "error", err)
-		errors = FormatValidationErrorToMap(err)
+		a.Logger.Error("register user validate payload", "error", err)
 		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
+			"error_message":  err.Message,
 			"system_message": "Error validating payload",
 		}).Render(a.Views.PasswordReset, router.ViewContext{
 			"record":     payload,
-			"validation": errors,
+			"validation": err.ValiationMap(),
 		})
 	}
 
@@ -588,7 +598,7 @@ func ValidateStringEquals(str string) validation.RuleFunc {
 	return func(value any) error {
 		s, _ := value.(string)
 		if s != str {
-			return errors.New("values must match")
+			return errors.New(errors.CategoryValidation, "values must match")
 		}
 		return nil
 	}
