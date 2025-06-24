@@ -322,7 +322,7 @@ func TestPasswordResetForm_Invalid(t *testing.T) {
 	mockRepo.On("PasswordResets").Return(mockPasswordResets).Once()
 	mockPasswordResets.
 		On("GetByID", mock.Anything, resetID, mock.Anything).
-		Return(nil, repository.ErrRecordNotFound).Once()
+		Return(nil, repository.NewRecordNotFound()).Once()
 
 	mockRepo.
 		On("RunInTx", mock.Anything, mock.Anything, mock.Anything).

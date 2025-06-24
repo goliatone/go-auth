@@ -40,10 +40,6 @@ func NewPasswordResetsRepository(db *bun.DB) repository.Repository[*PasswordRese
 	return repository.NewRepository(db, handlers)
 }
 
-func NewUsersRepository(db *bun.DB) Users {
-	return &users{db}
-}
-
 type mngr struct {
 	db             *bun.DB
 	users          Users
