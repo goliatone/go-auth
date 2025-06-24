@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/goliatone/go-command"
 	"github.com/goliatone/hashid/pkg/hashid"
 	"github.com/uptrace/bun"
 )
 
 type RegisterUserMessage struct {
-	command.BaseMessage
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	Username  string `json:"username"`
