@@ -45,8 +45,8 @@ github.com/goliatone/go-masker v0.1.0 h1:YiNxBRC7AXpGKtUlXIoU4oj3DUfE+M2fvcDRyYC
 github.com/goliatone/go-masker v0.1.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
 github.com/goliatone/go-print v0.4.1 h1:rRcmZOWd27gq25Ays0nRu09tAH6wgTdfshE4rPpNYNY=
 github.com/goliatone/go-print v0.4.1/go.mod h1:hx13/Im2TeOYwwBwj/ImfjneDQ0MyN0ybfrgHripAus=
-github.com/goliatone/go-repository-bun v0.4.1 h1:pHFbeTGPJttvQ8cIXkRZ8won7bMo4srfJmyqEzG7UP4=
-github.com/goliatone/go-repository-bun v0.4.1/go.mod h1:uK6hCktq576LL3+6ebFyTOabBjXuC/DNuFDXUNR0jGk=
+github.com/goliatone/go-repository-bun v0.4.3 h1:8cUt0EmSRf2df0xnH9RmtOcAthjMYcPrVZJlVlliWNU=
+github.com/goliatone/go-repository-bun v0.4.3/go.mod h1:XlE7pkvZs08IAdwiF8qYLmz08JadMcWkNin+fkSYyzY=
 github.com/goliatone/go-router v0.2.3 h1:MHTdci0Ce2tLkuUlM43RxdqYV6iPplagND8mp8DzxR4=
 github.com/goliatone/go-router v0.2.3/go.mod h1:rzHm13w2Vx6bTAqDjzung65m+dYidr+cyCykEPNYTHI=
 github.com/goliatone/hashid v0.1.1 h1:VfZZf7s0uM+JZ3ZBkqaEM1mL/CJfiTmFOzZ1QuXY3EM=

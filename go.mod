@@ -10,7 +10,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/goliatone/go-errors v0.5.2
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.4.1
+	github.com/goliatone/go-repository-bun v0.4.3
 	github.com/goliatone/go-router v0.2.3
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
@@ -52,7 +52,6 @@ require (
 	github.com/showa-93/go-mask v0.6.2 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
-	github.com/uptrace/bun/dialect/sqlitedialect v1.2.14 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.54.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
