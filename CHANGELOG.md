@@ -1,5 +1,15 @@
 # Changelog
 
+# [0.2.0](https://github.com/goliatone/go-auth/compare/v0.1.1...v0.2.0) - (2025-06-24)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.0 ([232830f](https://github.com/goliatone/go-auth/commit/232830f0fb666e5e8b8e5b36580db6e7e711c71c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.1 ([0141932](https://github.com/goliatone/go-auth/commit/0141932547bef939134cdd664bb1e04eb27355fc))  - (goliatone)
+
 # [0.1.1](https://github.com/goliatone/go-auth/compare/v0.1.0...v0.1.1) - (2025-06-24)
 
 ## <!-- 1 -->🐛 Bug Fixes
