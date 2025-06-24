@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"time"
 
+	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/google/uuid"
 	"github.com/nyaruka/phonenumbers"
@@ -55,7 +56,27 @@ type Users interface {
 }
 
 type users struct {
-	db *bun.DB
+	db     *bun.DB
+	driver string
+}
+
+func NewUsersRepository(db *bun.DB) Users {
+	return &users{
+		db:     db,
+		driver: repository.DetectDriver(db),
+	}
+}
+
+func (a *users) mapError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if errors.IsWrapped(err) {
+		return err
+	}
+
+	return repository.MapDatabaseError(err, a.driver)
 }
 
 func (a *users) Raw(ctx context.Context, sql string, args ...any) ([]*User, error) {
@@ -146,7 +167,11 @@ func (a *users) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier st
 	}
 
 	if found == 0 {
-		return nil, repository.ErrRecordNotFound
+		return nil, repository.NewRecordNotFound().
+			WithMetadata(map[string]any{
+				"column":      column,
+				"identfifier": identifier,
+			})
 	}
 
 	return record, nil
@@ -163,7 +188,10 @@ func (a *users) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, p
 	}
 
 	if res == nil || len(res) == 0 {
-		return repository.ErrRecordNotFound
+		return repository.NewRecordNotFound().
+			WithMetadata(map[string]any{
+				"id": id.String(),
+			})
 	}
 
 	return nil
