@@ -600,7 +600,7 @@ func ValidateStringEquals(str string) validation.RuleFunc {
 	return func(value any) error {
 		s, _ := value.(string)
 		if s != str {
-			return errors.New(errors.CategoryValidation, "values must match")
+			return errors.New("values must match", errors.CategoryValidation)
 		}
 		return nil
 	}
