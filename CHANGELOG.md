@@ -1,5 +1,39 @@
 # Changelog
 
+# [0.1.1](https://github.com/goliatone/go-auth/compare/v0.1.0...v0.1.1) - (2025-06-24)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Refactor to use new repository interface ([df5ae59](https://github.com/goliatone/go-auth/commit/df5ae599221b37a95acd2f1367f1d5e57afea392))  - (goliatone)
+- Use new error category format ([5880baa](https://github.com/goliatone/go-auth/commit/5880baa0bb154d585bba9fc7468cd690da670beb))  - (goliatone)
+- Test MockContext implement latest interface ([7067834](https://github.com/goliatone/go-auth/commit/70678348d19e6577dd3f9f595746058b1effdb95))  - (goliatone)
+- Cliff template use unique commit mesages ([e96911e](https://github.com/goliatone/go-auth/commit/e96911ece734ca4faad5261caa1d6f0281a82094))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.1.1 ([89ec837](https://github.com/goliatone/go-auth/commit/89ec83728534c0b5e7e5ff0919e8ed059a835a4a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Validate using standard errors ([3d8abb9](https://github.com/goliatone/go-auth/commit/3d8abb94043adcbc8c1703fa0d6627b6116b50cb))  - (goliatone)
+- Task for testing and coverage ([39bf920](https://github.com/goliatone/go-auth/commit/39bf920fa9a528347a0fbb11562a3deab212267f))  - (goliatone)
+- Use router.MockContext for testing ([280819a](https://github.com/goliatone/go-auth/commit/280819ad0d25b4350e449a50b3878094172a23e0))  - (goliatone)
+- Set logger instance ([ed8f55c](https://github.com/goliatone/go-auth/commit/ed8f55ce97708554bb620ac12780f04876ca6955))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Use logger ([deeab9e](https://github.com/goliatone/go-auth/commit/deeab9ea0350d6465a5b07a5a9d19a20c5b5a2fb))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.0 ([7c48a0d](https://github.com/goliatone/go-auth/commit/7c48a0df6ee4ef3c2046b41f0ffeaa80685cff39))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([680c0dc](https://github.com/goliatone/go-auth/commit/680c0dcf5e09440bcf5a2eeb13dbc31ee76f7b1a))  - (goliatone)
+- Clen changelog ([e073af6](https://github.com/goliatone/go-auth/commit/e073af6c3404443fb8ae42ee29404cc8ed52145b))  - (goliatone)
+- Update deps ([73ed523](https://github.com/goliatone/go-auth/commit/73ed5235952831599659daae913fec16a890d4b5))  - (goliatone)
+
 # [0.1.0](https://github.com/goliatone/go-auth/tree/v0.1.0) - (2025-03-19)
 
 ## <!-- 1 -->🐛 Bug Fixes
@@ -12,15 +46,10 @@
 - Check for nil err ([013ed50](https://github.com/goliatone/go-auth/commit/013ed50d828279e6fea443858f19401053f0957e))  - (goliatone)
 - Check for empty string pwd ([184d755](https://github.com/goliatone/go-auth/commit/184d7556757ac3236cca3badca19590578949914))  - (goliatone)
 - Update config ([5b77dcf](https://github.com/goliatone/go-auth/commit/5b77dcf4ab107ab2c0cbc6bb75d3c635d4182ac8))  - (goliatone)
-- Update config ([cfa260a](https://github.com/goliatone/go-auth/commit/cfa260a2fa15163231f353487ad77476062c48b0))  - (goliatone)
-- Update config ([47fee32](https://github.com/goliatone/go-auth/commit/47fee32f9f119de31d5318c6a70d0f050cf7c6ad))  - (goliatone)
 - References to main pacakge ([81a12c0](https://github.com/goliatone/go-auth/commit/81a12c0ff7da350bbc32de7f476262e367816b65))  - (goliatone)
 - Change type ([b20474a](https://github.com/goliatone/go-auth/commit/b20474a6d4199889f1452cd3c8bf4e88e2e992ca))  - (goliatone)
-- Change type ([4efa34f](https://github.com/goliatone/go-auth/commit/4efa34f44ffb30b54d8f7842cee4c6f641c4c5be))  - (goliatone)
-- Change type ([f9b9748](https://github.com/goliatone/go-auth/commit/f9b9748bc36c417c1e36c7745a11792f885d48fd))  - (goliatone)
 - Rename file ([0af947b](https://github.com/goliatone/go-auth/commit/0af947be1c1a0660d156e3a3ecb061486b44456a))  - (goliatone)
 - Return middleware func instead of handler ([a46397c](https://github.com/goliatone/go-auth/commit/a46397cc03f420a261c94b64cd72ba209d693687))  - (goliatone)
-- Return middleware func instead of handler ([d5ec845](https://github.com/goliatone/go-auth/commit/d5ec845eb611bb0b20874a453ec15aafe3263769))  - (goliatone)
 - Typo in role ([25c9c2e](https://github.com/goliatone/go-auth/commit/25c9c2e4fc31367e0b7af5b0b24669a3d6211c7d))  - (goliatone)
 - Ensure we add db to repo ([8790b2c](https://github.com/goliatone/go-auth/commit/8790b2c359b42300212735a5c4e44d8bc1d99124))  - (goliatone)
 - Ensure we have all deps ([1ec480a](https://github.com/goliatone/go-auth/commit/1ec480a30b7028287499d33bdb0a2c92ffb26015))  - (goliatone)
@@ -33,25 +62,20 @@
 ## <!-- 14 -->🎉 Initial Commit
 
 - Initial commit ([277d2e7](https://github.com/goliatone/go-auth/commit/277d2e72a21dc98d4a35fe87cc81d22e7a29eac4))  - (goliatone)
-- Initial commit ([e96adb7](https://github.com/goliatone/go-auth/commit/e96adb7c975870c105c06b0a12abb1c4c83b8df0))  - (goliatone)
-- Initial commit ([3e1817b](https://github.com/goliatone/go-auth/commit/3e1817b904a072a8021fe0df4f15284e3d72bcee))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
 - Metadata to user, new user roles, indices for user ([cd8d4dc](https://github.com/goliatone/go-auth/commit/cd8d4dc23ca9e0a9ba4b8a80da8c35a3fda00406))  - (goliatone)
 - Updated roles ([36895ae](https://github.com/goliatone/go-auth/commit/36895aecd87f81bb8712211d79d43d21078e7e39))  - (goliatone)
 - Roles ([f0b3cff](https://github.com/goliatone/go-auth/commit/f0b3cff3e99c3c7fa9670cb8e134de27fcc89eeb))  - (goliatone)
-- Roles ([4986470](https://github.com/goliatone/go-auth/commit/49864708c5c9908f81ae1c6aafdec7531c0060ac))  - (goliatone)
 - Name routes ([cf4c54c](https://github.com/goliatone/go-auth/commit/cf4c54ca737d565cc6a59e7a9046a6eecf20a753))  - (goliatone)
 - Tests for jwt ([bb0f145](https://github.com/goliatone/go-auth/commit/bb0f14580faa713f143b66dcefa091b4c353095a))  - (goliatone)
-- Tests for jwt ([a805ae7](https://github.com/goliatone/go-auth/commit/a805ae7e804d4faeb60ff1d20443cfd3c075d798))  - (goliatone)
 - Update status code based on route ([341c23b](https://github.com/goliatone/go-auth/commit/341c23bc0b70701a83a16771958574aaab36bdc7))  - (goliatone)
 - Dev run task ([28a5a9a](https://github.com/goliatone/go-auth/commit/28a5a9a8060c398589d6da08ad6f6004b51d4254))  - (goliatone)
 - Updated example config ([8d15a50](https://github.com/goliatone/go-auth/commit/8d15a50f90638f9afebc829bb1bea1f4f6a96eab))  - (goliatone)
 - Logger to http route authenticator ([178f29e](https://github.com/goliatone/go-auth/commit/178f29e2ad092d4a69c0c8e42b566cbb351f1ade))  - (goliatone)
 - Default logger ([3a1be13](https://github.com/goliatone/go-auth/commit/3a1be1328efb36ed7f2574a52fa8b9e9d6e6cfe5))  - (goliatone)
 - Test coverage ([86c4491](https://github.com/goliatone/go-auth/commit/86c4491e7c6e59d26858587295a1c3b269dbfc26))  - (goliatone)
-- Default logger ([3335a4b](https://github.com/goliatone/go-auth/commit/3335a4b01f39693da74ad5e2b998a8773240ff1f))  - (goliatone)
 - Http test ([e98884c](https://github.com/goliatone/go-auth/commit/e98884c8f4d9ec8a4816479d26ca5972d7d4e9fb))  - (goliatone)
 - Test for protected routes ([fc76284](https://github.com/goliatone/go-auth/commit/fc762842c7bc0bcecc43bd51312b61ceace98281))  - (goliatone)
 - Updated test ([d7f492e](https://github.com/goliatone/go-auth/commit/d7f492e6f122f2c1a3e2796762dddbaa4eee9a73))  - (goliatone)
@@ -67,16 +91,8 @@
 - Authenticator test ([b40dbf7](https://github.com/goliatone/go-auth/commit/b40dbf7a6aa3406bac1df14b981aedfa848b15c3))  - (goliatone)
 - Taskfile for example ([07555a0](https://github.com/goliatone/go-auth/commit/07555a0e3775e457c8777425804317fad834618a))  - (goliatone)
 - Example code ([649a262](https://github.com/goliatone/go-auth/commit/649a2624e1e60e9dc6db8d4cecba78f5f3dc61fa))  - (goliatone)
-- Example code ([20aaebc](https://github.com/goliatone/go-auth/commit/20aaebc84655cad58ebff4a01c336501843aa03f))  - (goliatone)
-- Example code ([5933f63](https://github.com/goliatone/go-auth/commit/5933f63fa2af8342dd49104aedea7ea68e8b6943))  - (goliatone)
-- Example code ([1a3fb82](https://github.com/goliatone/go-auth/commit/1a3fb82283c8e124d2d7d27d14175057d4bc2140))  - (goliatone)
 - Sql migrations ([ea10d44](https://github.com/goliatone/go-auth/commit/ea10d4498a18e3082c43344436225e6986ee6054))  - (goliatone)
 - Examples ([fd18b39](https://github.com/goliatone/go-auth/commit/fd18b397cb573dcb023ac88a5e850bd533dbd0a7))  - (goliatone)
-- Examples ([15121e1](https://github.com/goliatone/go-auth/commit/15121e1f0937e2a0cc70099a311166f93896f081))  - (goliatone)
-- Examples ([78f605e](https://github.com/goliatone/go-auth/commit/78f605e0725a93be0caf3af12058efdc97e09d0a))  - (goliatone)
-- Examples ([5a9588f](https://github.com/goliatone/go-auth/commit/5a9588fd5e6ce416c269e662ddca3cbf18824331))  - (goliatone)
-- Examples ([a5711d0](https://github.com/goliatone/go-auth/commit/a5711d0ceb485b49e63e11f428b62fd36bd3c496))  - (goliatone)
-- Examples ([56dcb89](https://github.com/goliatone/go-auth/commit/56dcb89adc288dff2d376b6c82854e23cdd3127d))  - (goliatone)
 - Repo manager imp ([0cd12d3](https://github.com/goliatone/go-auth/commit/0cd12d380830c6f81284fda3ccd1a26aa486154c))  - (goliatone)
 - User provider imp ([97d8079](https://github.com/goliatone/go-auth/commit/97d8079a12759eea88338b88b35135514c55c8b2))  - (goliatone)
 - Custom repo users ([777f863](https://github.com/goliatone/go-auth/commit/777f8636bd6aaaddc31a1e4bc7a66f4c9e434008))  - (goliatone)
@@ -84,7 +100,6 @@
 - Auth controller ([79ddbee](https://github.com/goliatone/go-auth/commit/79ddbeeccf013bd7a0d7b94a2ecba4f3c6a4038e))  - (goliatone)
 - JWT middleware ([6ac67fa](https://github.com/goliatone/go-auth/commit/6ac67fa4db4bfb8f924a81346e554c26ade87637))  - (goliatone)
 - Custom repo manager to handle login attempts etc ([eb317f3](https://github.com/goliatone/go-auth/commit/eb317f30ca5b5d8ab1f5f660a0adb7c8c69496ae))  - (goliatone)
-- Custom repo manager to handle login attempts etc ([bffd910](https://github.com/goliatone/go-auth/commit/bffd9107e1f8c56fbf60ebaab88174c8c0786f15))  - (goliatone)
 - Command verification request ([67aabe1](https://github.com/goliatone/go-auth/commit/67aabe11d0bef8378d930b71836ebbccc65f8b69))  - (goliatone)
 - Auth register user command ([897b1f8](https://github.com/goliatone/go-auth/commit/897b1f8e3c95fa282fb867c64f4c1d7d76a4bf62))  - (goliatone)
 - Password reset initialize command ([3ce0a75](https://github.com/goliatone/go-auth/commit/3ce0a755853b95db63d7428eb598b53dc965e6e7))  - (goliatone)
@@ -103,31 +118,18 @@
 
 - Add logger to ctrl ([b9ea26c](https://github.com/goliatone/go-auth/commit/b9ea26c79dfc19a0877eccc0b3f288a5c6033231))  - (goliatone)
 - Add profile picture to user ([209f3d8](https://github.com/goliatone/go-auth/commit/209f3d823e21ec8c2ed622a79b5bf205ae3289f0))  - (goliatone)
-- Add profile picture to user ([6cd7322](https://github.com/goliatone/go-auth/commit/6cd7322ae29cfb2121a96dae72aa2e5ebde935db))  - (goliatone)
 - Move mocks to one file ([ec3b3c9](https://github.com/goliatone/go-auth/commit/ec3b3c9e085f37a56b338e58ffc0fdd6675b7eb9))  - (goliatone)
-- Move mocks to one file ([2ef2a8e](https://github.com/goliatone/go-auth/commit/2ef2a8e4eccf62b65c005d311c7ccfeb839c6ad7))  - (goliatone)
-- Move mocks to one file ([82c87bf](https://github.com/goliatone/go-auth/commit/82c87bf0d043f10584c211d7f67ef59fe537a9c2))  - (goliatone)
-- Move mocks to one file ([e87946d](https://github.com/goliatone/go-auth/commit/e87946d51f318d05c507e95240d1e299fc6b6d46))  - (goliatone)
-- Move mocks to one file ([d69d06a](https://github.com/goliatone/go-auth/commit/d69d06a1564c76e5f50952bb34a0cd43a344f260))  - (goliatone)
 - Use NewHTTPAuthenticator better name ([130c0f1](https://github.com/goliatone/go-auth/commit/130c0f1b997ed0e3030dc852a15e4db6f51b3042))  - (goliatone)
 - Give proper name to file ([50e0749](https://github.com/goliatone/go-auth/commit/50e074930c3cfc42c59741987618e0a0b3944264))  - (goliatone)
 - Move to toplevel pacakge ([3c13e2d](https://github.com/goliatone/go-auth/commit/3c13e2d10f0a869aeba588936fe4a5c252caf8ae))  - (goliatone)
 - Rename session methods. add: function to serialize token ([734a05a](https://github.com/goliatone/go-auth/commit/734a05ac6d2f6cabaa9a0436dbbf073aaa1f93b6))  - (goliatone)
 - Rename session methods ([63e320d](https://github.com/goliatone/go-auth/commit/63e320d817741576f42362cd90cd050323b1ef55))  - (goliatone)
-- Rename session methods ([71a4d6f](https://github.com/goliatone/go-auth/commit/71a4d6f34a8aca99924b016d5c91a4b810d50bf6))  - (goliatone)
-- Rename session methods ([4168497](https://github.com/goliatone/go-auth/commit/41684975ab2de7233bf75c67d194f1299f360edf))  - (goliatone)
-- Rename session methods ([64b4d46](https://github.com/goliatone/go-auth/commit/64b4d46277983c8533120fb762fcef276b714a48))  - (goliatone)
 - Move related to errors ([8a1aa82](https://github.com/goliatone/go-auth/commit/8a1aa82c8e07217653097638c221da68d858561a))  - (goliatone)
-- Move related to errors ([ad19c8d](https://github.com/goliatone/go-auth/commit/ad19c8dcd915ed2262784f192e414ad3677683cc))  - (goliatone)
 - Rename cmd names ([8fd8ced](https://github.com/goliatone/go-auth/commit/8fd8ced636928f162629684766b5342fce5aff29))  - (goliatone)
-- Rename cmd names ([b6fcfc6](https://github.com/goliatone/go-auth/commit/b6fcfc66511dd64352ec69a081f9c901f1535fd6))  - (goliatone)
 
 ## <!-- 22 -->🚧 WIP
 
 - Refactor JWT ([2627a0b](https://github.com/goliatone/go-auth/commit/2627a0be853e76f6c2dbc11339c339a6174bd6a4))  - (goliatone)
-- Refactor JWT ([6ea4092](https://github.com/goliatone/go-auth/commit/6ea4092bd5da26fe1ef2a98e6f1aee9b3f28082c))  - (goliatone)
-- Refactor JWT ([6762f31](https://github.com/goliatone/go-auth/commit/6762f31f4e87cac1d8bb0e3e83fb47bfe00d1f4a))  - (goliatone)
-- Refactor JWT ([b42484b](https://github.com/goliatone/go-auth/commit/b42484b3a222ff718d4c969763e7adc2ddceed8e))  - (goliatone)
 - Testing ([1a97ef2](https://github.com/goliatone/go-auth/commit/1a97ef2c1ec9e7e64da7d2801de5a8835071f43e))  - (goliatone)
 - Tests for controller ([1e542cc](https://github.com/goliatone/go-auth/commit/1e542cc0f32accadad0c590d66d00c9d2f4a0a40))  - (goliatone)
 - Update to use new router version ([331c155](https://github.com/goliatone/go-auth/commit/331c1554d7f8df5f92b47700ca0a6e06dfb6bb1f))  - (goliatone)
@@ -144,10 +146,8 @@
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
 
 - Update deps ([25c1098](https://github.com/goliatone/go-auth/commit/25c10988ba439413d426412a733990950ad6a741))  - (goliatone)
-- Update deps ([b64efee](https://github.com/goliatone/go-auth/commit/b64efee77c9b09240fbb76fb618ddbab0e9c4ba1))  - (goliatone)
-- Update deps ([b53cd6c](https://github.com/goliatone/go-auth/commit/b53cd6cb62a95e9dbb19b5b3d36105d66a172f41))  - (goliatone)
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
 
-<!-- generated by git-cliff -->
+
