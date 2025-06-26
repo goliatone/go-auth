@@ -3,8 +3,8 @@ package auth
 import (
 	"fmt"
 
-	validation "github.com/go-ozzo/ozzo-validation"
-	"github.com/go-ozzo/ozzo-validation/is"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/go-ozzo/ozzo-validation/v4/is"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 
@@ -202,7 +202,8 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
 	errors := map[string]string{}
 
-	a.Logger.Debug("--- Login Post: ", "request-id", ctx.Header("X-Request-ID"))
+	reqID := ctx.Header("X-Request-ID")
+	a.Logger.Debug("--- Login Post: ", "request-id", reqID)
 
 	if err := ctx.Bind(payload); err != nil {
 		a.Logger.Error("Login post bind error", err)
@@ -211,12 +212,15 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 
 	if err := payload.Validate(); err != nil {
 		a.Logger.Error("Login post validation error", err)
+		fmt.Println(err.ValidationMap())
+		fmt.Println(print.MaybePrettyJSON(err.ValidationMap()))
+
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Message,
 			"system_message": "Error validating payload",
 		}).Render(a.Views.Login, router.ViewContext{
 			"record":     payload,
-			"validation": err.ValiationMap(),
+			"validation": err.ValidationMap(),
 		})
 	}
 
@@ -307,7 +311,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 			"system_message": "Error validating payload",
 		}).Render(a.Views.Register, router.ViewContext{
 			"record":     payload,
-			"validation": err.ValiationMap(),
+			"validation": err.ValidationMap(),
 		})
 	}
 
@@ -402,7 +406,7 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 			"system_message": "Error validating payload",
 		}).Render(a.Views.PasswordReset, router.ViewContext{
 			"record":     payload,
-			"validation": err.ValiationMap(),
+			"validation": err.ValidationMap(),
 		})
 	}
 
@@ -563,7 +567,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 			"system_message": "Error validating payload",
 		}).Render(a.Views.PasswordReset, router.ViewContext{
 			"record":     payload,
-			"validation": err.ValiationMap(),
+			"validation": err.ValidationMap(),
 		})
 	}
 
