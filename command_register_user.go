@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/goliatone/hashid/pkg/hashid"
@@ -52,7 +53,7 @@ func (h *RegisterUserHandler) execute(ctx context.Context, event RegisterUserMes
 		user.Phone = event.Phone
 		user.FirstName = event.FirstName
 		user.LastName = event.LastName
-		user.Username = event.Username
+		user.Username = getUsername(event.Username, event.Email)
 		if event.UseHashid {
 			if id, err := hashid.NewUUID(event.Email); err == nil {
 				user.ID = id
@@ -67,4 +68,16 @@ func (h *RegisterUserHandler) execute(ctx context.Context, event RegisterUserMes
 	})
 
 	return err
+}
+
+func getUsername(username, email string) string {
+	if username != "" {
+		return username
+	}
+
+	if strings.Contains(email, "@") {
+		username = strings.Split(email, "@")[0]
+	}
+
+	return username
 }
