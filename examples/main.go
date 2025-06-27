@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/signal"
@@ -14,7 +16,9 @@ import (
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
 	repo "github.com/goliatone/go-auth/repository"
+	cfs "github.com/goliatone/go-composite-fs"
 	gconfig "github.com/goliatone/go-config/config"
+	"github.com/goliatone/go-logger/glog"
 	"github.com/goliatone/go-persistence-bun"
 	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
@@ -25,6 +29,9 @@ import (
 	"github.com/uptrace/bun/driver/sqliteshim"
 )
 
+// go embed ./public
+var assetsFS embed.FS
+
 type App struct {
 	config *gconfig.Container[*config.BaseConfig]
 	bunDB  *bun.DB
@@ -32,6 +39,7 @@ type App struct {
 	auther auth.HTTPAuthenticator
 	repo   auth.RepositoryManager
 	srv    router.Server[*fiber.App]
+	logger *glog.BaseLogger
 }
 
 func (a *App) Config() *config.BaseConfig {
@@ -44,6 +52,15 @@ func (a *App) SetRepository(repo auth.RepositoryManager) {
 
 func (a *App) SetDB(db *bun.DB) {
 	a.bunDB = db
+}
+
+func (a *App) SetLogger(lgr *glog.BaseLogger) *App {
+	a.logger = lgr
+	return a
+}
+
+func (a *App) GetLogger(name string) glog.Logger {
+	return a.logger.GetLogger(name)
 }
 
 func (a *App) SetHTTPServer(srv router.Server[*fiber.App]) {
@@ -75,8 +92,15 @@ func main() {
 	fmt.Println(print.MaybePrettyJSON(cfg.Raw()))
 	fmt.Println("============")
 
+	lgr := glog.NewLogger(
+		glog.WithLoggerTypePretty(),
+		glog.WithLevel(glog.Trace),
+		glog.WithName("app"),
+	)
+
 	app := &App{
 		config: cfg,
+		logger: lgr,
 	}
 
 	if err := WithPersistence(ctx, app); err != nil {
@@ -114,12 +138,26 @@ func ProtectedRoutes(app *App) {
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
-	srv := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
-		engine, err := router.InitializeViewEngine(app.config.Raw().GetViews())
-		if err != nil {
-			panic(err)
-		}
+	vcfg := app.Config().GetViews()
 
+	vcfg.SetAssetsFS(
+		cfs.NewCompositeFS(
+			assetsFS,
+			os.DirFS(vcfg.GetAssetsDir()),
+		),
+	)
+
+	comp := cfs.NewCompositeFS(
+		os.DirFS(vcfg.GetDirFS()),
+	)
+	vcfg.SetTemplatesFS([]fs.FS{comp})
+
+	engine, err := router.InitializeViewEngine(vcfg, app.GetLogger("views"))
+	if err != nil {
+		return err
+	}
+
+	srv := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return router.DefaultFiberOptions(fiber.New(fiber.Config{
 			UnescapePath:      true,
 			EnablePrintRoutes: true,
@@ -128,6 +166,8 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 			Views:             engine,
 		}))
 	})
+
+	srv.Router().WithLogger(app.GetLogger("router"))
 
 	srv.Router().Use(flash.ToMiddleware(flash.DefaultFlash, "flash"))
 
@@ -171,7 +211,7 @@ func WithPersistence(ctx context.Context, app *App) error {
 		return err
 	}
 
-	client.SetLogger(log.Printf)
+	client.SetLogger(app.GetLogger("persistence"))
 	client.RegisterSQLMigrations(auth.GetMigrationsFS())
 
 	if err := client.Migrate(context.Background()); err != nil {
@@ -214,6 +254,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 			ac.Debug = true
 			ac.Auther = httpAuth
 			ac.Repo = repo
+			ac.Logger = glog.NewLogger(glog.WithName("auth:ctrl"))
 			return ac
 		})
 
