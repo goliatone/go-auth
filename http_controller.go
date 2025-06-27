@@ -100,13 +100,15 @@ type AuthControllerViews struct {
 }
 
 type AuthController struct {
-	Debug        bool
-	Logger       Logger
-	Repo         RepositoryManager
-	Routes       *AuthControllerRoutes
-	Views        *AuthControllerViews
-	Auther       HTTPAuthenticator
-	ErrorHandler router.ErrorHandler
+	Debug            bool
+	Logger           Logger
+	Repo             RepositoryManager
+	Routes           *AuthControllerRoutes
+	Views            *AuthControllerViews
+	Auther           HTTPAuthenticator
+	ErrorHandler     router.ErrorHandler
+	RegisterRedirect string
+	UseHashID        bool
 }
 
 type AuthControllerOption func(*AuthController) *AuthController
@@ -118,10 +120,46 @@ func WithControllerLogger(logger Logger) AuthControllerOption {
 	}
 }
 
+func WithErrorHandler(errHandler router.ErrorHandler) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.ErrorHandler = errHandler
+		return ac
+	}
+}
+
+func WithAuthControllerRoutes(r *AuthControllerRoutes) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.Routes = r
+		return ac
+	}
+}
+
+func WithAuthControllerViews(v *AuthControllerViews) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.Views = v
+		return ac
+	}
+}
+
+func WithAuthControllerRedirect(r string) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.RegisterRedirect = r
+		return ac
+	}
+}
+
+func WithAuthControllerUseHashID(v bool) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.UseHashID = v
+		return ac
+	}
+}
+
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
-		Logger:       defLogger{},
-		ErrorHandler: defaultErrHandler,
+		Logger:           defLogger{},
+		ErrorHandler:     defaultErrHandler,
+		RegisterRedirect: "/",
 		Routes: &AuthControllerRoutes{
 			Login:         "/login",
 			Logout:        "/logout",
@@ -321,6 +359,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 		Email:     payload.Email,
 		Phone:     payload.Phone,
 		Password:  payload.Password,
+		UseHashid: a.UseHashID,
 	}
 
 	registerUser := RegisterUserHandler{repo: a.Repo}
@@ -336,9 +375,29 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 		})
 	}
 
+	signIn := LoginRequest{
+		Identifier: payload.Email,
+		Password:   payload.Password,
+		RememberMe: true,
+	}
+
+	if err := a.Auther.Login(ctx, signIn); err != nil {
+		return ctx.Render(a.Views.Login, router.ViewContext{
+			"errors": map[string]string{
+				"authentication": "Authentication Error",
+			},
+			"payload": payload,
+		})
+	}
+
+	redirect := "/"
+	if a.RegisterRedirect != "" {
+		redirect = a.RegisterRedirect
+	}
+
 	return flash.WithSuccess(ctx, router.ViewContext{
 		"system_message": "Successful user registration",
-	}).Redirect("/", fiber.StatusSeeOther)
+	}).Redirect(redirect, fiber.StatusSeeOther)
 }
 
 const (
