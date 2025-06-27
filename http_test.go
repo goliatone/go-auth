@@ -144,7 +144,7 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
-	mockConfig.On("GetRejectedRouteKey").Return("rejected_route").Times(3)
+	mockConfig.On("GetRejectedRouteKey").Return("rejected_route").Maybe()
 	mockConfig.On("GetRejectedRouteDefault").Return("/login")
 
 	httpAuth, err := auth.NewHTTPAuthenticator(mockAuth, mockConfig)
@@ -163,10 +163,13 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 		mockCtx.AssertExpectations(t)
 	})
 
-	t.Run("GetRedirect", func(t *testing.T) {
+	t.Run("GetRedirect_WithCookie", func(t *testing.T) {
 		mockCtx := router.NewMockContext()
 
-		mockCtx.On("Cookies", "rejected_route").Return("/dashboard")
+		// NOTE: we need to set the cookie value directly in the mock map
+		// instead of trying to mock the Cookies method
+		mockCtx.CookiesM["rejected_route"] = "/dashboard"
+
 		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
 			return c.Name == "rejected_route" && c.Value == "" && c.HTTPOnly && c.Expires.Before(time.Now())
 		})).Return()
@@ -174,14 +177,44 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 		redirect := httpAuth.GetRedirect(mockCtx, "/home")
 		assert.Equal(t, "/dashboard", redirect)
 
+		assert.Equal(t, "", mockCtx.CookiesM["rejected_route"])
+
 		mockCtx.AssertExpectations(t)
 	})
 
-	t.Run("GetRedirectOrDefault", func(t *testing.T) {
+	t.Run("GetRedirect_WithoutCookie", func(t *testing.T) {
 		mockCtx := router.NewMockContext()
 
+		redirect := httpAuth.GetRedirect(mockCtx, "/home")
+		assert.Equal(t, "/home", redirect)
+
+		mockCtx.AssertExpectations(t)
+	})
+
+	t.Run("GetRedirectOrDefault_WithReferer", func(t *testing.T) {
+		mockCtx := router.NewMockContext()
+
+		mockCtx.CookiesM["rejected_route"] = "/some-referer"
+
 		mockCtx.On("Referer").Return("/some-referer")
-		mockCtx.On("Cookies", "rejected_route", "/some-referer").Return("")
+
+		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
+			return c.Name == "rejected_route" && c.Value == "" && c.HTTPOnly && c.Expires.Before(time.Now())
+		})).Return()
+
+		redirect := httpAuth.GetRedirectOrDefault(mockCtx)
+		assert.Equal(t, "/some-referer", redirect)
+
+		assert.Equal(t, "", mockCtx.CookiesM["rejected_route"])
+
+		mockCtx.AssertExpectations(t)
+	})
+
+	t.Run("GetRedirectOrDefault_UsesConfigDefault", func(t *testing.T) {
+		mockCtx := router.NewMockContext()
+
+		mockCtx.On("Referer").Return("")
+
 		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
 			return c.Name == "rejected_route" && c.Value == "" && c.HTTPOnly && c.Expires.Before(time.Now())
 		})).Return()
