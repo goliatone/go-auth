@@ -21,8 +21,6 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/flosch/pongo2/v6 v6.0.0 h1:lsGru8IAzHgIAw6H2m4PCyleO58I40ow6apih0WprMU=
 github.com/flosch/pongo2/v6 v6.0.0/go.mod h1:CuDpFm47R0uGGE7z13/tTlt1Y6zdxvr2RLT5LJhsHEU=
-github.com/go-ozzo/ozzo-validation v3.6.0+incompatible h1:msy24VGS42fKO9K1vLz82/GeYW1cILu7Nuuj1N3BBkE=
-github.com/go-ozzo/ozzo-validation v3.6.0+incompatible/go.mod h1:gsEKFIVnabGBt6mXmxK0MoFy+cZoTJY6mu5Ll3LVLBU=
 github.com/go-ozzo/ozzo-validation/v4 v4.3.0 h1:byhDUpfEwjsVQb1vBunvIjh2BHQ9ead57VkAEY4V+Es=
 github.com/go-ozzo/ozzo-validation/v4 v4.3.0/go.mod h1:2NKgrcHl3z6cJs+3Oo940FPRiTzuqKbvfrL2RxCj6Ew=
 github.com/gobwas/glob v0.2.3 h1:A4xDbljILXROh+kObIiy5kIaPYD8e96x1tgBhUI5J+Y=
@@ -39,8 +37,10 @@ github.com/golang-jwt/jwt/v5 v5.2.1 h1:OuVbFODueb089Lh128TAcimifWaLhJwVflnrgM17w
 github.com/golang-jwt/jwt/v5 v5.2.1/go.mod h1:pqrtFR0X4osieyHYxtmOUWsAWrfe1Q5UVIyoH402zdk=
 github.com/goliatone/go-composite-fs v0.0.1 h1:sX1mHuYwIRhiyhnezK5JN3B70DpHjlGAyJjUhppRwMk=
 github.com/goliatone/go-composite-fs v0.0.1/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
-github.com/goliatone/go-errors v0.5.2 h1:j6gOh4/DrlM8M3gd7mvU0f8aqW+oWBTzh6vJCBIxOD4=
-github.com/goliatone/go-errors v0.5.2/go.mod h1:FiZEC2z5a8SBdRyljC9wFt+IzqZDfrst2dPoqWARbr4=
+github.com/goliatone/go-errors v0.6.0 h1:Y9V8zhdAXsPFsoIC7dRgvLLrN4Wz66sFW7uAdXw3RgM=
+github.com/goliatone/go-errors v0.6.0/go.mod h1:FiZEC2z5a8SBdRyljC9wFt+IzqZDfrst2dPoqWARbr4=
+github.com/goliatone/go-errors v0.7.0 h1:F2+0oY/0jbt/PnlfLsUmIyRy0jAgvs7ciwjyJXCPMDE=
+github.com/goliatone/go-errors v0.7.0/go.mod h1:FiZEC2z5a8SBdRyljC9wFt+IzqZDfrst2dPoqWARbr4=
 github.com/goliatone/go-masker v0.1.0 h1:YiNxBRC7AXpGKtUlXIoU4oj3DUfE+M2fvcDRyYC4Tt4=
 github.com/goliatone/go-masker v0.1.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
 github.com/goliatone/go-print v0.4.1 h1:rRcmZOWd27gq25Ays0nRu09tAH6wgTdfshE4rPpNYNY=
@@ -49,6 +49,8 @@ github.com/goliatone/go-repository-bun v0.4.3 h1:8cUt0EmSRf2df0xnH9RmtOcAthjMYcP
 github.com/goliatone/go-repository-bun v0.4.3/go.mod h1:XlE7pkvZs08IAdwiF8qYLmz08JadMcWkNin+fkSYyzY=
 github.com/goliatone/go-router v0.2.3 h1:MHTdci0Ce2tLkuUlM43RxdqYV6iPplagND8mp8DzxR4=
 github.com/goliatone/go-router v0.2.3/go.mod h1:rzHm13w2Vx6bTAqDjzung65m+dYidr+cyCykEPNYTHI=
+github.com/goliatone/go-router v0.3.0 h1:NG7Oa7c78Mhi2CZi6YKYy/ml7/TTsAfaO7kGA5kR7c8=
+github.com/goliatone/go-router v0.3.0/go.mod h1:uX3E8Y2Q/p72zfACH1WCjsnHJ4b5xrhsoTuN7uXbx9M=
 github.com/goliatone/hashid v0.1.1 h1:VfZZf7s0uM+JZ3ZBkqaEM1mL/CJfiTmFOzZ1QuXY3EM=
 github.com/goliatone/hashid v0.1.1/go.mod h1:K9jzegsVvT8S+Nn5wL1AuGVKcz2jcwYMxwe4g1UGz4E=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=

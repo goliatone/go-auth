@@ -4,14 +4,14 @@ go 1.23.4
 
 require (
 	github.com/MicahParks/keyfunc/v2 v2.1.0
-	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
+	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/goliatone/go-errors v0.5.2
+	github.com/goliatone/go-errors v0.7.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.4.3
-	github.com/goliatone/go-router v0.2.3
+	github.com/goliatone/go-router v0.3.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
@@ -28,7 +28,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
-	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
