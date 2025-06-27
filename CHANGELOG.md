@@ -1,5 +1,34 @@
 # Changelog
 
+# [0.3.0](https://github.com/goliatone/go-auth/compare/v0.2.0...v0.3.0) - (2025-06-27)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Configure examples ([caf4a80](https://github.com/goliatone/go-auth/commit/caf4a80c1515c6783c2446f16ee137add41ee460))  - (goliatone)
+- Update examples ([74c2316](https://github.com/goliatone/go-auth/commit/74c231662ae0674992406f8d5350c815b78bc7cf))  - (goliatone)
+- Test view for login errors ([b4d0205](https://github.com/goliatone/go-auth/commit/b4d020506358b9cc8b2a6bb5ae2ccd8d9632c6c8))  - (goliatone)
+- Tests to use new router mock object ([58f1a4a](https://github.com/goliatone/go-auth/commit/58f1a4a2e62b2545cc644490a817da8e35a6a2d1))  - (goliatone)
+- Configure redirect after create user. add: options for controller ([0b4e8e7](https://github.com/goliatone/go-auth/commit/0b4e8e7b4294a6266f676856e672d8eab4ffe5ce))  - (goliatone)
+- Ensure we have a username from email ([0a9811a](https://github.com/goliatone/go-auth/commit/0a9811ae0cde3642413662204a34ea44ad3f8896))  - (goliatone)
+- Update erorr integration ([93f54c1](https://github.com/goliatone/go-auth/commit/93f54c171f0b8cddf74025e249eff4afd07e8a1d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.3.0 ([9cbd1cb](https://github.com/goliatone/go-auth/commit/9cbd1cb5299e1703ce6fedfd0451ea63a391ab19))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Fix migration to work in sqlite and postgres ([5590612](https://github.com/goliatone/go-auth/commit/5590612b5fb3debcfb82333676269017ceb4a360))  - (goliatone)
+- Profile view ([36ae9fa](https://github.com/goliatone/go-auth/commit/36ae9fa80cc5d7c3824c66bfb447f6fdcadea27f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.0 ([598841f](https://github.com/goliatone/go-auth/commit/598841f4d5ce5fb7d38ab49c1dd9b791d5826baf))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([6faf9db](https://github.com/goliatone/go-auth/commit/6faf9db87c0987847656ce8e64aaefafe358188f))  - (goliatone)
+
 # [0.2.0](https://github.com/goliatone/go-auth/compare/v0.1.1...v0.2.0) - (2025-06-24)
 
 ## <!-- 13 -->📦 Bumps
