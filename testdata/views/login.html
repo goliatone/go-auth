@@ -13,7 +13,14 @@
         </div>
     {% endif %}
     {% if validation %}
-        <div class="validation">{{ validation }}</div>
+    <div class="validation-errors">
+        <h3>Validation Errors:</h3>
+        <ul>
+            {% for field, error in validation %}
+            <li><strong>{{ field }}:</strong> {{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
     {% endif %}
     <form method="post" action="/login">
         <div>
