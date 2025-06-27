@@ -25,12 +25,12 @@
     "js_path": "js",
     "reload": true,
     "debug": true,
-    "embed": false,
+    "embed": true,
     "ext": ".html",
     "dir_os": "./views",
     "dir_fs": "./views",
     "dev_dir": "",
     "assets_dir": "public",
-    "remove_path_prefix": "public/"
+    "url_prefix": ""
   }
 }
