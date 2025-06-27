@@ -136,14 +136,14 @@ func (v Views) GetReload() bool {
 	return v.Reload
 }
 
-func (v Views) GetRemovePathPrefix() string {
-	return v.RemovePathPrefix
-}
-
 func (v Views) GetTemplateFunctions() map[string]any {
 	return v.TemplateFunctions
 }
 
 func (v Views) GetTemplatesFS() []fs.FS {
 	return v.TemplatesFS
+}
+
+func (v Views) GetURLPrefix() string {
+	return v.URLPrefix
 }

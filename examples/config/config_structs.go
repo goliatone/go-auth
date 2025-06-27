@@ -45,9 +45,9 @@ type Views struct {
 	Ext               string         `json:"ext" koanf:"ext"`
 	JSPath            string         `json:"js_path" koanf:"js_path"`
 	Reload            bool           `json:"reload" koanf:"reload"`
-	RemovePathPrefix  string         `json:"remove_path_prefix" koanf:"remove_path_prefix"`
 	TemplateFunctions map[string]any `json:"template_functions" koanf:"template_functions"`
 	TemplatesFS       []fs.FS        `json:"templates_fs" koanf:"templates_fs"`
+	URLPrefix         string         `json:"url_prefix" koanf:"url_prefix"`
 }
 
 func (v *Views) SetAssetsFS(val fs.FS) {
