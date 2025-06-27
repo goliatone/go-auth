@@ -11,6 +11,7 @@ CREATE TABLE users (
 	-- phone_number TEXT NULL UNIQUE,
 	phone_number TEXT,
 	password_hash TEXT,
+	-- metadata TEXT NOT NULL DEFAULT '{}',
 	metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
 	is_email_verified BOOLEAN DEFAULT FALSE,
 	login_attempts INTEGER DEFAULT 0,
@@ -22,11 +23,11 @@ CREATE TABLE users (
 	updated_at  TIMESTAMP
 );
 
-CREATE UNIQUE INDEX users_username_unique ON users(username text_ops);
-CREATE INDEX users_username_index ON users(username text_ops);
-CREATE UNIQUE INDEX users_email_unique ON users(email text_ops);
-CREATE INDEX users_email_index ON users(email text_ops);
-CREATE INDEX users_is_email_verified_index ON users(is_email_verified bool_ops);
+CREATE UNIQUE INDEX users_username_unique ON users(username);
+CREATE INDEX users_username_index ON users(username);
+CREATE UNIQUE INDEX users_email_unique ON users(email);
+CREATE INDEX users_email_index ON users(email);
+CREATE INDEX users_is_email_verified_index ON users(is_email_verified);
 
 ---bun:split
 
