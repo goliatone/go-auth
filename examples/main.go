@@ -12,12 +12,15 @@ import (
 	"syscall"
 	"time"
 
+	validation "github.com/go-ozzo/ozzo-validation"
+	"github.com/go-ozzo/ozzo-validation/v4/is"
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
 	gconfig "github.com/goliatone/go-config/config"
+	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-logger/glog"
 	"github.com/goliatone/go-persistence-bun"
 	"github.com/goliatone/go-print"
@@ -77,23 +80,23 @@ func (a *App) SetHTTPAuth(auther auth.HTTPAuthenticator) {
 
 func main() {
 
-	ctx := context.Background()
-
-	cfg := gconfig.New(&config.BaseConfig{})
-
-	if err := cfg.Load(ctx); err != nil {
-		panic(err)
-	}
-
-	fmt.Println("============")
-	fmt.Println(print.MaybePrettyJSON(cfg.Raw()))
-	fmt.Println("============")
-
 	lgr := glog.NewLogger(
 		glog.WithLoggerTypePretty(),
 		glog.WithLevel(glog.Trace),
 		glog.WithName("app"),
 	)
+
+	cfg := gconfig.New(&config.BaseConfig{}).
+		WithLogger(lgr.GetLogger("config"))
+
+	ctx := context.Background()
+	if err := cfg.Load(ctx); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("============")
+	fmt.Println(print.MaybeHighlightJSON(cfg.Raw()))
+	fmt.Println("============")
 
 	app := &App{
 		config: cfg,
@@ -132,6 +135,7 @@ func ProtectedRoutes(app *App) {
 	)
 
 	p.Get("/me", ProfileShow(app), protected)
+	p.Post("/me", ProfileUpdate(app), protected)
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
@@ -178,7 +182,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	srv.Router().Get("/", func(ctx router.Context) error {
 		return ctx.Render("test", router.ViewContext{
 			"title":   "Home Renderer",
-			"message": "This is your Home Page",
+			"message": `<p>This is your Home Page</p><a href="/me">Profile</a>`,
 		})
 	})
 
@@ -271,17 +275,32 @@ func WaitExitSignal() os.Signal {
 /////
 
 type UserRecord struct {
-	ID             uuid.UUID  `json:"id"`
-	FirstName      string     `json:"first_name"`
-	LastName       string     `json:"last_name"`
-	Username       string     `json:"username"`
-	Email          string     `json:"email"`
-	Phone          string     `json:"phone_number"`
-	EmailValidated bool       `json:"is_email_verified"`
-	DeletedAt      *time.Time `json:"deleted_at"`
-	ResetedAt      *time.Time `json:"reseted_at"`
-	CreatedAt      *time.Time `json:"created_at"`
-	UpdatedAt      *time.Time `json:"updated_at"`
+	ID             uuid.UUID  `form:"id" json:"id"`
+	FirstName      string     `form:"first_name" json:"first_name"`
+	LastName       string     `form:"last_name" json:"last_name"`
+	Username       string     `form:"username" json:"username"`
+	Email          string     `form:"email" json:"email"`
+	Phone          string     `form:"phone_number" json:"phone_number"`
+	ProfilePicture string     `form:"profile_picture" json:"profile_picture"`
+	EmailValidated bool       `form:"is_email_verified" json:"is_email_verified"`
+	DeletedAt      *time.Time `form:"deleted_at" json:"deleted_at"`
+	ResetedAt      *time.Time `form:"reseted_at" json:"reseted_at"`
+	CreatedAt      *time.Time `form:"created_at" json:"created_at"`
+	UpdatedAt      *time.Time `form:"updated_at" json:"updated_at"`
+}
+
+// Validate will run validation rules
+func (r UserRecord) Validate() *errors.Error {
+	return errors.ValidateWithOzzo(func() error {
+		return validation.ValidateStruct(&r,
+			validation.Field(
+				&r.ID,
+				validation.Required,
+				is.UUID,
+			),
+		)
+	}, "Invalid login request payload")
+
 }
 
 func NewUserDTO(user *auth.User) UserRecord {
@@ -305,19 +324,73 @@ func ProfileShow(app *App) func(c router.Context) error {
 		cookie := c.Cookies(contextKey)
 		session, err := app.auth.SessionFromToken(cookie)
 		if err != nil {
-			return c.Render("errors/500", fiber.Map{
+			return c.Render("errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
 
 		user, err := app.repo.Users().GetByID(c.Context(), session.GetUserID())
 		if err != nil {
-			return c.Render("errors/500", fiber.Map{
+			return c.Render("errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
 
-		return c.Render("profile", fiber.Map{
+		return c.Render("profile", router.ViewContext{
+			"errors": nil,
+			"record": NewUserDTO(user),
+		})
+	}
+}
+
+// ProfileUpdate will render the user's profile page
+func ProfileUpdate(app *App) func(c router.Context) error {
+	contextKey := app.Config().GetAuth().GetContextKey()
+	return func(c router.Context) error {
+		cookie := c.Cookies(contextKey)
+		session, err := app.auth.SessionFromToken(cookie)
+		if err != nil {
+			return c.Render("errors/500", router.ViewContext{
+				"message": err.Error(),
+			})
+		}
+
+		payload := new(UserRecord)
+
+		if err := c.Bind(payload); err != nil {
+			return c.Render("errors/500", router.ViewContext{
+				"message": err.Error(),
+			})
+		}
+
+		if err := payload.Validate(); err != nil {
+			return flash.WithError(c, router.ViewContext{
+				"error_message":  err.Message,
+				"system_message": "Error validating payload",
+			}).Render("profile", router.ViewContext{
+				"record":     payload,
+				"validation": err.ValidationMap(),
+			})
+		}
+
+		uid, err := session.GetUserUUID()
+
+		record := &auth.User{
+			ID:             uid,
+			FirstName:      payload.FirstName,
+			LastName:       payload.LastName,
+			Username:       payload.Username,
+			ProfilePicture: payload.ProfilePicture,
+		}
+
+		user, err := app.repo.Users().Update(c.Context(), record)
+		if err != nil {
+			return c.Render("errors/500", router.ViewContext{
+				"message": err.Error(),
+			})
+		}
+
+		return c.Render("profile", router.ViewContext{
 			"errors": nil,
 			"record": NewUserDTO(user),
 		})
