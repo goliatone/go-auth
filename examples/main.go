@@ -79,10 +79,7 @@ func main() {
 
 	ctx := context.Background()
 
-	cfg, err := gconfig.New(&config.BaseConfig{})
-	if err != nil {
-		panic(err)
-	}
+	cfg := gconfig.New(&config.BaseConfig{})
 
 	if err := cfg.Load(ctx); err != nil {
 		panic(err)
