@@ -174,7 +174,7 @@ func TestRegistrationShow(t *testing.T) {
 }
 
 func TestRegistrationCreate_Success(t *testing.T) {
-	controller, mockRepo, mockUsers, _, _, adapter := setupTestController(t)
+	controller, mockRepo, mockUsers, _, mockHTTPAuth, adapter := setupTestController(t)
 	r := adapter.Router()
 
 	mockRepo.
@@ -189,7 +189,7 @@ func TestRegistrationCreate_Success(t *testing.T) {
 	userID := uuid.New()
 	user := &auth.User{
 		ID:        userID,
-		FirstName: "Jhon",
+		FirstName: "John",
 		LastName:  "Doe",
 		Email:     "john.doe@example.com",
 		Phone:     "1234567890",
@@ -199,6 +199,11 @@ func TestRegistrationCreate_Success(t *testing.T) {
 		On("CreateTx", mock.Anything, mock.Anything, mock.Anything).
 		Return(user, nil).
 		Once()
+
+	mockHTTPAuth.On("Login", mock.Anything, mock.MatchedBy(func(payload auth.LoginPayload) bool {
+		return payload.GetIdentifier() == "john.doe@example.com" &&
+			payload.GetPassword() == "password123456"
+	})).Return(nil).Once()
 
 	r.Post("/register", controller.RegistrationCreate)
 
@@ -227,6 +232,7 @@ func TestRegistrationCreate_Success(t *testing.T) {
 
 	mockRepo.AssertExpectations(t)
 	mockUsers.AssertExpectations(t)
+	mockHTTPAuth.AssertExpectations(t)
 }
 
 func TestRegistrationCreate_ValidationError(t *testing.T) {
