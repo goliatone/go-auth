@@ -1,69 +1,86 @@
 package auth
 
 import (
-	"errors"
 	"strings"
+
+	"github.com/goliatone/go-errors"
 )
 
-// ErrIdentityNotFound is the error we return for non found identities
-var ErrIdentityNotFound = errors.New("identity not found")
+const (
+	TextCodeInvalidCreds       = "INVALID_CREDENTIALS"
+	TextCodeTooManyAttempts    = "TOO_MANY_ATTEMPTS"
+	TextCodeSessionNotFound    = "SESSION_NOT_FOUND"
+	TextCodeSessionDecodeError = "SESSION_DECODE_ERROR"
+	TextCodeClaimsMappingError = "CLAIMS_MAPPING_ERROR"
+	TextCodeDataParseError     = "DATA_PARSE_ERROR"
+	TextCodeEmptyPassword      = "EMPTY_PASSWORD_NOT_ALLOWED"
+	TextCodeTokenExpired       = "TOKEN_EXPIRED"
+	// TextCodeTokenMalformed     = "TOKEN_MALFORMED"
+)
 
-// ErrUnableToFindSession is the error when our reequest has no cookie
-var ErrUnableToFindSession = errors.New("unable to find session")
+// ErrIdentityNotFound is returned when an identity cannot be found.
+var ErrIdentityNotFound = errors.New("identity not found", errors.CategoryNotFound).
+	WithCode(errors.CodeNotFound)
 
-// ErrUnableToDecodeSession unable to decode JWT from session cookie
-var ErrUnableToDecodeSession = errors.New("unable to decode session")
+// ErrMismatchedHashAndPassword is returned on a failure to check a password hash.
+// The message is generic to avoid leaking information.
+var ErrMismatchedHashAndPassword = errors.New("the credentials provided are invalid", errors.CategoryAuth).
+	WithTextCode(TextCodeInvalidCreds).
+	WithCode(errors.CodeUnauthorized)
 
-// ErrUnableToMapClaims unable to get claims from token
-var ErrUnableToMapClaims = errors.New("unable to map claims")
+// ErrTooManyLoginAttempts indicates the user has tried to log in too many times.
+var ErrTooManyLoginAttempts = errors.New("too many login attempts, please try again later", errors.CategoryRateLimit).
+	WithTextCode(TextCodeTooManyAttempts).
+	WithCode(errors.CodeTooManyRequests)
 
-// ErrUnableToParseData parse error
-var ErrUnableToParseData = errors.New("unable to parse data")
+// ErrUnableToFindSession is returned when a session (e.g., a cookie) is missing from a request.
+var ErrUnableToFindSession = errors.New("unable to find session", errors.CategoryAuth).
+	WithTextCode(TextCodeSessionNotFound).
+	WithCode(errors.CodeUnauthorized)
 
-// IsTokenExpiredError will check for expired tokens
+// ErrUnableToDecodeSession is returned when a session token (e.g., JWT) cannot be decoded or parsed.
+var ErrUnableToDecodeSession = errors.New("unable to decode session", errors.CategoryAuth).
+	WithTextCode(TextCodeSessionDecodeError).
+	WithCode(errors.CodeUnauthorized)
+
+// ErrUnableToMapClaims is returned when claims cannot be extracted from a parsed token.
+var ErrUnableToMapClaims = errors.New("unable to map claims from token", errors.CategoryAuth).
+	WithTextCode(TextCodeClaimsMappingError).
+	WithCode(errors.CodeUnauthorized)
+
+// ErrUnableToParseData is returned on a generic data parsing error within the auth context.
+var ErrUnableToParseData = errors.New("unable to parse authentication data", errors.CategoryBadInput).
+	WithTextCode(TextCodeDataParseError).
+	WithCode(errors.CodeBadRequest)
+
+// ErrNoEmptyString is returned when an empty string is provided for a value that must not be empty, like a password.
+var ErrNoEmptyString = errors.New("password can't be an empty string", errors.CategoryValidation).
+	WithTextCode(TextCodeEmptyPassword).
+	WithCode(errors.CodeBadRequest)
+
 func IsTokenExpiredError(err error) bool {
 	if err == nil {
 		return false
 	}
+
+	// var richErr *errors.Error
+	// if errors.As(err, &richErr) {
+	// 	return richErr.TextCode == TextCodeTokenExpired
+	// }
+
 	return strings.Contains(err.Error(), "token is expired")
 }
 
-// IsMalformedError will check for error message
 func IsMalformedError(err error) bool {
 	if err == nil {
 		return false
 	}
+
+	// var richErr *errors.Error
+	// if errors.As(err, &richErr) {
+	// 	return richErr.TextCode == TextCodeTokenMalformed
+	// }
+
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
-}
-
-// FormatValidationErrorToMap will take an error that stringified
-// returns something like this:
-// confirm_password: the length must be between 10 and 100; email: must be a valid email address; password: the length must be between 10 and 100
-func FormatValidationErrorToMap(err error) map[string]string {
-	out := map[string]string{}
-	raw := err.Error()
-
-	if !strings.Contains(raw, ";") {
-		out["error"] = raw
-		return out
-	}
-
-	parts := strings.Split(raw, ";")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		kv := strings.SplitN(part, ":", 2)
-		if len(kv) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(kv[0])
-		value := strings.TrimSpace(kv[1])
-		out[key] = value
-	}
-
-	return out
 }
