@@ -343,7 +343,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("register user validate payload: ", "error", err)
+		a.Logger.Error("register user validate payload: ", "error", err.ErrorWithStack())
 		return flash.WithError(ctx, router.ViewContext{
 			"error_message":  err.Message,
 			"system_message": "Error validating payload",
