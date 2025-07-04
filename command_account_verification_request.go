@@ -2,11 +2,9 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
-	"github.com/goliatone/go-repository-bun"
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/uptrace/bun"
 )
 
@@ -30,7 +28,7 @@ type AccountVerificationHandler struct {
 func (h *AccountVerificationHandler) Execute(ctx context.Context, event AccountVerificationMesage) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return goerrors.Wrap(ctx.Err(), goerrors.CategoryOperation, "context cancelled during account verification")
 	default:
 		return h.execute(ctx, event)
 	}
@@ -48,12 +46,15 @@ func (h *AccountVerificationHandler) execute(ctx context.Context, event AccountV
 	err = h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		reset, err = h.repo.PasswordResets().GetByID(ctx, event.Session)
 		if err != nil {
-			if repository.IsRecordNotFound(err) {
+			// if the record is not found, is part of expected flow, not an application error
+			if goerrors.IsNotFound(err) {
 				resp.Found = false
 				return nil
 			}
-			return fmt.Errorf("error getting reset: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to retrieve verification request")
 		}
+
+		resp.Found = true
 
 		if reset.Status != ResetRequestedStatus {
 			resp.Expired = true
@@ -61,19 +62,27 @@ func (h *AccountVerificationHandler) execute(ctx context.Context, event AccountV
 		}
 
 		if reset.CreatedAt == nil {
-			return errors.New("record has no created_at field")
+			return goerrors.New("password reset record is missing creation date", goerrors.CategoryInternal)
 		}
 
 		expired, err := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
 		if err != nil {
-			return fmt.Errorf("error parsing period: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to check token expiration period")
 		}
 
 		resp.Expired = expired
 		return nil
 	})
 
+	if err != nil {
+		var richErr *goerrors.Error
+		if goerrors.As(err, &richErr) {
+			return richErr
+		}
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to execute account verification")
+	}
+
 	event.OnResponse(resp)
 
-	return err
+	return nil
 }
