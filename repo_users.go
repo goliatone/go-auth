@@ -104,7 +104,10 @@ func (a *users) Get(ctx context.Context, criteria ...repository.SelectCriteria) 
 	}
 
 	if err := q.Limit(1).Scan(ctx); err != nil {
-		return nil, err
+		return nil, repository.NewRecordNotFound().
+			WithMetadata(map[string]any{
+				"criteria": criteria,
+			})
 	}
 
 	return record, nil
