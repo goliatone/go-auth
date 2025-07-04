@@ -31,9 +31,6 @@ var MaxLoginAttempts = 5
 // CoolDownPeriod is the period in which we enforce a cool down
 var CoolDownPeriod = "24h"
 
-// ErrTooManyLoginAttempts indicates the user has tried to many times
-var ErrTooManyLoginAttempts = errors.New("error too many login attempts")
-
 // NewUserProvider will create a new UserProvider
 func NewUserProvider(store UserTracker) *UserProvider {
 	return &UserProvider{
