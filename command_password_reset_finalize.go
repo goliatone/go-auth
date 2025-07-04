@@ -2,10 +2,9 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/uptrace/bun"
 )
 
@@ -19,6 +18,19 @@ type FinalizePasswordResetHandler struct {
 }
 
 func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event FinalizePasswordResetMesasge) error {
+	select {
+	case <-ctx.Done():
+		return goerrors.Wrap(
+			ctx.Err(),
+			goerrors.CategoryOperation,
+			"context cancelled during password reset finalization",
+		)
+	default:
+		return h.execute(ctx, event)
+	}
+}
+
+func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event FinalizePasswordResetMesasge) error {
 	reset := &PasswordReset{}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
@@ -30,49 +42,62 @@ func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event Finali
 		// find a password reset by token/id
 		reset, err = h.repo.PasswordResets().GetByID(ctx, event.Session)
 		if err != nil {
-			return fmt.Errorf("error getting reset: %w", err)
+			if goerrors.IsNotFound(err) {
+				return goerrors.New("invalid or expired password reset token", goerrors.CategoryNotFound).
+					WithCode(goerrors.CodeNotFound)
+			}
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "could not retrieve password reset request")
 		}
 
 		//make sure it was not used
 		if reset.Status != ResetRequestedStatus {
-			return fmt.Errorf("password reset used: %w", err)
+			return goerrors.New("password reset token has already been used", goerrors.CategoryConflict).
+				WithTextCode("TOKEN_ALREADY_USED")
 		}
 
 		if reset.CreatedAt == nil {
-			return errors.New("record has no created_at field")
+			return goerrors.New("password reset record is missing creation date", goerrors.CategoryInternal)
 		}
 
 		expired, err := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
 		if err != nil {
-			return fmt.Errorf("error parsing period: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to check token expiration period")
 		}
 
 		if expired {
-			return errors.New("record has expired")
+			return goerrors.New("password reset token has expired", goerrors.CategoryValidation).
+				WithTextCode(TextCodeTokenExpired)
 		}
 
 		passwordHash, err := HashPassword(event.Password)
 		if err != nil {
-			return fmt.Errorf("error hashing password: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryValidation, "invalid new password provided")
 		}
 
 		if reset.UserID == nil {
-			return errors.New("error password reset no user")
+			return goerrors.New("password reset record is not associated with a user", goerrors.CategoryInternal)
 		}
 
 		_, err = h.repo.Users().RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, reset.UserID.String())
 		if err != nil {
-			return fmt.Errorf("error resetting password: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
 		}
 
 		r := MarkPasswordAsReseted(reset.ID)
-		reset, err = h.repo.PasswordResets().UpdateTx(ctx, tx, r)
-		if err != nil {
-			return fmt.Errorf("error updating reset: %w", err)
+		if _, err := h.repo.PasswordResets().UpdateTx(ctx, tx, r); err != nil {
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update password reset status")
 		}
 
 		return nil
 	})
 
-	return err
+	if err != nil {
+		var richErr *goerrors.Error
+		if goerrors.As(err, &richErr) {
+			return richErr
+		}
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to finalize password reset")
+	}
+
+	return nil
 }
