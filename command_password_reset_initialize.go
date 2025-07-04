@@ -2,10 +2,10 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/uptrace/bun"
 )
@@ -32,7 +32,11 @@ type InitializePasswordResetHandler struct {
 func (h *InitializePasswordResetHandler) Execute(ctx context.Context, event InitializePasswordResetMessage) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return goerrors.Wrap(
+			ctx.Err(),
+			goerrors.CategoryOperation,
+			"context cancelled during password reset initialization",
+		)
 	default:
 		return h.execute(ctx, event)
 	}
@@ -46,52 +50,54 @@ func (h *InitializePasswordResetHandler) execute(ctx context.Context, event Init
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
+	if event.Stage != ResetInit {
+		return goerrors.New("unknown or invalid stage for password reset initialization", goerrors.CategoryBadInput).
+			WithMetadata(map[string]any{"stage": event.Stage})
+	}
+
 	var err error
 
-	switch event.Stage {
-	case ResetInit:
-		err = h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-			// retrieve the user
-			user, err = h.repo.Users().GetByIdentifier(ctx, event.Email)
-			if err != nil {
-				if repository.IsRecordNotFound(err) {
-					resp.Stage = AccountVerification
-					return nil
-				}
-				return fmt.Errorf("error getting user: %w", err)
+	err = h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// retrieve the user
+		user, err = h.repo.Users().GetByIdentifier(ctx, event.Email)
+		if err != nil {
+			if repository.IsRecordNotFound(err) {
+				resp.Stage = AccountVerification
+				return nil
 			}
-			reset.UserID = &user.ID
-			reset.Email = event.Email
-			reset.Status = ResetRequestedStatus
-			reset, err = h.repo.PasswordResets().CreateTx(ctx, tx, reset)
-			if err != nil {
-				return fmt.Errorf("error creating reset: %w", err)
-			}
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to retrieve user for password reset")
+		}
 
-			go func() {
-				// TODO: we need to handle emails...
-				printEmailNotification(reset.Email, reset.ID.String())
-			}()
+		reset.UserID = &user.ID
+		reset.Email = event.Email
+		reset.Status = ResetRequestedStatus
+		if createdReset, err := h.repo.PasswordResets().CreateTx(ctx, tx, reset); err != nil {
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to create password reset record")
+		} else {
+			resp.Reset = createdReset
+		}
 
-			resp.Reset = reset
-			resp.Stage = AccountVerification
-			return nil
-		})
-		break
-	// User might want to send another email, we need to throttle
-	case AccountVerification:
-	// We are actually changing the password
-	case ChangingPassword:
-		break
-	default:
-		err = errors.New("unkonwn stage")
+		go func() {
+			// TODO: we need to handle emails...
+			printEmailNotification(resp.Reset.Email, resp.Reset.ID.String())
+		}()
+
+		resp.Stage = AccountVerification
+		return nil
+	})
+
+	if err != nil {
+		var richErr *goerrors.Error
+		if goerrors.As(err, &richErr) {
+			return richErr
+		}
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to initialize password reset")
 	}
 
 	resp.Success = true
-
 	event.OnResponse(resp)
 
-	return err
+	return nil
 }
 
 func printEmailNotification(email, id string) {
