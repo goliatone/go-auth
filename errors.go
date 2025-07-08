@@ -15,7 +15,7 @@ const (
 	TextCodeDataParseError     = "DATA_PARSE_ERROR"
 	TextCodeEmptyPassword      = "EMPTY_PASSWORD_NOT_ALLOWED"
 	TextCodeTokenExpired       = "TOKEN_EXPIRED"
-	// TextCodeTokenMalformed     = "TOKEN_MALFORMED"
+	TextCodeTokenMalformed     = "TOKEN_MALFORMED"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -58,15 +58,25 @@ var ErrNoEmptyString = errors.New("password can't be an empty string", errors.Ca
 	WithTextCode(TextCodeEmptyPassword).
 	WithCode(errors.CodeBadRequest)
 
+// ErrTokenExpired is returned when a JWT token has expired.
+var ErrTokenExpired = errors.New("token is expired", errors.CategoryAuth).
+	WithTextCode(TextCodeTokenExpired).
+	WithCode(errors.CodeUnauthorized)
+
+// ErrTokenMalformed is returned when a JWT token is malformed.
+var ErrTokenMalformed = errors.New("token is malformed", errors.CategoryAuth).
+	WithTextCode(TextCodeTokenMalformed).
+	WithCode(errors.CodeBadRequest)
+
 func IsTokenExpiredError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// var richErr *errors.Error
-	// if errors.As(err, &richErr) {
-	// 	return richErr.TextCode == TextCodeTokenExpired
-	// }
+	var richErr *errors.Error
+	if errors.As(err, &richErr) {
+		return richErr.TextCode == TextCodeTokenExpired
+	}
 
 	return strings.Contains(err.Error(), "token is expired")
 }
@@ -76,10 +86,10 @@ func IsMalformedError(err error) bool {
 		return false
 	}
 
-	// var richErr *errors.Error
-	// if errors.As(err, &richErr) {
-	// 	return richErr.TextCode == TextCodeTokenMalformed
-	// }
+	var richErr *errors.Error
+	if errors.As(err, &richErr) {
+		return richErr.TextCode == TextCodeTokenMalformed
+	}
 
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
