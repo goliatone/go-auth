@@ -2,8 +2,8 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
+
+	"github.com/goliatone/go-errors"
 )
 
 // AccountRegistrerer is the interface we need to handle new user registrations
@@ -22,6 +22,7 @@ type UserTracker interface {
 type UserProvider struct {
 	store     UserTracker
 	Validator func(*User) error
+	logger    Logger
 }
 
 // MaxLoginAttempts is the maximun number of attempts a user gets
@@ -35,8 +36,14 @@ var CoolDownPeriod = "24h"
 func NewUserProvider(store UserTracker) *UserProvider {
 	return &UserProvider{
 		store:     store,
+		logger:    &defLogger{},
 		Validator: defaultValidator,
 	}
+}
+
+func (u *UserProvider) WithLogger(l Logger) *UserProvider {
+	u.logger = l
+	return u
 }
 
 func (u *UserProvider) validate(user *User) error {
@@ -51,14 +58,18 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 	// TODO: We should select id, password_hash, login_attempts, loging_attempt_at
 	user, err := u.store.GetByIdentifier(ctx, identifier)
 	if err != nil {
-		return nil, fmt.Errorf("find identity: %w", err)
+		if errors.IsNotFound(err) {
+			return nil, ErrMismatchedHashAndPassword
+		}
+		return nil, errors.Wrap(err, errors.CategoryInternal, "failed to retrieve user during verification")
 	}
 
 	if user.LoginAttemptAt != nil {
 		expired, err := IsOutsideThresholdPeriod(*user.LoginAttemptAt, CoolDownPeriod)
 		if err != nil {
-			return nil, fmt.Errorf("error calculating threshold: %w", err)
+			return nil, errors.Wrap(err, errors.CategoryInternal, "failed to calculdate login attempt cooldown")
 		}
+
 		if expired {
 			user.LoginAttempts = 0
 		}
@@ -72,24 +83,26 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 	if err := ComparePasswordAndHash(password, user.PasswordHash); err != nil {
 		// We have to increment the login_attempts counter and login_attempt_at
 		if err2 := u.store.TrackAttemptedLogin(ctx, user); err2 != nil {
-			err = fmt.Errorf("unable to track attempted login: %w", err2)
+			return nil, errors.Wrap(err2, errors.CategoryInternal, "failed to track login attempt")
 		}
-		return nil, fmt.Errorf("identity auth: %w", err)
+
+		return nil, ErrMismatchedHashAndPassword
 	}
 
 	// reset the login_attempts counter and login_attempt_at
 	if err := u.store.TrackSucccessfulLogin(ctx, user); err != nil {
-		return nil, fmt.Errorf("unable to reset login attempts: %w", err)
+		u.logger.Error("failed to track successful login", "error", err)
 	}
+
+	if err := u.validate(user); err != nil {
+		return nil, err
+	}
+
 	aid := authIdentity{
 		id:       user.ID.String(), // user.GetID(),
 		email:    user.Email,
 		username: user.Username,
 		role:     user.Role,
-	}
-
-	if err := u.validate(user); err != nil {
-		return nil, err
 	}
 
 	return aid, nil
@@ -98,7 +111,11 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier string) (Identity, error) {
 	user, err := u.store.GetByIdentifier(ctx, identfier)
 	if err != nil {
-		return nil, fmt.Errorf("unable to find user %s %w:", identfier, err)
+		return nil, err
+	}
+
+	if err := u.validate(user); err != nil {
+		return nil, err
 	}
 
 	aid := authIdentity{
@@ -106,10 +123,6 @@ func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier st
 		id:       user.ID.String(),
 		username: user.Username,
 		role:     user.Role,
-	}
-
-	if err := u.validate(user); err != nil {
-		return nil, err
 	}
 
 	return aid, nil
@@ -143,14 +156,11 @@ var _ Identity = authIdentity{}
 
 func defaultValidator(u *User) error {
 	switch u.Role {
-	case RoleOwner:
-	case RoleAdmin:
-	case RoleMember:
-	case RoleGuest:
+	case RoleOwner, RoleAdmin, RoleMember, RoleGuest:
 		return nil
 	default:
-		return errors.New("unknown role")
+		return errors.New("user has an unkonwn or invalid role", errors.CategoryAuth).
+			WithTextCode("INVALID_ROLE").
+			WithMetadata(map[string]any{"role": u.Role, "user_id": u.ID.String()})
 	}
-
-	return nil
 }
