@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -321,16 +322,15 @@ func ProfileShow(app *App) func(c router.Context) error {
 	contextKey := app.Config().GetAuth().GetContextKey()
 
 	return func(c router.Context) error {
-		cookie := c.Cookies(contextKey)
-		session, err := app.auth.SessionFromToken(cookie)
+		session, err := auth.GetRouterSession(c, contextKey)
 		if err != nil {
-			return c.Render("errors/500", router.ViewContext{
-				"message": err.Error(),
-			})
+			app.GetLogger("profile").Error("Session Auth error", "error", err)
+			return c.Status(http.StatusInternalServerError).SendString("Internal Server Error")
 		}
 
 		user, err := app.repo.Users().GetByID(c.Context(), session.GetUserID())
 		if err != nil {
+			app.GetLogger("profile").Error("User GetByID error", "details", err)
 			return c.Render("errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
@@ -347,12 +347,10 @@ func ProfileShow(app *App) func(c router.Context) error {
 func ProfileUpdate(app *App) func(c router.Context) error {
 	contextKey := app.Config().GetAuth().GetContextKey()
 	return func(c router.Context) error {
-		cookie := c.Cookies(contextKey)
-		session, err := app.auth.SessionFromToken(cookie)
+		session, err := auth.GetRouterSession(c, contextKey)
 		if err != nil {
-			return c.Render("errors/500", router.ViewContext{
-				"message": err.Error(),
-			})
+			app.GetLogger("profile").Error("Session Auth error", "error", err)
+			return c.Status(http.StatusInternalServerError).SendString("Internal Server Error")
 		}
 
 		payload := new(UserRecord)
@@ -374,6 +372,11 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 		}
 
 		uid, err := session.GetUserUUID()
+		if err != nil {
+			return c.Render("errors/500", router.ViewContext{
+				"message": err.Error(),
+			})
+		}
 
 		record := &auth.User{
 			ID:             uid,
