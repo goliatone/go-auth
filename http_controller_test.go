@@ -114,7 +114,7 @@ func TestLoginPost_InvalidCredentials(t *testing.T) {
 	resp, err := adapter.WrappedRouter().Test(req)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "Authentication Error")
@@ -136,7 +136,7 @@ func TestLoginPost_InvalidForm(t *testing.T) {
 	resp, err := adapter.WrappedRouter().Test(req)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "validation")
@@ -254,7 +254,7 @@ func TestRegistrationCreate_ValidationError(t *testing.T) {
 	resp, err := adapter.WrappedRouter().Test(req)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "validation")
@@ -434,7 +434,7 @@ func TestPasswordResetExecute_ValidationError(t *testing.T) {
 	resp, err := adapter.WrappedRouter().Test(req)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "validation")
