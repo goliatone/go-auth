@@ -2,10 +2,10 @@ package auth
 
 import (
 	"fmt"
+	"net/http"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
-	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/goliatone/go-errors"
@@ -189,6 +189,43 @@ func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	return c
 }
 
+func (a *AuthController) handleControllerError(ctx router.Context, e error, view string, payload any) error {
+	var err *errors.Error
+	if !errors.As(e, &err) {
+		err = errors.Wrap(e, errors.CategoryInternal, "An unexpected server error ocurred.").
+			WithCode(errors.CodeInternal)
+	}
+
+	a.Logger.Error("Controller error", "details", print.MaybePrettyJSON(err), "stack", err.ErrorWithStack())
+
+	statusCode := err.Code
+	if statusCode == 0 {
+		statusCode = http.StatusBadRequest
+	}
+
+	flashCtx := flash.WithError(ctx, router.ViewContext{
+		"error_message":  err.Message,
+		"system_message": fmt.Sprintf("Error: %s", err.TextCode),
+	})
+
+	viewCtx := router.ViewContext{
+		"record": payload,
+	}
+
+	switch err.Category {
+	case errors.CategoryValidation, errors.CategoryBadInput, errors.CategoryConflict:
+		viewCtx["validation"] = err.ValidationMap()
+
+		if err.Category == errors.CategoryConflict {
+			statusCode = http.StatusConflict
+		}
+
+		return flashCtx.Status(statusCode).Render(view, viewCtx)
+	default:
+		return a.ErrorHandler(ctx, err)
+	}
+}
+
 func (a *AuthController) LoginShow(ctx router.Context) error {
 	return ctx.Render(a.Views.Login, router.ViewContext{
 		"errors": nil,
@@ -238,28 +275,14 @@ func (r LoginRequest) Validate() *errors.Error {
 
 func (a *AuthController) LoginPost(ctx router.Context) error {
 	payload := new(LoginRequest)
-	errors := map[string]string{}
-
-	reqID := ctx.Header("X-Request-ID")
-	a.Logger.Debug("--- Login Post: ", "request-id", reqID)
 
 	if err := ctx.Bind(payload); err != nil {
-		a.Logger.Error("Login post bind error", err)
-		return a.ErrorHandler(ctx, err)
+		bindErr := errors.Wrap(err, errors.CategoryBadInput, "Could not process request data").WithCode(http.StatusBadRequest)
+		return a.handleControllerError(ctx, bindErr, a.Views.Login, payload)
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("Login post validation error", err)
-		fmt.Println(err.ValidationMap())
-		fmt.Println(print.MaybePrettyJSON(err.ValidationMap()))
-
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Message,
-			"system_message": "Error validating payload",
-		}).Render(a.Views.Login, router.ViewContext{
-			"record":     payload,
-			"validation": err.ValidationMap(),
-		})
+		return a.handleControllerError(ctx, err, a.Views.Login, payload)
 	}
 
 	if a.Debug {
@@ -270,17 +293,23 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 	}
 
 	if err := a.Auther.Login(ctx, payload); err != nil {
-		errors["authentication"] = "Authentication Error"
-		return ctx.Render(a.Views.Login, router.ViewContext{
-			"errors":  errors,
+		var richErr *errors.Error
+		if !errors.As(err, &richErr) {
+			richErr = errors.Wrap(err, errors.CategoryAuth, "Authentication failed")
+		}
+
+		a.Logger.Error("Login failed", "error", richErr)
+
+		return ctx.Status(http.StatusUnauthorized).Render(a.Views.Login, router.ViewContext{
 			"payload": payload,
+			"errors": map[string]string{
+				"authentication": richErr.Message,
+			},
 		})
 	}
 
 	redirect := a.Auther.GetRedirect(ctx, "/")
-
 	a.Logger.Info("redirecting", "url", redirect)
-
 	return ctx.Redirect(redirect, router.StatusSeeOther)
 }
 
@@ -330,27 +359,12 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	payload := new(RegistrationCreatePayload)
 
 	if err := ctx.Bind(payload); err != nil {
-		errors := map[string]string{}
-		errors["form"] = "Failed to parse form"
-		a.Logger.Error("register user parse payload: ", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
-			"system_message": "Error parsing body",
-		}).Status(fiber.StatusBadRequest).Render(a.Views.Register, router.ViewContext{
-			"errors": errors,
-			"record": payload,
-		})
+		bindErr := errors.Wrap(err, errors.CategoryBadInput, "Could not process registration data.").WithCode(http.StatusBadRequest)
+		return a.handleControllerError(ctx, bindErr, a.Views.Register, payload)
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("register user validate payload: ", "error", err.ErrorWithStack())
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Message,
-			"system_message": "Error validating payload",
-		}).Render(a.Views.Register, router.ViewContext{
-			"record":     payload,
-			"validation": err.ValidationMap(),
-		})
+		return a.handleControllerError(ctx, err, a.Views.Register, payload)
 	}
 
 	req := RegisterUserMessage{
@@ -364,17 +378,10 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 
 	registerUser := RegisterUserHandler{repo: a.Repo}
 	if err := registerUser.Execute(ctx.Context(), req); err != nil {
-		a.Logger.Error("order get error: ", "error", err)
-
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
-			"system_message": "Error validating payload",
-		}).Render(a.Views.Register, router.ViewContext{
-			"record": payload,
-			"errors": []string{err.Error()},
-		})
+		return a.handleControllerError(ctx, err, a.Views.Register, payload)
 	}
 
+	// on success we automatically log the user in
 	signIn := LoginRequest{
 		Identifier: payload.Email,
 		Password:   payload.Password,
@@ -382,22 +389,20 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := a.Auther.Login(ctx, signIn); err != nil {
-		return ctx.Render(a.Views.Login, router.ViewContext{
-			"errors": map[string]string{
-				"authentication": "Authentication Error",
-			},
-			"payload": payload,
+		flash.WithSuccess(ctx, router.ViewContext{
+			"system_message": "Registration successful! Please log in.",
 		})
+		return ctx.Redirect(a.Routes.Login)
 	}
 
-	redirect := "/"
-	if a.RegisterRedirect != "" {
-		redirect = a.RegisterRedirect
+	redirect := a.RegisterRedirect
+	if redirect == "" {
+		redirect = "/"
 	}
 
 	return flash.WithSuccess(ctx, router.ViewContext{
 		"system_message": "Successful user registration",
-	}).Redirect(redirect, fiber.StatusSeeOther)
+	}).Redirect(redirect, http.StatusSeeOther)
 }
 
 const (
@@ -443,34 +448,18 @@ func (r PasswordResetRequestPayload) Validate() *errors.Error {
 }
 
 func (a *AuthController) PasswordResetPost(ctx router.Context) error {
-	errors := map[string]string{}
 	payload := new(PasswordResetRequestPayload)
 
 	if err := ctx.Bind(payload); err != nil {
-		errors["form"] = "Failed to parse form"
-		a.Logger.Error("register user parse payload: ", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
-			"system_message": "Error parsing body",
-		}).Status(fiber.StatusBadRequest).Render(a.Views.PasswordReset, router.ViewContext{
-			"errors": errors,
-			"record": payload,
-		})
+		bindErr := errors.Wrap(err, errors.CategoryBadInput, "Could not process request.").WithCode(http.StatusBadRequest)
+		return a.handleControllerError(ctx, bindErr, a.Views.PasswordReset, payload)
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("register user validate payload: ", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Message,
-			"system_message": "Error validating payload",
-		}).Render(a.Views.PasswordReset, router.ViewContext{
-			"record":     payload,
-			"validation": err.ValidationMap(),
-		})
+		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
 	var res *InitializePasswordResetResponse
-
 	req := InitializePasswordResetMessage{
 		Stage: payload.Stage,
 		Email: payload.Email,
@@ -479,32 +468,17 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 		},
 	}
 
-	initPwdReset := InitializePasswordResetHandler{
-		repo: a.Repo,
-	}
-
+	initPwdReset := InitializePasswordResetHandler{repo: a.Repo}
 	if err := initPwdReset.Execute(ctx.Context(), req); err != nil {
-		a.Logger.Error("order get error: ", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
-			"system_message": "Error validating payload",
-		}).Render(a.Views.PasswordReset, router.ViewContext{
-			"record": payload,
-			"errors": []string{err.Error()},
-		})
+		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
 	if a.Debug {
-		a.Logger.Debug("================")
-		a.Logger.Debug(print.MaybePrettyJSON(res))
-		a.Logger.Debug("================")
+		a.Logger.Debug("Password reset response", "response", print.MaybePrettyJSON(res))
 	}
-
-	redirect := "/"
 
 	if res.Success && res.Stage == AccountVerification {
 		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
-			"errors": errors,
 			"reset": map[string]string{
 				stageKey:   AccountVerification,
 				sessionKey: req.Session,
@@ -513,9 +487,10 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 		})
 	}
 
+	// this is unlikely if command works OK, just a safe fallback
 	return flash.WithSuccess(ctx, router.ViewContext{
-		"system_message": "Successful user registration",
-	}).Redirect(redirect, fiber.StatusSeeOther)
+		"system_message": "If an account with that email exists, a password reset link has been sent.",
+	}).Redirect(a.Routes.Login)
 }
 
 func (a *AuthController) PasswordResetForm(ctx router.Context) error {
@@ -601,33 +576,16 @@ func (r PasswordResetVerifyPayload) Validate() *errors.Error {
 }
 
 func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
-
 	sessionID := ctx.Param("uuid")
-
-	errors := map[string]string{}
 	payload := new(PasswordResetVerifyPayload)
 
 	if err := ctx.Bind(payload); err != nil {
-		errors["form"] = "Failed to parse form"
-		a.Logger.Error("register user parse payload: ", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Error(),
-			"system_message": "Error parsing body",
-		}).Status(fiber.StatusBadRequest).Render(a.Views.PasswordReset, router.ViewContext{
-			"errors": errors,
-			"record": payload,
-		})
+		bindErr := errors.Wrap(err, errors.CategoryBadInput, "Could not process request.").WithCode(http.StatusBadRequest)
+		return a.handleControllerError(ctx, bindErr, a.Views.PasswordReset, payload)
 	}
 
 	if err := payload.Validate(); err != nil {
-		a.Logger.Error("register user validate payload", "error", err)
-		return flash.WithError(ctx, router.ViewContext{
-			"error_message":  err.Message,
-			"system_message": "Error validating payload",
-		}).Render(a.Views.PasswordReset, router.ViewContext{
-			"record":     payload,
-			"validation": err.ValidationMap(),
-		})
+		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
 	input := FinalizePasswordResetMesasge{
@@ -636,21 +594,11 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 	}
 
 	finalizePwdReset := FinalizePasswordResetHandler{repo: a.Repo}
-
 	if err := finalizePwdReset.Execute(ctx.Context(), input); err != nil {
-		errors["validation"] = err.Error()
-		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
-			"errors": errors,
-			"reset": router.ViewContext{
-				stageKey:   ChangingPassword,
-				sessionKey: sessionID,
-				emailKey:   "",
-			},
-		})
+		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
 	return ctx.Render(a.Views.PasswordReset, router.ViewContext{
-		"errors": errors,
 		"reset": router.ViewContext{
 			stageKey:   ChangeFinalized,
 			sessionKey: sessionID,
