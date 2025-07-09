@@ -15,7 +15,7 @@ type Auther struct {
 	tokenExpiration int
 	issuer          string
 	audience        jwt.ClaimStrings
-	Logger          Logger
+	logger          Logger
 }
 
 // TODO: do not return interfaces, return structs
@@ -27,12 +27,12 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
-		Logger:          defLogger{},
+		logger:          defLogger{},
 	}
 }
 
 func (s Auther) WithLogger(logger Logger) Auther {
-	s.Logger = logger
+	s.logger = logger
 	return s
 }
 
@@ -41,12 +41,12 @@ func (s Auther) Login(ctx context.Context, identifier, password string) (string,
 	var identity Identity
 
 	if identity, err = s.provider.VerifyIdentity(ctx, identifier, password); err != nil {
-		s.Logger.Error("Login verify identity error", "error", err)
+		s.logger.Error("Login verify identity error", "error", err)
 		return "", err
 	}
 
 	if identity == nil || reflect.ValueOf(identity).IsZero() {
-		s.Logger.Error("Login identity is nil or zero value")
+		s.logger.Error("Login identity is nil or zero value")
 		return "", ErrIdentityNotFound
 	}
 
@@ -63,12 +63,12 @@ func (s Auther) Impersonate(ctx context.Context, identifier string) (string, err
 	var identity Identity
 
 	if identity, err = s.provider.FindIdentityByIdentifier(ctx, identifier); err != nil {
-		s.Logger.Error("Impersonate verify identity error", "error", err)
+		s.logger.Error("Impersonate verify identity error", "error", err)
 		return "", err
 	}
 
 	if identity == nil || reflect.ValueOf(identity).IsZero() {
-		s.Logger.Error("Impersonate identity is nil")
+		s.logger.Error("Impersonate identity is nil")
 		return "", ErrIdentityNotFound
 	}
 
@@ -84,7 +84,7 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 	identity, err := s.provider.FindIdentityByIdentifier(ctx, session.GetUserID())
 
 	if err != nil {
-		s.Logger.Error("IdentityFromSession findidentity by identifier: %s", err)
+		s.logger.Error("IdentityFromSession findidentity by identifier: %s", err)
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 func (s Auther) SessionFromToken(raw string) (Session, error) {
 	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			s.Logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
+			s.logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
 			return nil, errors.New("unexpected signing method")
 		}
 		return s.signingKey, nil
@@ -116,7 +116,7 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 		return session, nil
 	}
 
-	s.Logger.Error("SessionFromToken could not decode or validate claims")
+	s.logger.Error("SessionFromToken could not decode or validate claims")
 	return nil, ErrUnableToDecodeSession
 }
 
