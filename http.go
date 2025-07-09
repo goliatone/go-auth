@@ -16,7 +16,7 @@ type RouteAuthenticator struct {
 	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
-	Logger                 Logger
+	logger                 Logger
 	AuthErrorHandler       func(c router.Context, err error) error // TODO: make functions
 	ErrorHandler           func(c router.Context, err error) error // TODO: make functions
 }
@@ -35,7 +35,7 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 	a := &RouteAuthenticator{
 		cfg:                    cfg,
 		auth:                   auther,
-		Logger:                 defLogger{},
+		logger:                 defLogger{},
 		cookieDuration:         cookieDuration,
 		extendedCookieDuration: extendedCookieDuration,
 	}
@@ -44,6 +44,11 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 	a.AuthErrorHandler = a.defaultAuthErrHandler
 
 	return a, nil
+}
+
+func (a *RouteAuthenticator) WithLogger(l Logger) *RouteAuthenticator {
+	a.logger = l
+	return a
 }
 
 func (a RouteAuthenticator) GetCookieDuration() time.Duration {
@@ -72,7 +77,7 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
-		a.Logger.Error("Login error: %s", err)
+		a.logger.Error("Login error: %s", err)
 		return err
 	}
 
@@ -103,7 +108,7 @@ func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func
 		}
 
 		if optional {
-			a.Logger.Info("Optional auth failed, proceeding", "error", richErr.Message)
+			a.logger.Info("Optional auth failed, proceeding", "error", richErr.Message)
 			return ctx.Next()
 		}
 
@@ -136,7 +141,7 @@ func (a *RouteAuthenticator) GetRedirectOrDefault(ctx router.Context) string {
 func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
 
-	a.Logger.Info("Setting redirect cookie", "key", rejectedRoute, "path", ctx.OriginalURL())
+	a.logger.Info("Setting redirect cookie", "key", rejectedRoute, "path", ctx.OriginalURL())
 
 	ctx.Cookie(&router.Cookie{
 		Name:     rejectedRoute,
@@ -151,7 +156,7 @@ func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) error {
 	token, err := a.auth.Impersonate(c.Context(), identifier)
 	if err != nil {
-		a.Logger.Error("Impersonate authentication error", "error", err)
+		a.logger.Error("Impersonate authentication error", "error", err)
 		return err
 	}
 
@@ -188,7 +193,7 @@ func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context, err error) 
 			WithCode(errors.CodeUnauthorized)
 	}
 
-	a.Logger.Info(
+	a.logger.Info(
 		"Authentication error, redirecting to loing",
 		"error", richErr.Message,
 		"text_code", richErr.TextCode,
@@ -211,7 +216,7 @@ func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) erro
 			WithCode(errors.CodeInternal)
 	}
 
-	a.Logger.Info(
+	a.logger.Info(
 		"Middleware error handler",
 		"error", richErr.Message,
 		"category", richErr.Category,
