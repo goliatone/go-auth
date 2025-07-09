@@ -233,6 +233,11 @@ func (a *AuthController) LoginShow(ctx router.Context) error {
 	})
 }
 
+func (a *AuthController) WithLogger(l Logger) *AuthController {
+	a.Logger = l
+	return a
+}
+
 // LoginRequest payload
 type LoginRequest struct {
 	Identifier string `form:"identifier" json:"identifier"`
