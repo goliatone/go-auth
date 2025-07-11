@@ -1,11 +1,12 @@
 package auth
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/goliatone/go-auth/middleware/jwtware"
+	"github.com/goliatone/go-errors"
+	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
 )
 
@@ -15,8 +16,8 @@ type RouteAuthenticator struct {
 	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
-	Logger                 Logger
-	AuthErrorHandler       func(c router.Context) error            // TODO: make functions
+	logger                 Logger
+	AuthErrorHandler       func(c router.Context, err error) error // TODO: make functions
 	ErrorHandler           func(c router.Context, err error) error // TODO: make functions
 }
 
@@ -34,15 +35,20 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 	a := &RouteAuthenticator{
 		cfg:                    cfg,
 		auth:                   auther,
+		logger:                 defLogger{},
 		cookieDuration:         cookieDuration,
 		extendedCookieDuration: extendedCookieDuration,
 	}
 
 	a.ErrorHandler = a.defaultErrHandler
 	a.AuthErrorHandler = a.defaultAuthErrHandler
-	a.Logger = defLogger{}
 
 	return a, nil
+}
+
+func (a *RouteAuthenticator) WithLogger(l Logger) *RouteAuthenticator {
+	a.logger = l
+	return a
 }
 
 func (a RouteAuthenticator) GetCookieDuration() time.Duration {
@@ -71,8 +77,8 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
-		a.Logger.Error("Login error: %s", err)
-		return fmt.Errorf("err authenticating payload: %w", err)
+		a.logger.Error("Login error: %s", err)
+		return err
 	}
 
 	duration := a.cookieDuration
@@ -90,17 +96,23 @@ func (a *RouteAuthenticator) Logout(ctx router.Context) {
 
 func (a *RouteAuthenticator) MakeClientRouteAuthErrorHandler(optional bool) func(router.Context, error) error {
 	return func(ctx router.Context, err error) error {
-		if IsMalformedError(err) || IsTokenExpiredError(err) {
-			a.Logger.Info("DefaultAuthErrHandler malformed error: %s", err)
-			if optional { // some routes might optionally be protected
-				a.Logger.Info("DefaultAuthErrHandler skip malformed error")
-				return ctx.Next()
-			}
-			return a.AuthErrorHandler(ctx)
+		var richErr *errors.Error
+
+		if IsTokenExpiredError(err) {
+			richErr = ErrTokenExpired
+		} else if IsMalformedError(err) {
+			richErr = ErrTokenMalformed
+		} else {
+			richErr = errors.Wrap(err, errors.CategoryAuth, "Invalid authentication token").
+				WithCode(errors.CodeUnauthorized)
 		}
 
-		a.Logger.Error("DefaultAuthErrHandler route error handler: %s", err)
-		return a.ErrorHandler(ctx, err)
+		if optional {
+			a.logger.Info("Optional auth failed, proceeding", "error", richErr.Message)
+			return ctx.Next()
+		}
+
+		return a.ErrorHandler(ctx, richErr)
 	}
 }
 
@@ -128,21 +140,26 @@ func (a *RouteAuthenticator) GetRedirectOrDefault(ctx router.Context) string {
 
 func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
-	a.Logger.Info("set redirect %s to %s", rejectedRoute, ctx.OriginalURL())
+
+	a.logger.Info("Setting redirect cookie", "key", rejectedRoute, "path", ctx.OriginalURL())
+
 	ctx.Cookie(&router.Cookie{
 		Name:     rejectedRoute,
 		Value:    ctx.OriginalURL(),
 		Expires:  time.Now().Add(time.Minute * 5),
 		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
 	})
 }
 
 func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) error {
 	token, err := a.auth.Impersonate(c.Context(), identifier)
 	if err != nil {
-		a.Logger.Error("Impersonate authentication error: %s", err)
-		return fmt.Errorf("authentication error: %w", err)
+		a.logger.Error("Impersonate authentication error", "error", err)
+		return err
 	}
+
 	a.setCookieToken(c, token, a.cookieDuration)
 	return nil
 }
@@ -153,6 +170,8 @@ func (a *RouteAuthenticator) setCookieToken(c router.Context, val string, durati
 		Value:    val,
 		Expires:  time.Now().Add(duration),
 		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
 	})
 }
 
@@ -162,11 +181,25 @@ func (a *RouteAuthenticator) cookieDel(c router.Context, name string) {
 		Value:    "",
 		Expires:  time.Now().Add(-time.Hour * (24 * 365)),
 		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
 	})
 }
 
-func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context) error {
-	a.Logger.Info("=> default auth err handler: redirect to %s /login", c.Method())
+func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context, err error) error {
+	var richErr *errors.Error
+	if !errors.As(err, &richErr) {
+		richErr = errors.Wrap(richErr, errors.CategoryAuth, "An unexpected authentication error").
+			WithCode(errors.CodeUnauthorized)
+	}
+
+	a.logger.Warn(
+		"Authentication error, redirecting to loing",
+		"error", richErr.Message,
+		"text_code", richErr.TextCode,
+		"path", c.OriginalURL(),
+	)
+
 	a.SetRedirect(c)
 
 	statusCode := http.StatusSeeOther
@@ -177,8 +210,25 @@ func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context) error {
 }
 
 func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) error {
-	a.Logger.Info("default err handler: render 500 error")
-	return c.Render("errors/500", router.ViewContext{
-		"message": err.Error(),
-	})
+	var richErr *errors.Error
+	if !errors.As(err, &richErr) {
+		richErr = errors.Wrap(err, errors.CategoryInternal, "An unexpected server error occurred").
+			WithCode(errors.CodeInternal)
+	}
+
+	a.logger.Warn(
+		"Middleware error handler",
+		"error", richErr.Message,
+		"category", richErr.Category,
+		"details", print.MaybePrettyJSON(richErr.Metadata),
+	)
+
+	switch richErr.Category {
+	case errors.CategoryAuth, errors.CategoryAuthz:
+		return a.AuthErrorHandler(c, richErr)
+	default:
+		return c.Status(richErr.Code).Render("errors/500", router.ViewContext{
+			"error": richErr,
+		})
+	}
 }

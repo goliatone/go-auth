@@ -87,7 +87,7 @@ func TestRouteAuthenticator_LoginError(t *testing.T) {
 
 	err = httpAuth.Login(mockCtx, payload)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "err authenticating payload")
+	assert.Contains(t, err.Error(), "invalid credentials")
 
 	mockAuth.AssertExpectations(t)
 	mockConfig.AssertExpectations(t)
@@ -282,7 +282,7 @@ func TestRouteAuthenticator_MakeClientRouteAuthErrorHandler(t *testing.T) {
 
 		var authErrorCalled bool
 		origHandler := httpAuth.AuthErrorHandler
-		httpAuth.AuthErrorHandler = func(c router.Context) error {
+		httpAuth.AuthErrorHandler = func(c router.Context, err error) error {
 			authErrorCalled = true
 			return c.Redirect("/login", http.StatusSeeOther)
 		}

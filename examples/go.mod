@@ -3,11 +3,14 @@ module github.com/goliatone/go-auth-examples
 go 1.23.4
 
 require (
+	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
+	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/goliatone/go-auth v0.3.0
 	github.com/goliatone/go-composite-fs v0.0.1
 	github.com/goliatone/go-config v0.3.1
-	github.com/goliatone/go-logger v0.1.2
+	github.com/goliatone/go-errors v0.8.0
+	github.com/goliatone/go-logger v0.3.0
 	github.com/goliatone/go-persistence-bun v0.3.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-router v0.4.0
@@ -32,14 +35,12 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/template/django/v3 v3.1.13 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
-	github.com/goliatone/go-errors v0.7.0 // indirect
 	github.com/goliatone/go-masker v0.1.0 // indirect
 	github.com/goliatone/go-repository-bun v0.4.3 // indirect
 	github.com/goliatone/hashid v0.1.1 // indirect

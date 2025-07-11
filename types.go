@@ -12,6 +12,7 @@ import (
 type Logger interface {
 	Debug(format string, args ...any)
 	Info(format string, args ...any)
+	Warn(format string, args ...any)
 	Error(format string, args ...any)
 }
 
@@ -88,6 +89,10 @@ type defLogger struct{}
 
 func (d defLogger) Error(format string, args ...any) {
 	fmt.Printf("[ERR] AUTH "+newline(format), args...)
+}
+
+func (d defLogger) Warn(format string, args ...any) {
+	fmt.Printf("[WRN] AUTH "+newline(format), args...)
 }
 
 func (d defLogger) Info(format string, args ...any) {

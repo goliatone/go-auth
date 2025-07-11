@@ -7,6 +7,14 @@
 </head>
 <body>
     <h1>Error</h1>
-    <p>Something bad happened: {{message}}</p>
+    <p>{{message}}</p>
+
+    {% if system_message %}
+    <p>{{ system_message }}</p>
+    {%endif%}
+
+    {% if stack %}
+    <p>{{ stack }}</p>
+    {%endif%}
 </body>
 </html>

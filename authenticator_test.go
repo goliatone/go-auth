@@ -85,7 +85,7 @@ func TestLogin(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Empty(t, token)
-		assert.Contains(t, err.Error(), "unauthorized")
+		assert.Contains(t, err.Error(), "invalid credentials")
 	})
 
 	t.Run("Failed login - identity not found", func(t *testing.T) {
@@ -96,7 +96,7 @@ func TestLogin(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Empty(t, token)
-		assert.Contains(t, err.Error(), "unauthorized")
+		assert.Contains(t, err.Error(), "identity not found")
 	})
 }
 
@@ -160,7 +160,7 @@ func TestImpersonate(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Empty(t, token)
-		assert.Contains(t, err.Error(), "unauthorized")
+		assert.Contains(t, err.Error(), "identity not found")
 	})
 }
 
@@ -292,6 +292,6 @@ func TestIdentityFromSession(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "unauthorized")
+		assert.Contains(t, err.Error(), "identity not found")
 	})
 }

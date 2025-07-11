@@ -64,7 +64,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "identity auth")
+		assert.Contains(t, err.Error(), "INVALID_CREDENTIALS")
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -77,7 +77,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "find identity")
+		assert.Contains(t, err.Error(), "user not found")
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -173,7 +173,7 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "unable to find user")
+		assert.Contains(t, err.Error(), "user not found")
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -193,7 +193,7 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "unknown role")
+		assert.Contains(t, err.Error(), "INVALID_ROLE")
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -235,7 +235,7 @@ func TestUserProviderValidation(t *testing.T) {
 
 		err := provider.Validator(user)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "unknown role")
+		assert.Contains(t, err.Error(), "INVALID_ROLE")
 	})
 
 	t.Run("Custom validator", func(t *testing.T) {

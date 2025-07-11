@@ -2,12 +2,11 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"reflect"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/goliatone/go-errors"
 )
 
 type Auther struct {
@@ -16,7 +15,7 @@ type Auther struct {
 	tokenExpiration int
 	issuer          string
 	audience        jwt.ClaimStrings
-	Logger          Logger
+	logger          Logger
 }
 
 // TODO: do not return interfaces, return structs
@@ -28,12 +27,12 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
-		Logger:          defLogger{},
+		logger:          defLogger{},
 	}
 }
 
 func (s Auther) WithLogger(logger Logger) Auther {
-	s.Logger = logger
+	s.logger = logger
 	return s
 }
 
@@ -42,22 +41,21 @@ func (s Auther) Login(ctx context.Context, identifier, password string) (string,
 	var identity Identity
 
 	if identity, err = s.provider.VerifyIdentity(ctx, identifier, password); err != nil {
-		s.Logger.Error("Login verify identity error: %s", err)
-		return "", fmt.Errorf("unauthorized: %w", err)
+		s.logger.Error("Login verify identity error", "error", err)
+		return "", err
 	}
 
-	if identity == nil {
-		s.Logger.Error("Login identity is nil")
-		return "", fmt.Errorf("unauthorized: %w", ErrIdentityNotFound)
+	if identity == nil || reflect.ValueOf(identity).IsZero() {
+		s.logger.Error("Login identity is nil or zero value")
+		return "", ErrIdentityNotFound
 	}
 
-	t := reflect.TypeOf(identity)
-	if reflect.ValueOf(identity) == reflect.Zero(t) {
-		s.Logger.Error("Login identity is Zero")
-		return "", fmt.Errorf("unauthorized: %w", ErrIdentityNotFound)
+	token, err := s.generateJWT(identity)
+	if err != nil {
+		return "", err
 	}
 
-	return s.generateJWT(identity)
+	return token, nil
 }
 
 func (s Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
@@ -65,56 +63,61 @@ func (s Auther) Impersonate(ctx context.Context, identifier string) (string, err
 	var identity Identity
 
 	if identity, err = s.provider.FindIdentityByIdentifier(ctx, identifier); err != nil {
-		s.Logger.Error("Impersonate verify identity error: %s", err)
-		return "", fmt.Errorf("unauthorized: %w", err)
+		s.logger.Error("Impersonate verify identity error", "error", err)
+		return "", err
 	}
 
-	if identity == nil {
-		s.Logger.Error("Impersonate identity is nil")
-		return "", fmt.Errorf("unauthorized: %w", ErrIdentityNotFound)
+	if identity == nil || reflect.ValueOf(identity).IsZero() {
+		s.logger.Error("Impersonate identity is nil")
+		return "", ErrIdentityNotFound
 	}
 
-	t := reflect.TypeOf(identity)
-	if reflect.ValueOf(identity) == reflect.Zero(t) {
-		s.Logger.Error("Impersonate identity is Zero")
-		return "", fmt.Errorf("unauthorized: %w", ErrIdentityNotFound)
+	token, err := s.generateJWT(identity)
+	if err != nil {
+		return "", err
 	}
 
-	return s.generateJWT(identity)
+	return token, nil
 }
 
 func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
-	var err error
-	var identity Identity
+	identity, err := s.provider.FindIdentityByIdentifier(ctx, session.GetUserID())
 
-	if identity, err = s.provider.FindIdentityByIdentifier(ctx, session.GetUserID()); err != nil {
-		s.Logger.Error("IdentityFromSession findidentity by identifier: %s", err)
-		return nil, fmt.Errorf("unauthorized: %w", err)
+	if err != nil {
+		s.logger.Error("IdentityFromSession findidentity by identifier: %s", err)
+		return nil, err
 	}
+
 	return identity, nil
 }
 
 func (s Auther) SessionFromToken(raw string) (Session, error) {
 	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			s.Logger.Error("SessionFromToken parse with claims wrong signing method")
-			return nil, fmt.Errorf("Unexpected signing method: %v", t.Header["alg"])
+			s.logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
+			return nil, errors.New("unexpected signing method")
 		}
-		return []byte(s.signingKey), nil
+		return s.signingKey, nil
 	})
+
 	if err != nil {
-		return nil, err
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, ErrTokenExpired
+		}
+
+		return nil, errors.Wrap(err, ErrTokenMalformed.Category, ErrTokenMalformed.Message).WithTextCode(ErrTokenMalformed.TextCode)
 	}
 
-	var ok bool
-	var claims *jwt.MapClaims
-
-	if claims, ok = token.Claims.(*jwt.MapClaims); !ok || !token.Valid {
-		s.Logger.Error("SessionFromToken unable to decode session")
-		return nil, errors.New("unable to decode session")
+	if claims, ok := token.Claims.(*jwt.MapClaims); ok && token.Valid {
+		session, err := sessionFromClaims(*claims)
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
 	}
 
-	return sessionFromClaims(*claims)
+	s.logger.Error("SessionFromToken could not decode or validate claims")
+	return nil, ErrUnableToDecodeSession
 }
 
 func (s Auther) generateJWT(identity Identity) (string, error) {
@@ -122,18 +125,21 @@ func (s Auther) generateJWT(identity Identity) (string, error) {
 		"iss": s.issuer,
 		"sub": identity.ID(),
 		"aud": s.audience,
-		"dat": nil,
+		"dat": map[string]any{
+			"role": identity.Role(),
+		},
 		"iat": jwt.NewNumericDate(time.Now()),
 		"exp": jwt.NewNumericDate(
 			time.Now().Add(time.Duration(s.tokenExpiration) * time.Hour),
 		),
 	}
 
-	dat := map[string]any{}
-	dat["role"] = identity.Role()
-	claims["dat"] = dat
-
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(s.signingKey))
+	signedString, err := token.SignedString(s.signingKey)
+	if err != nil {
+		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
+	}
+
+	return signedString, nil
 }

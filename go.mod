@@ -8,10 +8,10 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.6
 	github.com/gofiber/template/django/v3 v3.1.13
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/goliatone/go-errors v0.7.0
+	github.com/goliatone/go-errors v0.8.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.4.3
-	github.com/goliatone/go-router v0.3.0
+	github.com/goliatone/go-router v0.4.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0

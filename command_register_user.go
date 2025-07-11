@@ -2,10 +2,10 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/hashid/pkg/hashid"
 	"github.com/uptrace/bun"
 )
@@ -31,7 +31,11 @@ type RegisterUserHandler struct {
 func (h *RegisterUserHandler) Execute(ctx context.Context, event RegisterUserMessage) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return goerrors.Wrap(
+			ctx.Err(),
+			goerrors.CategoryOperation,
+			"context cancelled during user registration",
+		)
 	default:
 		return h.execute(ctx, event)
 	}
@@ -45,7 +49,11 @@ func (h *RegisterUserHandler) execute(ctx context.Context, event RegisterUserMes
 	err := h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		hash, err := HashPassword(event.Password)
 		if err != nil {
-			return fmt.Errorf("register user hashing password error: %w", err)
+			var richErr *goerrors.Error
+			if goerrors.As(err, &richErr) {
+				return goerrors.Wrap(richErr, goerrors.CategoryValidation, "invalid password provided")
+			}
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to hash password")
 		}
 
 		user.PasswordHash = hash
@@ -61,13 +69,22 @@ func (h *RegisterUserHandler) execute(ctx context.Context, event RegisterUserMes
 		}
 
 		if user, err = h.repo.Users().CreateTx(ctx, tx, user); err != nil {
-			return fmt.Errorf("register user error: %w", err)
+			return goerrors.Wrap(err, goerrors.CategoryConflict, "could not create user")
 		}
 
 		return nil
 	})
 
-	return err
+	if err != nil {
+		var richErr *goerrors.Error
+		if goerrors.As(err, &richErr) {
+			return richErr
+		}
+
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "user registration transaction failed")
+	}
+
+	return nil
 }
 
 func getUsername(username, email string) string {

@@ -6,6 +6,18 @@
     <img class="w-64 logo" src="/logo_dark.svg" alt="brand logo">
   </div>
   <form action="/login" method="post" class="group flex flex-col gap-8 max-w-md bg-white p-8 rounded shadow" novalidate>
+
+    {% if flash.error %}
+    <div class="p-4 mb-4 text-sm text-red-800 rounded-lg bg-red-50 border border-red-400" role="alert">
+      <span class="font-medium">Authentication Failed!</span>
+      {% if flash.error_message %}
+        <p>{{ flash.error_message }}</p>
+      {% else %}
+        Please check your credentials and try again.
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="inline-flex flex-col gap-y-2">
       <h3 class="text-3xl font-bold">Sign In</h3>
      <span class="text-sm"> Don't have an account? <a href="/register" class="text-blue-500 font-semibold hover:underline ml-1">Sign Up</a></span>

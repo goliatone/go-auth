@@ -7,12 +7,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ErrMismatchedHashAndPassword failure to check password hash
-var ErrMismatchedHashAndPassword = errors.New("auth: hashedPassword is not the hash of the given password")
-
-// ErrNoEmptyString
-var ErrNoEmptyString = errors.New("auth: password cant't be an empty string")
-
 // HashPassword will generate a password hash
 func HashPassword(password string) (string, error) {
 	if password == "" {
