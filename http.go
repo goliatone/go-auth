@@ -193,7 +193,7 @@ func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context, err error) 
 			WithCode(errors.CodeUnauthorized)
 	}
 
-	a.logger.Info(
+	a.logger.Warn(
 		"Authentication error, redirecting to loing",
 		"error", richErr.Message,
 		"text_code", richErr.TextCode,
@@ -216,7 +216,7 @@ func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) erro
 			WithCode(errors.CodeInternal)
 	}
 
-	a.logger.Info(
+	a.logger.Warn(
 		"Middleware error handler",
 		"error", richErr.Message,
 		"category", richErr.Category,
