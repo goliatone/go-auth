@@ -9,8 +9,8 @@ require (
 	github.com/goliatone/go-auth v0.3.0
 	github.com/goliatone/go-composite-fs v0.0.1
 	github.com/goliatone/go-config v0.3.1
-	github.com/goliatone/go-errors v0.7.0
-	github.com/goliatone/go-logger v0.1.2
+	github.com/goliatone/go-errors v0.8.0
+	github.com/goliatone/go-logger v0.3.0
 	github.com/goliatone/go-persistence-bun v0.3.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-router v0.4.0

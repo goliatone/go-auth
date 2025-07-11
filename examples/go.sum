@@ -59,10 +59,12 @@ github.com/goliatone/go-composite-fs v0.0.1 h1:sX1mHuYwIRhiyhnezK5JN3B70DpHjlGAy
 github.com/goliatone/go-composite-fs v0.0.1/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
 github.com/goliatone/go-config v0.3.1 h1:t3xItpmPk+gSPzFPBtj5Tp+bZubD66d3coYxacsMMQo=
 github.com/goliatone/go-config v0.3.1/go.mod h1:qJgEXWWnlArtRy/x1D/nAwAAuVqqfvwes9fnChF1Y5o=
-github.com/goliatone/go-errors v0.7.0 h1:F2+0oY/0jbt/PnlfLsUmIyRy0jAgvs7ciwjyJXCPMDE=
-github.com/goliatone/go-errors v0.7.0/go.mod h1:FiZEC2z5a8SBdRyljC9wFt+IzqZDfrst2dPoqWARbr4=
-github.com/goliatone/go-logger v0.1.2 h1:QgZskzUM6CIN/D63NmolSDvElL4PCgXX2T22pcVJR7Y=
-github.com/goliatone/go-logger v0.1.2/go.mod h1:SiUQixaTFB/by3OukRIVfOaVE4n6itNzDCaG4x3ErXU=
+github.com/goliatone/go-errors v0.8.0 h1:LR8g574/6DX3DiOsPvqhHqYpL/6BDTbI0rK5q/A1Nmc=
+github.com/goliatone/go-errors v0.8.0/go.mod h1:FiZEC2z5a8SBdRyljC9wFt+IzqZDfrst2dPoqWARbr4=
+github.com/goliatone/go-logger v0.2.0 h1:hPhojbtm3yJZXdkYsN8DyTSRscyYIkKZr41iR8+y7RI=
+github.com/goliatone/go-logger v0.2.0/go.mod h1:hWv7Tj+af3E0vjJIHR52JmmK3jKk6rCKFtvhCC/3jXE=
+github.com/goliatone/go-logger v0.3.0 h1:YN+jlne9wDrch2cGrHDW6lp9FPIo53nlNVhtasTtjoE=
+github.com/goliatone/go-logger v0.3.0/go.mod h1:hWv7Tj+af3E0vjJIHR52JmmK3jKk6rCKFtvhCC/3jXE=
 github.com/goliatone/go-masker v0.1.0 h1:YiNxBRC7AXpGKtUlXIoU4oj3DUfE+M2fvcDRyYC4Tt4=
 github.com/goliatone/go-masker v0.1.0/go.mod h1:n+AV93IO1rNI35kjbjfV1gMkjuIOSDVEzfhABTlCf4U=
 github.com/goliatone/go-persistence-bun v0.3.0 h1:+hWUR4yrnbAASoAWkTqajhgf/3CKeYeG4TGue5zmL+k=
