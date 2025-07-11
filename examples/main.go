@@ -85,6 +85,8 @@ func main() {
 		glog.WithLoggerTypePretty(),
 		glog.WithLevel(glog.Trace),
 		glog.WithName("app"),
+		glog.WithAddSource(false),
+		glog.WithRichErrorHandler(errors.ToSlogAttributes),
 	)
 
 	cfg := gconfig.New(&config.BaseConfig{}).
@@ -240,7 +242,10 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 	}
 
 	userProvider := auth.NewUserProvider(repo.Users())
+	userProvider.WithLogger(app.GetLogger("auth:prv"))
+
 	athenticator := auth.NewAuthenticator(userProvider, cfg)
+	athenticator.WithLogger(app.GetLogger("auth:authz"))
 
 	app.SetAuthenticator(athenticator)
 
@@ -249,6 +254,8 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 		return err
 	}
 
+	httpAuth.WithLogger(app.GetLogger("auth:http"))
+
 	app.SetHTTPAuth(httpAuth)
 
 	auth.RegisterAuthRoutes(app.srv.Router().Group("/"),
@@ -256,7 +263,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 			ac.Debug = true
 			ac.Auther = httpAuth
 			ac.Repo = repo
-			ac.Logger = glog.NewLogger(glog.WithName("auth:ctrl"))
+			ac.WithLogger(app.GetLogger("auth:ctrl"))
 			return ac
 		})
 
