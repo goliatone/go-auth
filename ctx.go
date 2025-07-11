@@ -14,7 +14,7 @@ func WithContext(r context.Context, user *User) context.Context {
 }
 
 // FromContext finds the user from the context.
-func FromContext(ctx context.Context) *User {
-	raw, _ := ctx.Value(userCtxKey).(*User)
-	return raw
+func FromContext(ctx context.Context) (*User, bool) {
+	raw, ok := ctx.Value(userCtxKey).(*User)
+	return raw, ok
 }
