@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.5.0](https://github.com/goliatone/go-auth/compare/v0.4.0...v0.5.0) - (2025-07-11)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.5.0 ([f388fd3](https://github.com/goliatone/go-auth/commit/f388fd30ffd4e3a0c3da45d043eee62868a47014))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Return bool FromContext to follow idiomatic patterns ([604153f](https://github.com/goliatone/go-auth/commit/604153f83af60ee466d744fb238dda68c81851a6))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.4.0 ([02c5b47](https://github.com/goliatone/go-auth/commit/02c5b47b27516fcfabfa00f7363d0f03604be285))  - (goliatone)
+
 # [0.4.0](https://github.com/goliatone/go-auth/compare/v0.3.0...v0.4.0) - (2025-07-11)
 
 ## <!-- 1 -->🐛 Bug Fixes
