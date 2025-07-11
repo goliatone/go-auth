@@ -1,5 +1,57 @@
 # Changelog
 
+# [0.4.0](https://github.com/goliatone/go-auth/compare/v0.3.0...v0.4.0) - (2025-07-11)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Tests to handle code changes ([faa25d2](https://github.com/goliatone/go-auth/commit/faa25d2248ebe34f920146e7bd12a909c6322fb3))  - (goliatone)
+- Bug we were accessing potential nil field ([3ae536a](https://github.com/goliatone/go-auth/commit/3ae536a8b30d5a1d50c179e58cc7bbe35e8a39db))  - (goliatone)
+- Render message with html ([4b8a46e](https://github.com/goliatone/go-auth/commit/4b8a46ecc9d88744f668bcde7b7f88d1addec9b7))  - (goliatone)
+- Update gconfig setup ([58f0fe4](https://github.com/goliatone/go-auth/commit/58f0fe4bb260eaa1915cce063983200e1fd379b8))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.4.0 ([66109e0](https://github.com/goliatone/go-auth/commit/66109e02ed5aab6cfc46984b1525c4b4906ae13f))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Context helper to pass user info arround ([6a903c5](https://github.com/goliatone/go-auth/commit/6a903c51bfedd094acd261844a7dc7916bd9220a))  - (goliatone)
+- Flash handler to view ([d9dab05](https://github.com/goliatone/go-auth/commit/d9dab052778330e0262868c69d241478654d21cc))  - (goliatone)
+- Use rich errors in controller ([5bbe735](https://github.com/goliatone/go-auth/commit/5bbe73503ad160be21eef96f42f9ba0589c603f4))  - (goliatone)
+- Use rich errors in authenticator ([4bec7fd](https://github.com/goliatone/go-auth/commit/4bec7fd6ce3857bd5df378b1f7b1b11257c69a99))  - (goliatone)
+- Error sentinels for token mal formed and expired ([cd1c769](https://github.com/goliatone/go-auth/commit/cd1c7698717876ac070538954324f638bd2d5cbc))  - (goliatone)
+- More context to errors ([38b80ad](https://github.com/goliatone/go-auth/commit/38b80ad1ff3857fc1cacf92b5afc3a9e1be954e1))  - (goliatone)
+- Update profile form ([aeadfbd](https://github.com/goliatone/go-auth/commit/aeadfbd3e450d5f4a7f156b4b2bc9afbe32ee5e6))  - (goliatone)
+- Update example ([953b781](https://github.com/goliatone/go-auth/commit/953b7819b39429638dba4d660cadbdebdcaf2b87))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Make logger private. add: WithLogger ([d4e5e75](https://github.com/goliatone/go-auth/commit/d4e5e759423c26cd7ea088bca0da94ec0ecf8b7c))  - (goliatone)
+- Use go-errors package ([2b7af6f](https://github.com/goliatone/go-auth/commit/2b7af6f40738072ffb18e3bbd1b683af05f4aaa5))  - (goliatone)
+- Move errors to single file ([ebd4ddc](https://github.com/goliatone/go-auth/commit/ebd4ddc2bbc590b426f90c0b32a02a86fde4fe9d))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update example code ([2a49f36](https://github.com/goliatone/go-auth/commit/2a49f3615e1a035bcd1551a2a44a91862c35c6a9))  - (goliatone)
+- Update tests ([5a45bfb](https://github.com/goliatone/go-auth/commit/5a45bfb2fbb4c5e581d0692019176974a34e204b))  - (goliatone)
+- Adding tests ([79665bf](https://github.com/goliatone/go-auth/commit/79665bf7150ec47c860c40e2ef5e3b9b63e458f4))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.3.0 ([732f78d](https://github.com/goliatone/go-auth/commit/732f78d101aa0bbeedd6697f4a85efdbe082cfaa))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#3](https://github.com/goliatone/go-auth/pull/3): rich errors ([adcdab7](https://github.com/goliatone/go-auth/commit/adcdab756867f53c8ae0c96509285aa6865997d2))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([d329137](https://github.com/goliatone/go-auth/commit/d329137b722c7d5ac6d4f149b8ded3a9b3c349c0))  - (goliatone)
+- Update log level for msgs ([490aeb0](https://github.com/goliatone/go-auth/commit/490aeb08d8d003047a48eba9a6c72bba16e85350))  - (goliatone)
+- Update example ([67714df](https://github.com/goliatone/go-auth/commit/67714df5e5b2bc6cb5c724409f2f5a912b18e478))  - (goliatone)
+- Clean up examples ([6573277](https://github.com/goliatone/go-auth/commit/657327730628d0263e9382d5a3b0ef0da1018838))  - (goliatone)
+- Update docs ([cbc4e93](https://github.com/goliatone/go-auth/commit/cbc4e9384ddeb913c5e9e4d96d44782257bb6e5d))  - (goliatone)
+
 # [0.3.0](https://github.com/goliatone/go-auth/compare/v0.2.0...v0.3.0) - (2025-06-27)
 
 ## <!-- 1 -->🐛 Bug Fixes
