@@ -6,7 +6,7 @@ require (
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/gofiber/fiber/v2 v2.52.6
-	github.com/goliatone/go-auth v0.3.0
+	github.com/goliatone/go-auth v0.6.0
 	github.com/goliatone/go-composite-fs v0.0.1
 	github.com/goliatone/go-config v0.3.1
 	github.com/goliatone/go-errors v0.8.0
