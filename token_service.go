@@ -31,35 +31,8 @@ func NewTokenService(signingKey []byte, tokenExpiration int, issuer string, audi
 	}
 }
 
-// Generate creates a new JWT token for the given identity using structured claims
-func (ts *TokenServiceImpl) Generate(identity Identity) (string, error) {
-	now := time.Now()
-	claims := &JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    ts.issuer,
-			Subject:   identity.ID(),
-			Audience:  ts.audience,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(ts.tokenExpiration) * time.Hour)),
-		},
-		UID:      identity.ID(),
-		UserRole: identity.Role(),
-		// Resources will be empty for simple generation, enhanced generation handled separately
-		Resources: make(map[string]string),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signedString, err := token.SignedString(ts.signingKey)
-	if err != nil {
-		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
-	}
-
-	return signedString, nil
-}
-
-// GenerateWithResources creates a JWT token with resource-specific roles
-func (ts *TokenServiceImpl) GenerateWithResources(identity Identity, resourceRoles map[string]string) (string, error) {
+// Generate creates a JWT token with resource specific roles
+func (ts *TokenServiceImpl) Generate(identity Identity, resourceRoles map[string]string) (string, error) {
 	now := time.Now()
 	claims := &JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -78,7 +51,7 @@ func (ts *TokenServiceImpl) GenerateWithResources(identity Identity, resourceRol
 
 	signedString, err := token.SignedString(ts.signingKey)
 	if err != nil {
-		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign enhanced JWT")
+		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
 	}
 
 	return signedString, nil
