@@ -40,7 +40,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 		assert.Equal(t, userID.String(), identity.ID())
 		assert.Equal(t, "testuser", identity.Username())
 		assert.Equal(t, "test@example.com", identity.Email())
-		assert.Equal(t, auth.RoleAdmin, identity.Role())
+		assert.Equal(t, string(auth.RoleAdmin), identity.Role())
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -160,7 +160,7 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 		assert.Equal(t, userID.String(), identity.ID())
 		assert.Equal(t, "testuser", identity.Username())
 		assert.Equal(t, "test@example.com", identity.Email())
-		assert.Equal(t, auth.RoleAdmin, identity.Role())
+		assert.Equal(t, string(auth.RoleAdmin), identity.Role())
 
 		mockTracker.AssertExpectations(t)
 	})
@@ -205,10 +205,10 @@ func TestUserProviderValidation(t *testing.T) {
 	provider := auth.NewUserProvider(mockTracker)
 
 	validRoles := []string{
-		auth.RoleOwner,
-		auth.RoleAdmin,
-		auth.RoleMember,
-		auth.RoleGuest,
+		string(auth.RoleOwner),
+		string(auth.RoleAdmin),
+		string(auth.RoleMember),
+		string(auth.RoleGuest),
 	}
 
 	for _, role := range validRoles {
@@ -217,7 +217,7 @@ func TestUserProviderValidation(t *testing.T) {
 				ID:       uuid.New(),
 				Username: "testuser",
 				Email:    "test@example.com",
-				Role:     role,
+				Role:     auth.UserRole(role),
 			}
 
 			err := provider.Validator(user)
