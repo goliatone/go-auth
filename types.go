@@ -49,6 +49,15 @@ type RoleCapableSession interface {
 	IsAtLeast(minRole UserRole) bool
 }
 
+// TokenService provides transport-agnostic JWT operations
+type TokenService interface {
+	// Generate creates a new JWT token for the given identity
+	Generate(identity Identity) (string, error)
+
+	// Validate parses and validates a token string, returning structured claims
+	Validate(tokenString string) (AuthClaims, error)
+}
+
 // Authenticator holds methods to deal with authentication
 type Authenticator interface {
 	Login(ctx context.Context, identifier, password string) (string, error)
