@@ -10,6 +10,16 @@ import (
 	"github.com/goliatone/go-router"
 )
 
+// TokenServiceAdapter adapts TokenService to jwtware.TokenValidator interface
+type TokenServiceAdapter struct {
+	tokenService TokenService
+}
+
+// Validate implements the jwtware.TokenValidator interface
+func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims, error) {
+	return tsa.tokenService.Validate(tokenString)
+}
+
 type RouteAuthenticator struct {
 	auth                   Authenticator
 	cfg                    Config
@@ -61,7 +71,7 @@ func (a RouteAuthenticator) GetExtendedCookieDuration() time.Duration {
 
 func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
 	return func(hf router.HandlerFunc) router.HandlerFunc {
-		return jwtware.New(jwtware.Config{
+		jwtConfig := jwtware.Config{
 			ErrorHandler: errorHandler,
 			SigningKey: jwtware.SigningKey{
 				Key:    []byte(cfg.GetSigningKey()),
@@ -70,7 +80,14 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 			AuthScheme:  cfg.GetAuthScheme(),
 			ContextKey:  cfg.GetContextKey(),
 			TokenLookup: cfg.GetTokenLookup(),
-		})
+		}
+
+		// If the Auther has a TokenService, use it for enhanced validation
+		if auther, ok := a.auth.(*Auther); ok && auther.tokenService != nil {
+			jwtConfig.TokenValidator = &TokenServiceAdapter{tokenService: auther.tokenService}
+		}
+
+		return jwtware.New(jwtConfig)
 	}
 }
 
