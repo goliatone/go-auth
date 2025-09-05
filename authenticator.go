@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"reflect"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/goliatone/go-errors"
@@ -16,11 +15,21 @@ type Auther struct {
 	issuer          string
 	audience        jwt.ClaimStrings
 	logger          Logger
+	tokenService    TokenService
 }
 
 // TODO: do not return interfaces, return structs
 // NewAuthenticator returns a new Authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
+	// Initialize TokenService with configuration from opts
+	tokenService := NewTokenService(
+		[]byte(opts.GetSigningKey()),
+		opts.GetTokenExpiration(),
+		opts.GetIssuer(),
+		opts.GetAudience(),
+		defLogger{},
+	)
+
 	return &Auther{
 		provider:        provider,
 		signingKey:      []byte(opts.GetSigningKey()),
@@ -28,11 +37,20 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
 		logger:          defLogger{},
+		tokenService:    tokenService,
 	}
 }
 
 func (s Auther) WithLogger(logger Logger) Auther {
 	s.logger = logger
+	// Update the TokenService logger as well
+	s.tokenService = NewTokenService(
+		s.signingKey,
+		s.tokenExpiration,
+		s.issuer,
+		s.audience,
+		logger,
+	)
 	return s
 }
 
@@ -121,52 +139,17 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 }
 
 func (s Auther) generateJWT(identity Identity) (string, error) {
-	claims := jwt.MapClaims{
-		"iss": s.issuer,
-		"sub": identity.ID(),
-		"aud": s.audience,
-		"dat": map[string]any{
-			"role": identity.Role(),
-		},
-		"iat": jwt.NewNumericDate(time.Now()),
-		"exp": jwt.NewNumericDate(
-			time.Now().Add(time.Duration(s.tokenExpiration) * time.Hour),
-		),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signedString, err := token.SignedString(s.signingKey)
-	if err != nil {
-		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
-	}
-
-	return signedString, nil
+	// Delegate to TokenService for token generation
+	return s.tokenService.Generate(identity)
 }
 
 // GenerateEnhancedJWT generates a JWT token using structured claims
 // This method creates tokens with enhanced permission capabilities
 func (s Auther) GenerateEnhancedJWT(identity Identity, resourceRoles map[string]string) (string, error) {
-	now := time.Now()
-	claims := &JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.issuer,
-			Subject:   identity.ID(),
-			Audience:  s.audience,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(s.tokenExpiration) * time.Hour)),
-		},
-		UID:       identity.ID(),
-		UserRole:  identity.Role(),
-		Resources: resourceRoles,
+	// Delegate to TokenService for enhanced token generation
+	if tokenServiceImpl, ok := s.tokenService.(*TokenServiceImpl); ok {
+		return tokenServiceImpl.GenerateWithResources(identity, resourceRoles)
 	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signedString, err := token.SignedString(s.signingKey)
-	if err != nil {
-		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign enhanced JWT")
-	}
-
-	return signedString, nil
+	// Fallback if TokenService doesn't have GenerateWithResources method
+	return s.tokenService.Generate(identity)
 }
