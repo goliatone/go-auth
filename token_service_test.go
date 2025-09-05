@@ -86,40 +86,43 @@ func TestTokenService_Generate(t *testing.T) {
 
 	service := auth.NewTokenService(signingKey, tokenExpiration, issuer, audience, logger)
 
-	t.Run("generates valid JWT token", func(t *testing.T) {
+	t.Run("generates and validates JWT token with structured claims", func(t *testing.T) {
 		identity := &MockIdentity{}
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("admin")
 
+		// Generate token
 		tokenString, err := service.Generate(identity)
-
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
 
-		// Parse the token to verify structure
-		token, err := jwt.ParseWithClaims(tokenString, &auth.JWTClaims{}, func(token *jwt.Token) (any, error) {
-			return signingKey, nil
-		})
-
+		// Validate token using TokenService.Validate
+		claims, err := service.Validate(tokenString)
 		assert.NoError(t, err)
-		assert.True(t, token.Valid)
+		assert.NotNil(t, claims)
 
-		claims, ok := token.Claims.(*auth.JWTClaims)
-		assert.True(t, ok)
+		// Verify AuthClaims interface methods work correctly
 		assert.Equal(t, "user-123", claims.Subject())
 		assert.Equal(t, "user-123", claims.UserID())
 		assert.Equal(t, "admin", claims.Role())
-		assert.Equal(t, issuer, claims.Issuer)
-		assert.Equal(t, audience, claims.Audience)
-		assert.NotNil(t, claims.IssuedAt)
-		assert.NotNil(t, claims.ExpiresAt)
-		assert.NotNil(t, claims.Resources)
-		assert.Empty(t, claims.Resources) // Should be empty for basic generation
+
+		// Test RBAC methods - admin should have these permissions
+		assert.True(t, claims.CanRead("any-resource"))
+		assert.True(t, claims.CanEdit("any-resource"))
+		assert.True(t, claims.CanCreate("any-resource"))
+		assert.False(t, claims.CanDelete("any-resource")) // admin can't delete
+
+		// Test role checking methods
+		assert.True(t, claims.HasRole("admin"))
+		assert.False(t, claims.HasRole("owner"))
+		assert.True(t, claims.IsAtLeast("guest"))
+		assert.True(t, claims.IsAtLeast("admin"))
+		assert.False(t, claims.IsAtLeast("owner"))
 
 		identity.AssertExpectations(t)
 	})
 
-	t.Run("sets correct expiration time", func(t *testing.T) {
+	t.Run("generates token with correct expiration time", func(t *testing.T) {
 		identity := &MockIdentity{}
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("member")
@@ -130,19 +133,23 @@ func TestTokenService_Generate(t *testing.T) {
 
 		assert.NoError(t, err)
 
-		token, err := jwt.ParseWithClaims(tokenString, &auth.JWTClaims{}, func(token *jwt.Token) (any, error) {
-			return signingKey, nil
-		})
-
+		// Validate and check expiration through AuthClaims interface
+		claims, err := service.Validate(tokenString)
 		assert.NoError(t, err)
-		claims := token.Claims.(*auth.JWTClaims)
 
 		expectedExpiry := beforeGenerate.Add(time.Duration(tokenExpiration) * time.Hour)
-		actualExpiry := claims.ExpiresAt.Time
+		actualExpiry := claims.Expires()
 
-		// Allow for a small margin of difference due to timing
+		// Verify expiration is set correctly
+		assert.False(t, actualExpiry.IsZero())
 		assert.True(t, actualExpiry.After(expectedExpiry.Add(-time.Second)))
 		assert.True(t, actualExpiry.Before(afterGenerate.Add(time.Duration(tokenExpiration)*time.Hour+time.Second)))
+
+		// Verify issued at time is set
+		issuedAt := claims.IssuedAt()
+		assert.False(t, issuedAt.IsZero())
+		assert.True(t, issuedAt.After(beforeGenerate.Add(-time.Second)))
+		assert.True(t, issuedAt.Before(afterGenerate.Add(time.Second)))
 
 		identity.AssertExpectations(t)
 	})
@@ -156,9 +163,10 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 	logger := &MockLogger{}
 
 	// Access the concrete implementation to test GenerateWithResources
-	serviceImpl := auth.NewTokenService(signingKey, tokenExpiration, issuer, audience, logger).(*auth.TokenServiceImpl)
+	service := auth.NewTokenService(signingKey, tokenExpiration, issuer, audience, logger)
+	serviceImpl := service.(*auth.TokenServiceImpl)
 
-	t.Run("generates token with resource roles", func(t *testing.T) {
+	t.Run("generates and validates token with resource roles", func(t *testing.T) {
 		identity := &MockIdentity{}
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("member")
@@ -168,46 +176,71 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 			"project-2": "owner",
 		}
 
+		// Generate token with resources
 		tokenString, err := serviceImpl.GenerateWithResources(identity, resourceRoles)
-
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
 
-		// Parse the token to verify structure
-		token, err := jwt.ParseWithClaims(tokenString, &auth.JWTClaims{}, func(token *jwt.Token) (any, error) {
-			return signingKey, nil
-		})
-
+		// Validate token using TokenService.Validate
+		claims, err := service.Validate(tokenString)
 		assert.NoError(t, err)
-		assert.True(t, token.Valid)
+		assert.NotNil(t, claims)
 
-		claims, ok := token.Claims.(*auth.JWTClaims)
-		assert.True(t, ok)
+		// Verify basic claims
 		assert.Equal(t, "user-123", claims.Subject())
 		assert.Equal(t, "member", claims.Role())
-		assert.Equal(t, resourceRoles, claims.Resources)
+
+		// Test global permissions (should use member role)
+		assert.True(t, claims.CanRead("unknown-resource"))
+		assert.True(t, claims.CanEdit("unknown-resource"))
+		assert.False(t, claims.CanCreate("unknown-resource"))
+		assert.False(t, claims.CanDelete("unknown-resource"))
+
+		// Test resource-specific permissions
+		// project-1: admin role
+		assert.True(t, claims.CanRead("project-1"))
+		assert.True(t, claims.CanEdit("project-1"))
+		assert.True(t, claims.CanCreate("project-1"))
+		assert.False(t, claims.CanDelete("project-1"))
+
+		// project-2: owner role
+		assert.True(t, claims.CanRead("project-2"))
+		assert.True(t, claims.CanEdit("project-2"))
+		assert.True(t, claims.CanCreate("project-2"))
+		assert.True(t, claims.CanDelete("project-2"))
+
+		// Test role checking (should have member globally, admin and owner for resources)
+		assert.True(t, claims.HasRole("member"))
+		assert.True(t, claims.HasRole("admin"))  // resource role
+		assert.True(t, claims.HasRole("owner"))  // resource role
+		assert.False(t, claims.HasRole("guest")) // not present anywhere
 
 		identity.AssertExpectations(t)
 	})
 
-	t.Run("generates token with empty resource roles", func(t *testing.T) {
+	t.Run("generates and validates token with empty resource roles", func(t *testing.T) {
 		identity := &MockIdentity{}
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("guest")
 
 		resourceRoles := map[string]string{}
 
+		// Generate token with empty resources
 		tokenString, err := serviceImpl.GenerateWithResources(identity, resourceRoles)
-
 		assert.NoError(t, err)
 
-		token, err := jwt.ParseWithClaims(tokenString, &auth.JWTClaims{}, func(token *jwt.Token) (any, error) {
-			return signingKey, nil
-		})
-
+		// Validate and verify the token works like a normal token
+		claims, err := service.Validate(tokenString)
 		assert.NoError(t, err)
-		claims := token.Claims.(*auth.JWTClaims)
-		assert.Empty(t, claims.Resources)
+
+		// Should behave like guest role globally
+		assert.True(t, claims.CanRead("any-resource"))
+		assert.False(t, claims.CanEdit("any-resource"))
+		assert.False(t, claims.CanCreate("any-resource"))
+		assert.False(t, claims.CanDelete("any-resource"))
+
+		assert.True(t, claims.HasRole("guest"))
+		assert.False(t, claims.HasRole("member"))
 
 		identity.AssertExpectations(t)
 	})
@@ -244,14 +277,19 @@ func TestTokenService_Validate(t *testing.T) {
 	})
 
 	t.Run("returns error for expired token", func(t *testing.T) {
-		// Create an expired token
+		// Create an expired token using JWTClaims
 		now := time.Now()
-		expiredClaims := jwt.MapClaims{
-			"iss": issuer,
-			"sub": "user-expired",
-			"aud": audience,
-			"iat": jwt.NewNumericDate(now.Add(-25 * time.Hour)),
-			"exp": jwt.NewNumericDate(now.Add(-1 * time.Hour)), // Expired 1 hour ago
+		expiredClaims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    issuer,
+				Subject:   "user-expired",
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now.Add(-25 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(now.Add(-1 * time.Hour)), // Expired 1 hour ago
+			},
+			UID:       "user-expired",
+			UserRole:  "member",
+			Resources: make(map[string]string),
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
@@ -302,14 +340,20 @@ func TestTokenService_Validate(t *testing.T) {
 	})
 
 	t.Run("returns error for token with wrong signing key", func(t *testing.T) {
-		// Create a token with a different signing key
+		// Create a token with a different signing key using JWTClaims
 		wrongKey := []byte("wrong-signing-key")
-		claims := jwt.MapClaims{
-			"iss": issuer,
-			"sub": "user-123",
-			"aud": audience,
-			"iat": jwt.NewNumericDate(time.Now()).Unix(),
-			"exp": jwt.NewNumericDate(time.Now().Add(24 * time.Hour)).Unix(),
+		now := time.Now()
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    issuer,
+				Subject:   "user-123",
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)),
+			},
+			UID:       "user-123",
+			UserRole:  "member",
+			Resources: make(map[string]string),
 		}
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
