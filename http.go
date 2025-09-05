@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -18,6 +19,14 @@ type TokenServiceAdapter struct {
 // Validate implements the jwtware.TokenValidator interface
 func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims, error) {
 	return tsa.tokenService.Validate(tokenString)
+}
+
+// contextEnricherAdapter adapts jwtware.AuthClaims to auth.AuthClaims for WithClaimsContext
+func contextEnricherAdapter(c context.Context, claims jwtware.AuthClaims) context.Context {
+	// Since both interfaces are structurally identical, we can safely cast
+	// This works because jwtware.AuthClaims is designed to mirror auth.AuthClaims
+	authClaims := claims.(AuthClaims)
+	return WithClaimsContext(c, authClaims)
 }
 
 type RouteAuthenticator struct {
@@ -77,9 +86,10 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 				Key:    []byte(cfg.GetSigningKey()),
 				JWTAlg: cfg.GetSigningMethod(),
 			},
-			AuthScheme:  cfg.GetAuthScheme(),
-			ContextKey:  cfg.GetContextKey(),
-			TokenLookup: cfg.GetTokenLookup(),
+			AuthScheme:      cfg.GetAuthScheme(),
+			ContextKey:      cfg.GetContextKey(),
+			TokenLookup:     cfg.GetTokenLookup(),
+			ContextEnricher: contextEnricherAdapter,
 		}
 
 		// If the Auther has a TokenService, use it for enhanced validation

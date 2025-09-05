@@ -6,7 +6,6 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
-	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-print"
@@ -20,22 +19,17 @@ type Middleware interface {
 }
 
 func GetRouterSession(c router.Context, key string) (*SessionObject, error) {
-	cookie := c.Locals(key)
-	if cookie == nil {
+	sessionData := c.Locals(key)
+	if sessionData == nil {
 		return nil, ErrUnableToFindSession
 	}
 
-	user, ok := cookie.(*jwt.Token)
-	if user == nil || !ok {
+	claims, ok := sessionData.(AuthClaims)
+	if claims == nil || !ok {
 		return nil, ErrUnableToDecodeSession
 	}
 
-	claims, ok := user.Claims.(jwt.MapClaims)
-	if claims == nil || !ok {
-		return nil, ErrUnableToMapClaims
-	}
-
-	return sessionFromClaims(claims)
+	return sessionFromAuthClaims(claims)
 }
 
 func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOption) {
