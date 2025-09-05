@@ -57,24 +57,22 @@ func TestLogin(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed and contains correct claims
-		parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
+		// Verify token can be parsed and contains correct claims using new structure
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
 			return []byte("test-signing-key"), nil
 		})
 
 		assert.NoError(t, err)
 		assert.True(t, parsedToken.Valid)
 
-		claims, ok := parsedToken.Claims.(jwt.MapClaims)
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-		assert.Equal(t, identity.ID(), claims["sub"])
-		assert.Equal(t, "test-issuer", claims["iss"])
-		assert.Equal(t, []any{"test:audience"}, claims["aud"])
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "test-issuer", claims.RegisteredClaims.Issuer)
+		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.RegisteredClaims.Audience)
 
-		// Verify role is in the data claims
-		datClaims, ok := claims["dat"].(map[string]any)
-		assert.True(t, ok)
-		assert.Equal(t, "admin", datClaims["role"])
+		// Verify role is directly in the claims
+		assert.Equal(t, "admin", claims.UserRole)
 	})
 
 	t.Run("Failed login - invalid credentials", func(t *testing.T) {
@@ -132,24 +130,22 @@ func TestImpersonate(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed and contains correct claims
-		parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
+		// Verify token can be parsed and contains correct claims using new structure
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
 			return []byte("test-signing-key"), nil
 		})
 
 		assert.NoError(t, err)
 		assert.True(t, parsedToken.Valid)
 
-		claims, ok := parsedToken.Claims.(jwt.MapClaims)
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-		assert.Equal(t, identity.ID(), claims["sub"])
-		assert.Equal(t, "test-issuer", claims["iss"])
-		assert.Equal(t, []any{"test:audience"}, claims["aud"])
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "test-issuer", claims.RegisteredClaims.Issuer)
+		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.RegisteredClaims.Audience)
 
-		// Verify role is in the data claims
-		datClaims, ok := claims["dat"].(map[string]any)
-		assert.True(t, ok)
-		assert.Equal(t, "admin", datClaims["role"])
+		// Verify role is directly in the claims
+		assert.Equal(t, "admin", claims.UserRole)
 	})
 
 	t.Run("Failed impersonation - identity not found", func(t *testing.T) {
@@ -175,20 +171,22 @@ func TestSessionFromToken(t *testing.T) {
 
 	authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
 
-	// create a valid token for testing
+	// create a valid token for testing using new JWTClaims structure
 	now := time.Now()
 	userID := uuid.New().String()
 	expiry := now.Add(24 * time.Hour)
 
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"aud": []string{"test:audience"},
-		"iss": "test-issuer",
-		"iat": jwt.NewNumericDate(now),
-		"exp": jwt.NewNumericDate(expiry),
-		"dat": map[string]any{
-			"role": "admin",
+	claims := &auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			Audience:  []string{"test:audience"},
+			Issuer:    "test-issuer",
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(expiry),
 		},
+		UID:       userID,
+		UserRole:  "admin",
+		Resources: make(map[string]string),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
