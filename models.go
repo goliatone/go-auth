@@ -8,7 +8,7 @@ import (
 )
 
 // UserRole is the user's role
-type UserRole = string
+type UserRole string
 
 const (
 	// RoleGuest is an guest role (ie. view)
