@@ -7,6 +7,7 @@ import (
 
 type Auther struct {
 	provider        IdentityProvider
+	roleProvider    ResourceRoleProvider // Mandatory provider for resource-level permissions
 	signingKey      []byte
 	tokenExpiration int
 	issuer          string
@@ -15,7 +16,6 @@ type Auther struct {
 	tokenService    TokenService
 }
 
-// TODO: do not return interfaces, return structs
 // NewAuthenticator returns a new Authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 	// Initialize TokenService with configuration from opts
@@ -29,6 +29,7 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 
 	return &Auther{
 		provider:        provider,
+		roleProvider:    &noopResourceRoleProvider{}, // Use no-op provider by default
 		signingKey:      []byte(opts.GetSigningKey()),
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
@@ -51,6 +52,13 @@ func (s Auther) WithLogger(logger Logger) Auther {
 	return s
 }
 
+// WithResourceRoleProvider sets a custom ResourceRoleProvider for the Auther.
+// This enables resource-level permissions in JWT tokens.
+func (s Auther) WithResourceRoleProvider(provider ResourceRoleProvider) Auther {
+	s.roleProvider = provider
+	return s
+}
+
 func (s Auther) Login(ctx context.Context, identifier, password string) (string, error) {
 	var err error
 	var identity Identity
@@ -65,12 +73,14 @@ func (s Auther) Login(ctx context.Context, identifier, password string) (string,
 		return "", ErrIdentityNotFound
 	}
 
-	token, err := s.generateJWT(identity)
+	// Fetch resource roles and generate structured token
+	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
+		s.logger.Error("Login failed to fetch resource roles", "error", err)
 		return "", err
 	}
 
-	return token, nil
+	return s.generateJWT(identity, resourceRoles)
 }
 
 func (s Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
@@ -87,12 +97,14 @@ func (s Auther) Impersonate(ctx context.Context, identifier string) (string, err
 		return "", ErrIdentityNotFound
 	}
 
-	token, err := s.generateJWT(identity)
+	// Fetch resource roles and generate structured token
+	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
+		s.logger.Error("Impersonate failed to fetch resource roles", "error", err)
 		return "", err
 	}
 
-	return token, nil
+	return s.generateJWT(identity, resourceRoles)
 }
 
 func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
@@ -124,18 +136,8 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 	return session, nil
 }
 
-func (s Auther) generateJWT(identity Identity) (string, error) {
+// generateJWT generates a JWT token using structured claims with resource-specific roles
+func (s Auther) generateJWT(identity Identity, resourceRoles map[string]string) (string, error) {
 	// Delegate to TokenService for token generation
-	return s.tokenService.Generate(identity)
-}
-
-// GenerateEnhancedJWT generates a JWT token using structured claims
-// This method creates tokens with enhanced permission capabilities
-func (s Auther) GenerateEnhancedJWT(identity Identity, resourceRoles map[string]string) (string, error) {
-	// Delegate to TokenService for enhanced token generation
-	if tokenServiceImpl, ok := s.tokenService.(*TokenServiceImpl); ok {
-		return tokenServiceImpl.GenerateWithResources(identity, resourceRoles)
-	}
-	// Fallback if TokenService doesn't have GenerateWithResources method
-	return s.tokenService.Generate(identity)
+	return s.tokenService.Generate(identity, resourceRoles)
 }
