@@ -295,3 +295,174 @@ func TestIdentityFromSession(t *testing.T) {
 		assert.Contains(t, err.Error(), "identity not found")
 	})
 }
+
+func TestGenerateEnhancedJWT(t *testing.T) {
+	// Setup test environment
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := new(MockConfig)
+
+	// Configure mock config
+	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetTokenExpiration").Return(24)
+	mockConfig.On("GetIssuer").Return("test-issuer")
+	mockConfig.On("GetAudience").Return([]string{"test:audience"})
+
+	// Create authenticator
+	authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
+
+	t.Run("Successful enhanced JWT generation", func(t *testing.T) {
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "testuser",
+			email:    "test@example.com",
+			role:     "admin",
+		}
+
+		resourceRoles := map[string]string{
+			"project:123": "owner",
+			"project:456": "member",
+		}
+
+		token, err := authenticator.GenerateEnhancedJWT(identity, resourceRoles)
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token can be parsed and contains correct structured claims
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+
+		// Verify registered claims
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "test-issuer", claims.Issuer)
+		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.Audience)
+		assert.NotNil(t, claims.IssuedAt)
+		assert.NotNil(t, claims.ExpiresAt)
+
+		// Verify custom claims
+		assert.Equal(t, identity.ID(), claims.UID)
+		assert.Equal(t, "admin", claims.UserRole)
+		assert.Equal(t, resourceRoles, claims.Resources)
+
+		// Test AuthClaims interface methods
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, identity.ID(), claims.UserID())
+		assert.Equal(t, "admin", claims.Role())
+
+		// Test role checking methods
+		assert.True(t, claims.HasRole("admin"))
+		assert.False(t, claims.HasRole("guest"))
+		assert.True(t, claims.HasRole("owner"))  // should find in resources
+		assert.True(t, claims.HasRole("member")) // should find in resources
+
+		// Test IsAtLeast method
+		assert.True(t, claims.IsAtLeast(string(auth.RoleGuest)))
+		assert.True(t, claims.IsAtLeast(string(auth.RoleMember)))
+		assert.True(t, claims.IsAtLeast(string(auth.RoleAdmin)))
+		assert.False(t, claims.IsAtLeast(string(auth.RoleOwner)))
+
+		// Test permission methods with global role fallback
+		assert.True(t, claims.CanRead("unknown:resource"))    // admin can read
+		assert.True(t, claims.CanEdit("unknown:resource"))    // admin can edit
+		assert.True(t, claims.CanCreate("unknown:resource"))  // admin can create
+		assert.False(t, claims.CanDelete("unknown:resource")) // admin cannot delete (only owner can)
+
+		// Test permission methods with resource-specific roles
+		assert.True(t, claims.CanRead("project:123"))   // owner can read
+		assert.True(t, claims.CanEdit("project:123"))   // owner can edit
+		assert.True(t, claims.CanCreate("project:123")) // owner can create
+		assert.True(t, claims.CanDelete("project:123")) // owner can delete
+
+		assert.True(t, claims.CanRead("project:456"))    // member can read
+		assert.True(t, claims.CanEdit("project:456"))    // member can edit
+		assert.False(t, claims.CanCreate("project:456")) // member cannot create
+		assert.False(t, claims.CanDelete("project:456")) // member cannot delete
+
+		// Test time methods
+		assert.False(t, claims.IssuedAt().IsZero())
+		assert.False(t, claims.Expires().IsZero())
+		assert.True(t, claims.Expires().After(claims.IssuedAt()))
+	})
+
+	t.Run("Enhanced JWT with empty resource roles", func(t *testing.T) {
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "testuser",
+			email:    "test@example.com",
+			role:     "member",
+		}
+
+		token, err := authenticator.GenerateEnhancedJWT(identity, nil)
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token can be parsed
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+
+		// Verify structure
+		assert.Equal(t, identity.ID(), claims.UID)
+		assert.Equal(t, "member", claims.UserRole)
+		assert.Nil(t, claims.Resources)
+
+		// Test permissions fall back to global role
+		assert.True(t, claims.CanRead("any:resource"))    // member can read
+		assert.True(t, claims.CanEdit("any:resource"))    // member can edit
+		assert.False(t, claims.CanCreate("any:resource")) // member cannot create
+		assert.False(t, claims.CanDelete("any:resource")) // member cannot delete
+	})
+
+	t.Run("Enhanced JWT with guest role", func(t *testing.T) {
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "guestuser",
+			email:    "guest@example.com",
+			role:     "guest",
+		}
+
+		resourceRoles := map[string]string{
+			"public:resource": "guest",
+		}
+
+		token, err := authenticator.GenerateEnhancedJWT(identity, resourceRoles)
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token can be parsed
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+
+		// Test guest permissions
+		assert.True(t, claims.CanRead("any:resource"))    // guest can read
+		assert.False(t, claims.CanEdit("any:resource"))   // guest cannot edit
+		assert.False(t, claims.CanCreate("any:resource")) // guest cannot create
+		assert.False(t, claims.CanDelete("any:resource")) // guest cannot delete
+
+		// Test IsAtLeast for guest
+		assert.True(t, claims.IsAtLeast(string(auth.RoleGuest)))
+		assert.False(t, claims.IsAtLeast(string(auth.RoleMember)))
+		assert.False(t, claims.IsAtLeast(string(auth.RoleAdmin)))
+		assert.False(t, claims.IsAtLeast(string(auth.RoleOwner)))
+	})
+}
