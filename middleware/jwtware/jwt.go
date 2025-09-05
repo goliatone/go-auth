@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 	"time"
 
@@ -18,6 +17,26 @@ var (
 	ErrJWTMissingOrMalformed = errors.New("missing or malformed JWT")
 )
 
+// TokenValidator interface for validating tokens without import cycles
+// This mirrors the TokenService.Validate method from the auth package
+type TokenValidator interface {
+	Validate(tokenString string) (AuthClaims, error)
+}
+
+// AuthClaims interface for structured claims without import cycles
+// This mirrors the AuthClaims interface from the auth package
+type AuthClaims interface {
+	Subject() string
+	UserID() string
+	Role() string
+	CanRead(resource string) bool
+	CanEdit(resource string) bool
+	CanCreate(resource string) bool
+	CanDelete(resource string) bool
+	HasRole(role string) bool
+	IsAtLeast(minRole string) bool
+}
+
 type Config struct {
 	Filter              func(router.Context) bool
 	SuccessHandler      router.HandlerFunc
@@ -25,12 +44,13 @@ type Config struct {
 	SigningKey          SigningKey
 	SigningKeys         map[string]SigningKey
 	ContextKey          string
-	Claims              jwt.Claims
 	TokenLookup         string
 	AuthScheme          string
 	KeyFunc             jwt.Keyfunc
 	JWKSetURLs          []string
 	LocalTokenSerilizer func(*jwt.Token) any
+	// TokenValidator is required for token validation
+	TokenValidator TokenValidator
 }
 
 type SigningKey struct {
@@ -50,22 +70,15 @@ func New(config ...Config) router.HandlerFunc {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		var t *jwt.Token
-
-		if _, ok := cfg.Claims.(jwt.MapClaims); ok {
-			t, err = jwt.Parse(a, cfg.KeyFunc)
-		} else {
-			ct := reflect.ValueOf(cfg.Claims).Type().Elem()
-			claims := reflect.New(ct).Interface().(jwt.Claims)
-			t, err = jwt.ParseWithClaims(a, claims, cfg.KeyFunc)
+		// Use TokenValidator for token validation
+		claims, err := cfg.TokenValidator.Validate(a)
+		if err != nil {
+			return cfg.ErrorHandler(ctx, err)
 		}
 
-		if err == nil && t.Valid {
-			ctx.Locals(cfg.ContextKey, cfg.LocalTokenSerilizer(t))
-			return cfg.SuccessHandler(ctx)
-		}
-
-		return cfg.ErrorHandler(ctx, err)
+		// Store AuthClaims in context
+		ctx.Locals(cfg.ContextKey, claims)
+		return cfg.SuccessHandler(ctx)
 	}
 }
 
@@ -103,16 +116,16 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 		}
 	}
 
+	if cfg.TokenValidator == nil {
+		panic("AUTH: JWT middleware configuration: TokenValidator is required.")
+	}
+
 	if cfg.SigningKey.Key == nil && len(cfg.SigningKeys) == 0 && len(cfg.JWKSetURLs) == 0 && cfg.KeyFunc == nil {
 		panic("AUTH: JWT middleware configuration: At least one of the following is required: KeyFunc, JWKSetURLs, SigningKeys, or SigningKey.")
 	}
 
 	if cfg.ContextKey == "" {
 		cfg.ContextKey = "user"
-	}
-
-	if cfg.Claims == nil {
-		cfg.Claims = jwt.MapClaims{}
 	}
 
 	if cfg.TokenLookup == "" {

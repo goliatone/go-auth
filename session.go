@@ -61,7 +61,7 @@ func (s *SessionObject) CanRead(resource string) bool {
 		}
 	}
 
-	// Fallback to global role for backward compatibility
+	// Use global role from session data
 	return s.getGlobalRole().CanRead()
 }
 
@@ -81,7 +81,7 @@ func (s *SessionObject) CanEdit(resource string) bool {
 		}
 	}
 
-	// Fallback to global role for backward compatibility
+	// Use global role from session data
 	return s.getGlobalRole().CanEdit()
 }
 
@@ -101,7 +101,7 @@ func (s *SessionObject) CanCreate(resource string) bool {
 		}
 	}
 
-	// Fallback to global role for backward compatibility
+	// Use global role from session data
 	return s.getGlobalRole().CanCreate()
 }
 
@@ -121,7 +121,7 @@ func (s *SessionObject) CanDelete(resource string) bool {
 		}
 	}
 
-	// Fallback to global role for backward compatibility
+	// Use global role from session data
 	return s.getGlobalRole().CanDelete()
 }
 
