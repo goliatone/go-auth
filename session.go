@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -165,61 +164,51 @@ func (s SessionObject) String() string {
 	)
 }
 
-func sessionFromClaims(claims jwt.Claims) (*SessionObject, error) {
-	sub, err := claims.GetSubject()
-	if err != nil {
+// sessionFromAuthClaims creates a SessionObject from modern AuthClaims interface
+func sessionFromAuthClaims(claims AuthClaims) (*SessionObject, error) {
+	if claims == nil {
 		return nil, ErrUnableToParseData
 	}
 
-	aud, err := claims.GetAudience()
-	if err != nil {
-		return nil, ErrUnableToParseData
+	// Build the data map from the claims
+	data := make(map[string]any)
+	data["role"] = claims.Role()
+
+	// Add resource roles if available (for JWTClaims implementation)
+	if jwtClaims, ok := claims.(*JWTClaims); ok && len(jwtClaims.Resources) > 0 {
+		data["resources"] = jwtClaims.Resources
 	}
 
-	iss, err := claims.GetIssuer()
-	if err != nil {
-		return nil, ErrUnableToParseData
+	// Convert audience from jwt.ClaimStrings to []string
+	var audience []string
+	if jwtClaims, ok := claims.(*JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Audience != nil {
+			for _, aud := range jwtClaims.RegisteredClaims.Audience {
+				audience = append(audience, aud)
+			}
+		}
 	}
 
-	eat, err := claims.GetExpirationTime()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	iat, err := claims.GetIssuedAt()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	dat, err := getData(claims)
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
+	issuedAt := claims.IssuedAt()
+	expiresAt := claims.Expires()
 
 	return &SessionObject{
-		UserID:         sub,
-		Audience:       aud,
-		Issuer:         iss,
-		Data:           dat,
-		IssuedAt:       &iat.Time,
-		ExpirationDate: &eat.Time,
+		UserID:         claims.UserID(),
+		Audience:       audience,
+		Issuer:         getIssuerFromClaims(claims),
+		Data:           data,
+		IssuedAt:       &issuedAt,
+		ExpirationDate: &expiresAt,
 	}, nil
 }
 
-func getData(claims jwt.Claims) (map[string]any, error) {
-	mp, ok := claims.(jwt.MapClaims)
-	if !ok {
-		return nil, ErrUnableToMapClaims
+// getIssuerFromClaims extracts the issuer from AuthClaims
+func getIssuerFromClaims(claims AuthClaims) string {
+	if jwtClaims, ok := claims.(*JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Issuer != "" {
+			return jwtClaims.RegisteredClaims.Issuer
+		}
 	}
-
-	d, ok := mp["dat"]
-	if !ok {
-		return nil, ErrUnableToMapClaims
-	}
-
-	dat, ok := d.(map[string]any)
-	if !ok {
-		return nil, ErrUnableToMapClaims
-	}
-	return dat, nil
+	// Fallback to subject if no issuer is available
+	return claims.Subject()
 }
