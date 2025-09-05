@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.8.0](https://github.com/goliatone/go-auth/compare/v0.7.0...v0.8.0) - (2025-09-05)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.8.0 ([e52dfe2](https://github.com/goliatone/go-auth/commit/e52dfe27e0d48be2198632a6454fe66a9d17eaab))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.7.0 ([e588035](https://github.com/goliatone/go-auth/commit/e5880358aeaa7ebfd2ed40955d9b6097f354e7b0))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([bb8f214](https://github.com/goliatone/go-auth/commit/bb8f21472bf473ac4cd1c62aa44d84e66a79ab82))  - (goliatone)
+
 # [0.7.0](https://github.com/goliatone/go-auth/compare/v0.6.0...v0.7.0) - (2025-09-05)
 
 ## <!-- 1 -->🐛 Bug Fixes
