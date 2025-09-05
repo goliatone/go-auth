@@ -1,6 +1,7 @@
 package jwtware
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -51,6 +52,18 @@ type Config struct {
 	LocalTokenSerilizer func(*jwt.Token) any
 	// TokenValidator is required for token validation
 	TokenValidator TokenValidator
+
+	// Optional RBAC fields for enhanced middleware functionality
+	// RoleChecker is an optional function to validate roles against custom logic
+	RoleChecker func(AuthClaims, string) bool
+	// RequiredRole specifies an exact role that must be present
+	RequiredRole string
+	// MinimumRole specifies the minimum role level required (uses role hierarchy)
+	MinimumRole string
+
+	// ContextEnricher is an optional function to propagate claims to the standard
+	// Go context. If provided, it will be called after successful token validation.
+	ContextEnricher func(c context.Context, claims AuthClaims) context.Context
 }
 
 type SigningKey struct {
@@ -76,10 +89,72 @@ func New(config ...Config) router.HandlerFunc {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		// Store AuthClaims in context
+		// Perform RBAC authorization checks if configured
+		if err := performAuthorizationChecks(claims, cfg); err != nil {
+			return cfg.ErrorHandler(ctx, err)
+		}
+
+		// Store AuthClaims in router context
 		ctx.Locals(cfg.ContextKey, claims)
+
+		// If a context enricher is provided, use it to propagate claims to the standard Go context
+		if cfg.ContextEnricher != nil {
+			stdCtx := ctx.Context()
+			stdCtxWithClaims := cfg.ContextEnricher(stdCtx, claims)
+			ctx.SetContext(stdCtxWithClaims)
+		}
+
 		return cfg.SuccessHandler(ctx)
 	}
+}
+
+// // claimsCtxKey is the context key for storing AuthClaims in standard context
+// var claimsCtxKey = &contextKey{"claims"}
+//
+// type contextKey struct {
+//   name string
+// }
+//
+// // withClaimsContext sets the AuthClaims in the given context
+// func withClaimsContext(ctx context.Context, claims AuthClaims) context.Context {
+//   return context.WithValue(ctx, claimsCtxKey, claims)
+// }
+
+// performAuthorizationChecks performs RBAC authorization checks using the configured options
+func performAuthorizationChecks(claims AuthClaims, cfg Config) error {
+	// If no RBAC configuration is provided, skip authorization checks
+	if cfg.RequiredRole == "" && cfg.MinimumRole == "" && cfg.RoleChecker == nil {
+		return nil
+	}
+
+	// Check if user has the required exact role
+	if cfg.RequiredRole != "" {
+		if !claims.HasRole(cfg.RequiredRole) {
+			return fmt.Errorf("access denied: required role '%s' not found", cfg.RequiredRole)
+		}
+	}
+
+	// Check if user has at least the minimum role level
+	if cfg.MinimumRole != "" {
+		if !claims.IsAtLeast(cfg.MinimumRole) {
+			return fmt.Errorf("access denied: minimum role '%s' required", cfg.MinimumRole)
+		}
+	}
+
+	// Use custom role checker if provided
+	if cfg.RoleChecker != nil {
+		// RoleChecker can check against either RequiredRole or MinimumRole
+		roleToCheck := cfg.RequiredRole
+		if roleToCheck == "" {
+			roleToCheck = cfg.MinimumRole
+		}
+
+		if roleToCheck != "" && !cfg.RoleChecker(claims, roleToCheck) {
+			return fmt.Errorf("access denied: custom role check failed for role '%s'", roleToCheck)
+		}
+	}
+
+	return nil
 }
 
 func ExtractRawTokenFromContext(ctx router.Context, extractors []JWTExtractor) (string, error) {
