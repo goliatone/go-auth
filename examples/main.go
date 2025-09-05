@@ -232,6 +232,67 @@ func WithPersistence(ctx context.Context, app *App) error {
 	return nil
 }
 
+// ExampleResourceRoleProvider demonstrates how to implement a custom ResourceRoleProvider
+// This example shows a simple role provider that assigns resource-specific roles based on user roles.
+// In a real application, you would typically fetch this data from a database or external service.
+type ExampleResourceRoleProvider struct {
+	repo   auth.RepositoryManager
+	logger glog.Logger
+}
+
+// FindResourceRoles implements the ResourceRoleProvider interface
+func (p *ExampleResourceRoleProvider) FindResourceRoles(ctx context.Context, identity auth.Identity) (map[string]string, error) {
+	// In this example, we'll provide different resource access based on the user's global role
+	userRole := identity.Role()
+	resourceRoles := make(map[string]string)
+
+	// Example resource roles based on user's global role
+	switch userRole {
+	case "admin":
+		// Admin users get owner access to admin resources and member access to projects
+		resourceRoles["admin:dashboard"] = "owner"
+		resourceRoles["admin:settings"] = "owner"
+		resourceRoles["admin:users"] = "owner"
+		resourceRoles["project:default"] = "admin"
+
+	case "moderator":
+		// Moderators get admin access to some resources and member access to projects
+		resourceRoles["admin:dashboard"] = "member"
+		resourceRoles["project:default"] = "admin"
+
+	case "user":
+		// Regular users get member access to their assigned projects
+		resourceRoles["project:default"] = "member"
+
+	case "guest":
+		// Guests only get read access to public resources
+		resourceRoles["project:public"] = "guest"
+
+	default:
+		// Unknown roles get minimal access
+		p.logger.Warn("Unknown user role, providing minimal access", "role", userRole, "user_id", identity.ID())
+	}
+
+	// In a real application, you might also query the database for user-specific permissions:
+	//
+	// userID := identity.ID()
+	// permissions, err := p.repo.GetUserPermissions(ctx, userID)
+	// if err != nil {
+	//     return nil, fmt.Errorf("failed to fetch user permissions: %w", err)
+	// }
+	//
+	// for resource, role := range permissions {
+	//     resourceRoles[resource] = role
+	// }
+
+	p.logger.Debug("Generated resource roles for user",
+		"user_id", identity.ID(),
+		"user_role", userRole,
+		"resource_count", len(resourceRoles))
+
+	return resourceRoles, nil
+}
+
 func WithHTTPAuth(ctx context.Context, app *App) error {
 	cfg := app.Config().GetAuth()
 
@@ -244,12 +305,28 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 	userProvider := auth.NewUserProvider(repo.Users())
 	userProvider.WithLogger(app.GetLogger("auth:prv"))
 
-	athenticator := auth.NewAuthenticator(userProvider, cfg)
-	athenticator.WithLogger(app.GetLogger("auth:authz"))
+	// Step 1: Create a standard authenticator (backward compatible)
+	// This will use the default no-op resource role provider internally
+	authenticator := auth.NewAuthenticator(userProvider, cfg)
+	authenticator = authenticator.WithLogger(app.GetLogger("auth:authz"))
 
-	app.SetAuthenticator(athenticator)
+	// Step 2: Optionally enhance the authenticator with resource-level permissions
+	// This is completely opt-in and doesn't break existing functionality
+	// Comment/uncomment the next block to see the difference
 
-	httpAuth, err := auth.NewHTTPAuthenticator(athenticator, cfg)
+	// Enhanced mode: Add custom resource role provider for fine-grained permissions
+	resourceRoleProvider := &ExampleResourceRoleProvider{
+		repo:   repo,
+		logger: app.GetLogger("auth:roles"),
+	}
+	authenticator = authenticator.WithResourceRoleProvider(resourceRoleProvider)
+
+	// The authenticator will now generate JWT tokens with resource-specific roles
+	// which enable fine-grained permission checking in your application
+
+	app.SetAuthenticator(authenticator)
+
+	httpAuth, err := auth.NewHTTPAuthenticator(authenticator, cfg)
 	if err != nil {
 		return err
 	}
@@ -343,9 +420,42 @@ func ProfileShow(app *App) func(c router.Context) error {
 			})
 		}
 
+		// Demonstration of enhanced resource-level permissions using the new claims interface
+		// Check if session implements the enhanced RoleCapableSession interface
+		var resourcePermissions map[string]interface{}
+		if roleCapableSession, ok := session.(auth.RoleCapableSession); ok {
+			// The session now has enhanced role-based methods available
+			permissions := map[string]interface{}{
+				"can_read_admin_dashboard": roleCapableSession.CanRead("admin:dashboard"),
+				"can_edit_admin_settings":  roleCapableSession.CanEdit("admin:settings"),
+				"can_create_projects":      roleCapableSession.CanCreate("project:default"),
+				"can_delete_admin_users":   roleCapableSession.CanDelete("admin:users"),
+				"has_admin_role":           roleCapableSession.HasRole("admin"),
+				"has_moderator_role":       roleCapableSession.HasRole("moderator"),
+				"is_at_least_member":       roleCapableSession.IsAtLeast("member"),
+				"global_role":              session.GetData()["role"], // Original global role
+			}
+			resourcePermissions = permissions
+
+			// Log the enhanced permissions for demonstration
+			app.GetLogger("profile").Info("Enhanced permissions available for user",
+				"user_id", session.GetUserID(),
+				"permissions", permissions)
+		} else {
+			// Fallback for basic session (backward compatibility)
+			resourcePermissions = map[string]interface{}{
+				"note":        "Using basic session - enhanced permissions not available",
+				"global_role": session.GetData()["role"],
+			}
+
+			app.GetLogger("profile").Info("Using basic session for user",
+				"user_id", session.GetUserID())
+		}
+
 		return c.Render("profile", router.ViewContext{
-			"errors": nil,
-			"record": NewUserDTO(user),
+			"errors":      nil,
+			"record":      NewUserDTO(user),
+			"permissions": resourcePermissions, // Pass permissions to template for display
 		})
 	}
 }

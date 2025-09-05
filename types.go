@@ -26,6 +26,38 @@ type Session interface {
 	GetData() map[string]any
 }
 
+// RoleCapableSession extends Session with role-based access control capabilities
+type RoleCapableSession interface {
+	Session // Embed the existing Session interface
+
+	// CanRead checks if the role can read a specific resource
+	CanRead(resource string) bool
+
+	// CanEdit checks if the role can edit a specific resource
+	CanEdit(resource string) bool
+
+	// CanCreate checks if the role can create a specific resource
+	CanCreate(resource string) bool
+
+	// CanDelete checks if the role can delete a specific resource
+	CanDelete(resource string) bool
+
+	// HasRole checks if the user has a specific role
+	HasRole(role string) bool
+
+	// IsAtLeast checks if the user's role is at least the minimum required role
+	IsAtLeast(minRole UserRole) bool
+}
+
+// TokenService provides transport-agnostic JWT operations
+type TokenService interface {
+	// Generate creates a new JWT token for the given identity with resource-specific roles
+	Generate(identity Identity, resourceRoles map[string]string) (string, error)
+
+	// Validate parses and validates a token string, returning structured claims
+	Validate(tokenString string) (AuthClaims, error)
+}
+
 // Authenticator holds methods to deal with authentication
 type Authenticator interface {
 	Login(ctx context.Context, identifier, password string) (string, error)
@@ -77,6 +109,13 @@ type Config interface {
 type IdentityProvider interface {
 	VerifyIdentity(ctx context.Context, identifier, password string) (Identity, error)
 	FindIdentityByIdentifier(ctx context.Context, identifier string) (Identity, error)
+}
+
+// ResourceRoleProvider is an optional interface for fetching resource-specific roles.
+// If provided to an Auther, it will be used to embed fine-grained permissions
+// into the JWT, upgrading it to a structured claims format.
+type ResourceRoleProvider interface {
+	FindResourceRoles(ctx context.Context, identity Identity) (map[string]string, error)
 }
 
 // PasswordAuthenticator authenticates passwords

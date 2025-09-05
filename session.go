@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
 var _ Session = &SessionObject{}
+var _ RoleCapableSession = &SessionObject{}
 
 type SessionObject struct {
 	UserID         string         `json:"user_id,omitempty"`
@@ -43,6 +43,115 @@ func (s *SessionObject) GetData() map[string]any {
 	return s.Data
 }
 
+// RoleCapableSession implementation methods
+
+// CanRead checks if the role can read a specific resource
+func (s *SessionObject) CanRead(resource string) bool {
+	// Try to get resource-specific permissions first
+	if s.Data != nil {
+		if resourceRoles, exists := s.Data["resources"]; exists {
+			if roleMap, ok := resourceRoles.(map[string]any); ok {
+				if roleStr, hasRole := roleMap[resource]; hasRole {
+					if role, ok := roleStr.(string); ok {
+						userRole := UserRole(role)
+						return userRole.CanRead()
+					}
+				}
+			}
+		}
+	}
+
+	// Use global role from session data
+	return s.getGlobalRole().CanRead()
+}
+
+// CanEdit checks if the role can edit a specific resource
+func (s *SessionObject) CanEdit(resource string) bool {
+	// Try to get resource-specific permissions first
+	if s.Data != nil {
+		if resourceRoles, exists := s.Data["resources"]; exists {
+			if roleMap, ok := resourceRoles.(map[string]any); ok {
+				if roleStr, hasRole := roleMap[resource]; hasRole {
+					if role, ok := roleStr.(string); ok {
+						userRole := UserRole(role)
+						return userRole.CanEdit()
+					}
+				}
+			}
+		}
+	}
+
+	// Use global role from session data
+	return s.getGlobalRole().CanEdit()
+}
+
+// CanCreate checks if the role can create a specific resource
+func (s *SessionObject) CanCreate(resource string) bool {
+	// Try to get resource-specific permissions first
+	if s.Data != nil {
+		if resourceRoles, exists := s.Data["resources"]; exists {
+			if roleMap, ok := resourceRoles.(map[string]any); ok {
+				if roleStr, hasRole := roleMap[resource]; hasRole {
+					if role, ok := roleStr.(string); ok {
+						userRole := UserRole(role)
+						return userRole.CanCreate()
+					}
+				}
+			}
+		}
+	}
+
+	// Use global role from session data
+	return s.getGlobalRole().CanCreate()
+}
+
+// CanDelete checks if the role can delete a specific resource
+func (s *SessionObject) CanDelete(resource string) bool {
+	// Try to get resource-specific permissions first
+	if s.Data != nil {
+		if resourceRoles, exists := s.Data["resources"]; exists {
+			if roleMap, ok := resourceRoles.(map[string]any); ok {
+				if roleStr, hasRole := roleMap[resource]; hasRole {
+					if role, ok := roleStr.(string); ok {
+						userRole := UserRole(role)
+						return userRole.CanDelete()
+					}
+				}
+			}
+		}
+	}
+
+	// Use global role from session data
+	return s.getGlobalRole().CanDelete()
+}
+
+// HasRole checks if the user has a specific role
+func (s *SessionObject) HasRole(role string) bool {
+	globalRole := s.getGlobalRole()
+	return string(globalRole) == role
+}
+
+// IsAtLeast checks if the user's role is at least the minimum required role
+func (s *SessionObject) IsAtLeast(minRole UserRole) bool {
+	globalRole := s.getGlobalRole()
+	return globalRole.IsAtLeast(minRole)
+}
+
+// getGlobalRole retrieves the global role from session data with fallback to guest
+func (s *SessionObject) getGlobalRole() UserRole {
+	if s.Data != nil {
+		if roleData, exists := s.Data["role"]; exists {
+			if roleStr, ok := roleData.(string); ok {
+				if role, valid := ParseRole(roleStr); valid {
+					return role
+				}
+			}
+		}
+	}
+	// Default to guest role if no role is found or parsing fails
+	return RoleGuest
+}
+
 // TODO: enable only in development!
 func (s SessionObject) String() string {
 	return fmt.Sprintf(
@@ -55,61 +164,51 @@ func (s SessionObject) String() string {
 	)
 }
 
-func sessionFromClaims(claims jwt.Claims) (*SessionObject, error) {
-	sub, err := claims.GetSubject()
-	if err != nil {
+// sessionFromAuthClaims creates a SessionObject from modern AuthClaims interface
+func sessionFromAuthClaims(claims AuthClaims) (*SessionObject, error) {
+	if claims == nil {
 		return nil, ErrUnableToParseData
 	}
 
-	aud, err := claims.GetAudience()
-	if err != nil {
-		return nil, ErrUnableToParseData
+	// Build the data map from the claims
+	data := make(map[string]any)
+	data["role"] = claims.Role()
+
+	// Add resource roles if available (for JWTClaims implementation)
+	if jwtClaims, ok := claims.(*JWTClaims); ok && len(jwtClaims.Resources) > 0 {
+		data["resources"] = jwtClaims.Resources
 	}
 
-	iss, err := claims.GetIssuer()
-	if err != nil {
-		return nil, ErrUnableToParseData
+	// Convert audience from jwt.ClaimStrings to []string
+	var audience []string
+	if jwtClaims, ok := claims.(*JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Audience != nil {
+			for _, aud := range jwtClaims.RegisteredClaims.Audience {
+				audience = append(audience, aud)
+			}
+		}
 	}
 
-	eat, err := claims.GetExpirationTime()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	iat, err := claims.GetIssuedAt()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	dat, err := getData(claims)
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
+	issuedAt := claims.IssuedAt()
+	expiresAt := claims.Expires()
 
 	return &SessionObject{
-		UserID:         sub,
-		Audience:       aud,
-		Issuer:         iss,
-		Data:           dat,
-		IssuedAt:       &iat.Time,
-		ExpirationDate: &eat.Time,
+		UserID:         claims.UserID(),
+		Audience:       audience,
+		Issuer:         getIssuerFromClaims(claims),
+		Data:           data,
+		IssuedAt:       &issuedAt,
+		ExpirationDate: &expiresAt,
 	}, nil
 }
 
-func getData(claims jwt.Claims) (map[string]any, error) {
-	mp, ok := claims.(jwt.MapClaims)
-	if !ok {
-		return nil, ErrUnableToMapClaims
+// getIssuerFromClaims extracts the issuer from AuthClaims
+func getIssuerFromClaims(claims AuthClaims) string {
+	if jwtClaims, ok := claims.(*JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Issuer != "" {
+			return jwtClaims.RegisteredClaims.Issuer
+		}
 	}
-
-	d, ok := mp["dat"]
-	if !ok {
-		return nil, ErrUnableToMapClaims
-	}
-
-	dat, ok := d.(map[string]any)
-	if !ok {
-		return nil, ErrUnableToMapClaims
-	}
-	return dat, nil
+	// Fallback to subject if no issuer is available
+	return claims.Subject()
 }

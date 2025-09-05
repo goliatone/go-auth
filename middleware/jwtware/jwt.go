@@ -1,10 +1,10 @@
 package jwtware
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 	"time"
 
@@ -18,6 +18,26 @@ var (
 	ErrJWTMissingOrMalformed = errors.New("missing or malformed JWT")
 )
 
+// TokenValidator interface for validating tokens without import cycles
+// This mirrors the TokenService.Validate method from the auth package
+type TokenValidator interface {
+	Validate(tokenString string) (AuthClaims, error)
+}
+
+// AuthClaims interface for structured claims without import cycles
+// This mirrors the AuthClaims interface from the auth package
+type AuthClaims interface {
+	Subject() string
+	UserID() string
+	Role() string
+	CanRead(resource string) bool
+	CanEdit(resource string) bool
+	CanCreate(resource string) bool
+	CanDelete(resource string) bool
+	HasRole(role string) bool
+	IsAtLeast(minRole string) bool
+}
+
 type Config struct {
 	Filter              func(router.Context) bool
 	SuccessHandler      router.HandlerFunc
@@ -25,12 +45,25 @@ type Config struct {
 	SigningKey          SigningKey
 	SigningKeys         map[string]SigningKey
 	ContextKey          string
-	Claims              jwt.Claims
 	TokenLookup         string
 	AuthScheme          string
 	KeyFunc             jwt.Keyfunc
 	JWKSetURLs          []string
 	LocalTokenSerilizer func(*jwt.Token) any
+	// TokenValidator is required for token validation
+	TokenValidator TokenValidator
+
+	// Optional RBAC fields for enhanced middleware functionality
+	// RoleChecker is an optional function to validate roles against custom logic
+	RoleChecker func(AuthClaims, string) bool
+	// RequiredRole specifies an exact role that must be present
+	RequiredRole string
+	// MinimumRole specifies the minimum role level required (uses role hierarchy)
+	MinimumRole string
+
+	// ContextEnricher is an optional function to propagate claims to the standard
+	// Go context. If provided, it will be called after successful token validation.
+	ContextEnricher func(c context.Context, claims AuthClaims) context.Context
 }
 
 type SigningKey struct {
@@ -50,23 +83,78 @@ func New(config ...Config) router.HandlerFunc {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		var t *jwt.Token
-
-		if _, ok := cfg.Claims.(jwt.MapClaims); ok {
-			t, err = jwt.Parse(a, cfg.KeyFunc)
-		} else {
-			ct := reflect.ValueOf(cfg.Claims).Type().Elem()
-			claims := reflect.New(ct).Interface().(jwt.Claims)
-			t, err = jwt.ParseWithClaims(a, claims, cfg.KeyFunc)
+		// Use TokenValidator for token validation
+		claims, err := cfg.TokenValidator.Validate(a)
+		if err != nil {
+			return cfg.ErrorHandler(ctx, err)
 		}
 
-		if err == nil && t.Valid {
-			ctx.Locals(cfg.ContextKey, cfg.LocalTokenSerilizer(t))
-			return cfg.SuccessHandler(ctx)
+		// Perform RBAC authorization checks if configured
+		if err := performAuthorizationChecks(claims, cfg); err != nil {
+			return cfg.ErrorHandler(ctx, err)
 		}
 
-		return cfg.ErrorHandler(ctx, err)
+		// Store AuthClaims in router context
+		ctx.Locals(cfg.ContextKey, claims)
+
+		// If a context enricher is provided, use it to propagate claims to the standard Go context
+		if cfg.ContextEnricher != nil {
+			stdCtx := ctx.Context()
+			stdCtxWithClaims := cfg.ContextEnricher(stdCtx, claims)
+			ctx.SetContext(stdCtxWithClaims)
+		}
+
+		return cfg.SuccessHandler(ctx)
 	}
+}
+
+// // claimsCtxKey is the context key for storing AuthClaims in standard context
+// var claimsCtxKey = &contextKey{"claims"}
+//
+// type contextKey struct {
+//   name string
+// }
+//
+// // withClaimsContext sets the AuthClaims in the given context
+// func withClaimsContext(ctx context.Context, claims AuthClaims) context.Context {
+//   return context.WithValue(ctx, claimsCtxKey, claims)
+// }
+
+// performAuthorizationChecks performs RBAC authorization checks using the configured options
+func performAuthorizationChecks(claims AuthClaims, cfg Config) error {
+	// If no RBAC configuration is provided, skip authorization checks
+	if cfg.RequiredRole == "" && cfg.MinimumRole == "" && cfg.RoleChecker == nil {
+		return nil
+	}
+
+	// Check if user has the required exact role
+	if cfg.RequiredRole != "" {
+		if !claims.HasRole(cfg.RequiredRole) {
+			return fmt.Errorf("access denied: required role '%s' not found", cfg.RequiredRole)
+		}
+	}
+
+	// Check if user has at least the minimum role level
+	if cfg.MinimumRole != "" {
+		if !claims.IsAtLeast(cfg.MinimumRole) {
+			return fmt.Errorf("access denied: minimum role '%s' required", cfg.MinimumRole)
+		}
+	}
+
+	// Use custom role checker if provided
+	if cfg.RoleChecker != nil {
+		// RoleChecker can check against either RequiredRole or MinimumRole
+		roleToCheck := cfg.RequiredRole
+		if roleToCheck == "" {
+			roleToCheck = cfg.MinimumRole
+		}
+
+		if roleToCheck != "" && !cfg.RoleChecker(claims, roleToCheck) {
+			return fmt.Errorf("access denied: custom role check failed for role '%s'", roleToCheck)
+		}
+	}
+
+	return nil
 }
 
 func ExtractRawTokenFromContext(ctx router.Context, extractors []JWTExtractor) (string, error) {
@@ -103,16 +191,16 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 		}
 	}
 
+	if cfg.TokenValidator == nil {
+		panic("AUTH: JWT middleware configuration: TokenValidator is required.")
+	}
+
 	if cfg.SigningKey.Key == nil && len(cfg.SigningKeys) == 0 && len(cfg.JWKSetURLs) == 0 && cfg.KeyFunc == nil {
 		panic("AUTH: JWT middleware configuration: At least one of the following is required: KeyFunc, JWKSetURLs, SigningKeys, or SigningKey.")
 	}
 
 	if cfg.ContextKey == "" {
 		cfg.ContextKey = "user"
-	}
-
-	if cfg.Claims == nil {
-		cfg.Claims = jwt.MapClaims{}
 	}
 
 	if cfg.TokenLookup == "" {

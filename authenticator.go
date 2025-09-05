@@ -3,36 +3,59 @@ package auth
 import (
 	"context"
 	"reflect"
-	"time"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/goliatone/go-errors"
 )
 
 type Auther struct {
 	provider        IdentityProvider
+	roleProvider    ResourceRoleProvider // Mandatory provider for resource-level permissions
 	signingKey      []byte
 	tokenExpiration int
 	issuer          string
-	audience        jwt.ClaimStrings
+	audience        []string
 	logger          Logger
+	tokenService    TokenService
 }
 
-// TODO: do not return interfaces, return structs
 // NewAuthenticator returns a new Authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
+	// Initialize TokenService with configuration from opts
+	tokenService := NewTokenService(
+		[]byte(opts.GetSigningKey()),
+		opts.GetTokenExpiration(),
+		opts.GetIssuer(),
+		opts.GetAudience(),
+		defLogger{},
+	)
+
 	return &Auther{
 		provider:        provider,
+		roleProvider:    &noopResourceRoleProvider{}, // Use no-op provider by default
 		signingKey:      []byte(opts.GetSigningKey()),
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
 		logger:          defLogger{},
+		tokenService:    tokenService,
 	}
 }
 
 func (s Auther) WithLogger(logger Logger) Auther {
 	s.logger = logger
+	// Update the TokenService logger as well
+	s.tokenService = NewTokenService(
+		s.signingKey,
+		s.tokenExpiration,
+		s.issuer,
+		s.audience,
+		logger,
+	)
+	return s
+}
+
+// WithResourceRoleProvider sets a custom ResourceRoleProvider for the Auther.
+// This enables resource-level permissions in JWT tokens.
+func (s Auther) WithResourceRoleProvider(provider ResourceRoleProvider) Auther {
+	s.roleProvider = provider
 	return s
 }
 
@@ -50,12 +73,14 @@ func (s Auther) Login(ctx context.Context, identifier, password string) (string,
 		return "", ErrIdentityNotFound
 	}
 
-	token, err := s.generateJWT(identity)
+	// Fetch resource roles and generate structured token
+	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
+		s.logger.Error("Login failed to fetch resource roles", "error", err)
 		return "", err
 	}
 
-	return token, nil
+	return s.generateJWT(identity, resourceRoles)
 }
 
 func (s Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
@@ -72,12 +97,14 @@ func (s Auther) Impersonate(ctx context.Context, identifier string) (string, err
 		return "", ErrIdentityNotFound
 	}
 
-	token, err := s.generateJWT(identity)
+	// Fetch resource roles and generate structured token
+	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
+		s.logger.Error("Impersonate failed to fetch resource roles", "error", err)
 		return "", err
 	}
 
-	return token, nil
+	return s.generateJWT(identity, resourceRoles)
 }
 
 func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
@@ -92,54 +119,25 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 }
 
 func (s Auther) SessionFromToken(raw string) (Session, error) {
-	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			s.logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
-			return nil, errors.New("unexpected signing method")
-		}
-		return s.signingKey, nil
-	})
-
+	// Use TokenService to validate the token and get AuthClaims
+	claims, err := s.tokenService.Validate(raw)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrTokenExpired
-		}
-
-		return nil, errors.Wrap(err, ErrTokenMalformed.Category, ErrTokenMalformed.Message).WithTextCode(ErrTokenMalformed.TextCode)
+		s.logger.Error("SessionFromToken validation failed", "error", err)
+		return nil, err
 	}
 
-	if claims, ok := token.Claims.(*jwt.MapClaims); ok && token.Valid {
-		session, err := sessionFromClaims(*claims)
-		if err != nil {
-			return nil, err
-		}
-		return session, nil
+	// Convert AuthClaims to SessionObject
+	session, err := sessionFromAuthClaims(claims)
+	if err != nil {
+		s.logger.Error("SessionFromToken failed to create session from claims", "error", err)
+		return nil, err
 	}
 
-	s.logger.Error("SessionFromToken could not decode or validate claims")
-	return nil, ErrUnableToDecodeSession
+	return session, nil
 }
 
-func (s Auther) generateJWT(identity Identity) (string, error) {
-	claims := jwt.MapClaims{
-		"iss": s.issuer,
-		"sub": identity.ID(),
-		"aud": s.audience,
-		"dat": map[string]any{
-			"role": identity.Role(),
-		},
-		"iat": jwt.NewNumericDate(time.Now()),
-		"exp": jwt.NewNumericDate(
-			time.Now().Add(time.Duration(s.tokenExpiration) * time.Hour),
-		),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	signedString, err := token.SignedString(s.signingKey)
-	if err != nil {
-		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
-	}
-
-	return signedString, nil
+// generateJWT generates a JWT token using structured claims with resource-specific roles
+func (s Auther) generateJWT(identity Identity, resourceRoles map[string]string) (string, error) {
+	// Delegate to TokenService for token generation
+	return s.tokenService.Generate(identity, resourceRoles)
 }
