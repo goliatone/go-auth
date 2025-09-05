@@ -1,5 +1,7 @@
 package auth
 
+import "context"
+
 // RoleValidator defines the interface for role-based access control validation
 type RoleValidator interface {
 	// CanRead checks if the role can read a specific resource
@@ -107,4 +109,13 @@ func GetAllRoles() []UserRole {
 func ParseRole(roleStr string) (UserRole, bool) {
 	role := UserRole(roleStr)
 	return role, role.IsValid()
+}
+
+// noopResourceRoleProvider implements ResourceRoleProvider with no-op behavior
+// This is used as the default provider when no custom resource role provider is configured
+type noopResourceRoleProvider struct{}
+
+// FindResourceRoles returns an empty map since this is a no-op implementation
+func (n *noopResourceRoleProvider) FindResourceRoles(ctx context.Context, identity Identity) (map[string]string, error) {
+	return make(map[string]string), nil
 }

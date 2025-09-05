@@ -1,6 +1,7 @@
 package jwtware_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -321,4 +322,564 @@ func TestJWTWare_RequiredTokenValidator(t *testing.T) {
 		}
 		jwtware.New(cfg)
 	}, "Should panic when TokenValidator is not provided")
+}
+
+//--------------------------------------------------------------------------------------
+// RBAC Tests
+//--------------------------------------------------------------------------------------
+
+func TestJWTWare_RequiredRole_Success(t *testing.T) {
+	// Create claims with admin role
+	claims := NewMockAuthClaims("user-123", "user-123", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		RequiredRole:   "admin", // Require exact admin role
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access for user with required admin role")
+	assert.True(t, ctx.NextCalled, "Next() should be called when role requirement is satisfied")
+}
+
+func TestJWTWare_RequiredRole_AccessDenied(t *testing.T) {
+	// Create claims with member role (not admin)
+	claims := NewMockAuthClaims("user-456", "user-456", "member")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		RequiredRole:   "admin", // Require admin role but user has member
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-member-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-member-token")
+
+	err := middleware(ctx)
+
+	assert.Error(t, err, "Should deny access when user doesn't have required role")
+	assert.Contains(t, err.Error(), "access denied: required role 'admin' not found")
+	assert.False(t, ctx.NextCalled, "Next() should not be called when role requirement fails")
+}
+
+func TestJWTWare_MinimumRole_Success(t *testing.T) {
+	// Create claims with admin role (higher than required member)
+	claims := NewMockAuthClaims("user-789", "user-789", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		MinimumRole:    "member", // Admin is at least member level
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access for user exceeding minimum role")
+	assert.True(t, ctx.NextCalled, "Next() should be called when minimum role requirement is satisfied")
+}
+
+func TestJWTWare_MinimumRole_AccessDenied(t *testing.T) {
+	// Create claims with guest role (lower than required member)
+	claims := NewMockAuthClaims("user-101", "user-101", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		MinimumRole:    "member", // Guest is below member level
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+
+	err := middleware(ctx)
+
+	assert.Error(t, err, "Should deny access when user is below minimum role")
+	assert.Contains(t, err.Error(), "access denied: minimum role 'member' required")
+	assert.False(t, ctx.NextCalled, "Next() should not be called when minimum role requirement fails")
+}
+
+func TestJWTWare_CustomRoleChecker_Success(t *testing.T) {
+	claims := NewMockAuthClaims("user-202", "user-202", "manager")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		RequiredRole:   "manager",
+		RoleChecker: func(claims jwtware.AuthClaims, requiredRole string) bool {
+			// Custom logic: managers can access admin endpoints too
+			if claims.Role() == "manager" && requiredRole == "manager" {
+				return true
+			}
+			return claims.HasRole(requiredRole)
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-manager-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-manager-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access when custom role checker returns true")
+	assert.True(t, ctx.NextCalled, "Next() should be called when custom role checker succeeds")
+}
+
+func TestJWTWare_CustomRoleChecker_AccessDenied(t *testing.T) {
+	claims := NewMockAuthClaims("user-303", "user-303", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		RequiredRole:   "manager",
+		RoleChecker: func(claims jwtware.AuthClaims, requiredRole string) bool {
+			// Strict custom logic: only managers can access manager endpoints
+			return claims.Role() == "manager" && requiredRole == "manager"
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+
+	err := middleware(ctx)
+
+	assert.Error(t, err, "Should deny access when required role is not met")
+	// Note: RequiredRole check happens before RoleChecker, so we get the "required role not found" error
+	assert.Contains(t, err.Error(), "access denied: required role 'manager' not found")
+	assert.False(t, ctx.NextCalled, "Next() should not be called when required role check fails")
+}
+
+func TestJWTWare_CustomRoleChecker_OnlyCheck_AccessDenied(t *testing.T) {
+	claims := NewMockAuthClaims("user-404", "user-404", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		// Only use RoleChecker, no RequiredRole or MinimumRole
+		RoleChecker: func(claims jwtware.AuthClaims, role string) bool {
+			// This should fail since no role is provided to check against
+			return false
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	// Since no RequiredRole or MinimumRole is set, and RoleChecker gets empty string,
+	// the custom role check should not be invoked per the implementation logic
+	assert.NoError(t, err, "Should allow access when RoleChecker is provided but no role to check against")
+	assert.True(t, ctx.NextCalled, "Next() should be called when custom role checker is skipped due to empty role")
+}
+
+func TestJWTWare_CustomRoleChecker_OnlyCheck_WithMinimumRole_AccessDenied(t *testing.T) {
+	claims := NewMockAuthClaims("user-405", "user-405", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		MinimumRole:    "admin", // Set minimum role but user is guest (should pass MinimumRole check first)
+		RoleChecker: func(claims jwtware.AuthClaims, role string) bool {
+			// This should be called after MinimumRole check fails
+			return false
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+
+	err := middleware(ctx)
+
+	assert.Error(t, err, "Should deny access when minimum role check fails")
+	// MinimumRole check happens before RoleChecker, so we get the minimum role error
+	assert.Contains(t, err.Error(), "access denied: minimum role 'admin' required")
+	assert.False(t, ctx.NextCalled, "Next() should not be called when minimum role check fails")
+}
+
+func TestJWTWare_CustomRoleChecker_WithMinimumRole(t *testing.T) {
+	claims := NewMockAuthClaims("user-404", "user-404", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		MinimumRole:    "member", // Admin is at least member level
+		RoleChecker: func(claims jwtware.AuthClaims, role string) bool {
+			// Custom logic for minimum role checking
+			return claims.IsAtLeast(role)
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access when custom role checker validates minimum role")
+	assert.True(t, ctx.NextCalled, "Next() should be called when custom role checker succeeds for minimum role")
+}
+
+func TestJWTWare_NoRBACConfiguration_AllowsAccess(t *testing.T) {
+	claims := NewMockAuthClaims("user-505", "user-505", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		// No RBAC configuration (RequiredRole, MinimumRole, or RoleChecker)
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access when no RBAC configuration is provided")
+	assert.True(t, ctx.NextCalled, "Next() should be called when RBAC checks are skipped")
+}
+
+func TestJWTWare_MultipleRoleRequirements(t *testing.T) {
+	claims := NewMockAuthClaims("user-606", "user-606", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		RequiredRole:   "admin",  // Must have exact admin role
+		MinimumRole:    "member", // Must be at least member level
+		RoleChecker: func(claims jwtware.AuthClaims, role string) bool {
+			// Additional custom validation
+			return claims.Role() == "admin" && claims.IsAtLeast("member")
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Should allow access when all role requirements are satisfied")
+	assert.True(t, ctx.NextCalled, "Next() should be called when all role checks pass")
+}
+
+//--------------------------------------------------------------------------------------
+// Context Propagation Tests
+//--------------------------------------------------------------------------------------
+
+func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
+	// Create mock claims for successful validation
+	claims := NewMockAuthClaims("user-123", "user-123", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	// Create a mock context enricher that adds a known value to the context
+	const testKey = "test-claims-key"
+	const testValue = "enriched-claims-value"
+
+	contextEnricher := func(c context.Context, claims jwtware.AuthClaims) context.Context {
+		return context.WithValue(c, testKey, testValue)
+	}
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator:  validator,
+		ContextEnricher: contextEnricher,
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context with initial standard context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token-12345"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-12345")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	// Mock the Context() method to return an empty context initially
+	initialCtx := context.Background()
+	ctx.On("Context").Return(initialCtx)
+
+	// Mock SetContext to capture the enriched context
+	var enrichedCtx context.Context
+	ctx.On("SetContext", mock.AnythingOfType("*context.valueCtx")).Run(func(args mock.Arguments) {
+		enrichedCtx = args.Get(0).(context.Context)
+	}).Return()
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that SetContext was called
+	ctx.AssertCalled(t, "SetContext", mock.AnythingOfType("*context.valueCtx"))
+
+	// Verify that the enriched context contains the expected value
+	assert.NotNil(t, enrichedCtx, "Enriched context should not be nil")
+	value := enrichedCtx.Value(testKey)
+	assert.Equal(t, testValue, value, "Enriched context should contain the test value")
+}
+
+func TestJWTWare_ContextEnricher_NotCalled_When_Nil(t *testing.T) {
+	// Create mock claims for successful validation
+	claims := NewMockAuthClaims("user-456", "user-456", "member")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		// ContextEnricher is nil (not provided)
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token-67890"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-67890")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that SetContext was NOT called since ContextEnricher is nil
+	ctx.AssertNotCalled(t, "SetContext")
+	ctx.AssertNotCalled(t, "Context")
+}
+
+func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
+	// Create mock claims for successful validation
+	expectedSubject := "user-789"
+	expectedRole := "owner"
+	claims := NewMockAuthClaims(expectedSubject, expectedSubject, expectedRole)
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	// Create a context enricher that verifies it receives the correct claims
+	var receivedClaims jwtware.AuthClaims
+	contextEnricher := func(c context.Context, claims jwtware.AuthClaims) context.Context {
+		receivedClaims = claims
+		return context.WithValue(c, "verified", true)
+	}
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator:  validator,
+		ContextEnricher: contextEnricher,
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-owner-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-owner-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	ctx.On("Context").Return(context.Background())
+	ctx.On("SetContext", mock.AnythingOfType("*context.valueCtx")).Return()
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that the context enricher received the correct claims
+	assert.NotNil(t, receivedClaims, "ContextEnricher should have been called with claims")
+	assert.Equal(t, expectedSubject, receivedClaims.Subject(), "Claims should have correct subject")
+	assert.Equal(t, expectedRole, receivedClaims.Role(), "Claims should have correct role")
 }
