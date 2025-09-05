@@ -92,7 +92,7 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 }
 
 func (s Auther) SessionFromToken(raw string) (Session, error) {
-	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			s.logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
 			return nil, errors.New("unexpected signing method")
@@ -139,6 +139,33 @@ func (s Auther) generateJWT(identity Identity) (string, error) {
 	signedString, err := token.SignedString(s.signingKey)
 	if err != nil {
 		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign JWT")
+	}
+
+	return signedString, nil
+}
+
+// GenerateEnhancedJWT generates a JWT token using structured claims
+// This method creates tokens with enhanced permission capabilities
+func (s Auther) GenerateEnhancedJWT(identity Identity, resourceRoles map[string]string) (string, error) {
+	now := time.Now()
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    s.issuer,
+			Subject:   identity.ID(),
+			Audience:  s.audience,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(s.tokenExpiration) * time.Hour)),
+		},
+		UID:       identity.ID(),
+		UserRole:  identity.Role(),
+		Resources: resourceRoles,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	signedString, err := token.SignedString(s.signingKey)
+	if err != nil {
+		return "", errors.Wrap(err, errors.CategoryInternal, "failed to sign enhanced JWT")
 	}
 
 	return signedString, nil
