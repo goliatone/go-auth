@@ -102,7 +102,7 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 		id:       user.ID.String(), // user.GetID(),
 		email:    user.Email,
 		username: user.Username,
-		role:     user.Role,
+		role:     string(user.Role),
 	}
 
 	return aid, nil
@@ -122,7 +122,7 @@ func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier st
 		email:    user.Email,
 		id:       user.ID.String(),
 		username: user.Username,
-		role:     user.Role,
+		role:     string(user.Role),
 	}
 
 	return aid, nil
