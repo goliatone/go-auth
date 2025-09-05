@@ -92,7 +92,7 @@ func TestTokenService_Generate(t *testing.T) {
 		identity.On("Role").Return("admin")
 
 		// Generate token
-		tokenString, err := service.Generate(identity)
+		tokenString, err := service.Generate(identity, map[string]string{})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
 
@@ -128,7 +128,7 @@ func TestTokenService_Generate(t *testing.T) {
 		identity.On("Role").Return("member")
 
 		beforeGenerate := time.Now()
-		tokenString, err := service.Generate(identity)
+		tokenString, err := service.Generate(identity, map[string]string{})
 		afterGenerate := time.Now()
 
 		assert.NoError(t, err)
@@ -177,7 +177,7 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 		}
 
 		// Generate token with resources
-		tokenString, err := serviceImpl.GenerateWithResources(identity, resourceRoles)
+		tokenString, err := serviceImpl.Generate(identity, resourceRoles)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
 
@@ -226,7 +226,7 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 		resourceRoles := map[string]string{}
 
 		// Generate token with empty resources
-		tokenString, err := serviceImpl.GenerateWithResources(identity, resourceRoles)
+		tokenString, err := serviceImpl.Generate(identity, resourceRoles)
 		assert.NoError(t, err)
 
 		// Validate and verify the token works like a normal token
@@ -261,7 +261,7 @@ func TestTokenService_Validate(t *testing.T) {
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("admin")
 
-		tokenString, err := service.Generate(identity)
+		tokenString, err := service.Generate(identity, map[string]string{})
 		assert.NoError(t, err)
 
 		// Validate the token
@@ -385,7 +385,7 @@ func TestTokenService_Integration(t *testing.T) {
 		identity.On("Role").Return("admin")
 
 		// Generate token
-		tokenString, err := service.Generate(identity)
+		tokenString, err := service.Generate(identity, map[string]string{})
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tokenString)
 
@@ -424,7 +424,7 @@ func TestTokenService_Integration(t *testing.T) {
 		}
 
 		// Generate token with resources
-		tokenString, err := serviceImpl.GenerateWithResources(identity, resourceRoles)
+		tokenString, err := serviceImpl.Generate(identity, resourceRoles)
 		assert.NoError(t, err)
 
 		// Validate token

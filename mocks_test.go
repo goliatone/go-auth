@@ -583,3 +583,18 @@ func (m *MockUserTracker) TrackSucccessfulLogin(ctx context.Context, user *auth.
 	args := m.Called(ctx, user)
 	return args.Error(0)
 }
+
+// ////////////////////////////////////////////////////////////////////
+// MockResourceRoleProvider implements auth.ResourceRoleProvider
+// ////////////////////////////////////////////////////////////////////
+type MockResourceRoleProvider struct {
+	mock.Mock
+}
+
+func (m *MockResourceRoleProvider) FindResourceRoles(ctx context.Context, identity auth.Identity) (map[string]string, error) {
+	args := m.Called(ctx, identity)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]string), args.Error(1)
+}

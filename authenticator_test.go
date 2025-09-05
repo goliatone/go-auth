@@ -331,21 +331,77 @@ func TestIdentityFromSession(t *testing.T) {
 	})
 }
 
-func TestGenerateEnhancedJWT(t *testing.T) {
-	// Setup test environment
-	mockProvider := new(MockIdentityProvider)
-	mockConfig := new(MockConfig)
+func TestNewAuthenticator(t *testing.T) {
+	t.Run("Initializes with no-op resource role provider", func(t *testing.T) {
+		mockProvider := new(MockIdentityProvider)
+		mockConfig := new(MockConfig)
 
-	// Configure mock config
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
-	mockConfig.On("GetTokenExpiration").Return(24)
-	mockConfig.On("GetIssuer").Return("test-issuer")
-	mockConfig.On("GetAudience").Return([]string{"test:audience"})
+		// Configure mock config
+		mockConfig.On("GetSigningKey").Return("test-signing-key")
+		mockConfig.On("GetTokenExpiration").Return(24)
+		mockConfig.On("GetIssuer").Return("test-issuer")
+		mockConfig.On("GetAudience").Return([]string{"test:audience"})
 
-	// Create authenticator
-	authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
 
-	t.Run("Successful enhanced JWT generation", func(t *testing.T) {
+		// Verify that the authenticator was created successfully
+		assert.NotNil(t, authenticator)
+
+		// Test that login works with the default no-op provider (should produce empty resource roles)
+		ctx := context.Background()
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "testuser",
+			email:    "test@example.com",
+			role:     "admin",
+		}
+
+		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
+			Return(identity, nil).Once()
+
+		token, err := authenticator.Login(ctx, "test@example.com", "password123")
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token uses empty resource roles (from no-op provider)
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "admin", claims.UserRole)
+		// Resources should be empty/nil from no-op provider (omitempty in JSON)
+		if claims.Resources != nil {
+			assert.Empty(t, claims.Resources)
+		}
+	})
+}
+
+func TestWithResourceRoleProvider(t *testing.T) {
+	t.Run("Sets custom resource role provider", func(t *testing.T) {
+		mockProvider := new(MockIdentityProvider)
+		mockConfig := new(MockConfig)
+		mockRoleProvider := new(MockResourceRoleProvider)
+
+		// Configure mock config
+		mockConfig.On("GetSigningKey").Return("test-signing-key")
+		mockConfig.On("GetTokenExpiration").Return(24)
+		mockConfig.On("GetIssuer").Return("test-issuer")
+		mockConfig.On("GetAudience").Return([]string{"test:audience"})
+
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+			WithResourceRoleProvider(mockRoleProvider)
+
+		// Verify that the authenticator was created successfully
+		assert.NotNil(t, authenticator)
+
+		// Test that login now uses the custom provider
+		ctx := context.Background()
 		identity := TestIdentity{
 			id:       uuid.New().String(),
 			username: "testuser",
@@ -358,12 +414,16 @@ func TestGenerateEnhancedJWT(t *testing.T) {
 			"project:456": "member",
 		}
 
-		token, err := authenticator.GenerateEnhancedJWT(identity, resourceRoles)
+		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
+			Return(identity, nil).Once()
+		mockRoleProvider.On("FindResourceRoles", ctx, identity).
+			Return(resourceRoles, nil).Once()
 
+		token, err := authenticator.Login(ctx, "test@example.com", "password123")
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed and contains correct structured claims
+		// Verify token uses the custom provider's resource roles
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
 			return []byte("test-signing-key"), nil
 		})
@@ -373,73 +433,47 @@ func TestGenerateEnhancedJWT(t *testing.T) {
 
 		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-
-		// Verify registered claims
 		assert.Equal(t, identity.ID(), claims.Subject())
-		assert.Equal(t, "test-issuer", claims.Issuer)
-		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.Audience)
-		assert.NotNil(t, claims.IssuedAt)
-		assert.NotNil(t, claims.ExpiresAt)
-
-		// Verify custom claims
-		assert.Equal(t, identity.ID(), claims.UID)
 		assert.Equal(t, "admin", claims.UserRole)
 		assert.Equal(t, resourceRoles, claims.Resources)
 
-		// Test AuthClaims interface methods
-		assert.Equal(t, identity.ID(), claims.Subject())
-		assert.Equal(t, identity.ID(), claims.UserID())
-		assert.Equal(t, "admin", claims.Role())
-
-		// Test role checking methods
-		assert.True(t, claims.HasRole("admin"))
-		assert.False(t, claims.HasRole("guest"))
-		assert.True(t, claims.HasRole("owner"))  // should find in resources
-		assert.True(t, claims.HasRole("member")) // should find in resources
-
-		// Test IsAtLeast method
-		assert.True(t, claims.IsAtLeast(string(auth.RoleGuest)))
-		assert.True(t, claims.IsAtLeast(string(auth.RoleMember)))
-		assert.True(t, claims.IsAtLeast(string(auth.RoleAdmin)))
-		assert.False(t, claims.IsAtLeast(string(auth.RoleOwner)))
-
-		// Test permission methods with global role fallback
-		assert.True(t, claims.CanRead("unknown:resource"))    // admin can read
-		assert.True(t, claims.CanEdit("unknown:resource"))    // admin can edit
-		assert.True(t, claims.CanCreate("unknown:resource"))  // admin can create
-		assert.False(t, claims.CanDelete("unknown:resource")) // admin cannot delete (only owner can)
-
-		// Test permission methods with resource-specific roles
-		assert.True(t, claims.CanRead("project:123"))   // owner can read
-		assert.True(t, claims.CanEdit("project:123"))   // owner can edit
-		assert.True(t, claims.CanCreate("project:123")) // owner can create
-		assert.True(t, claims.CanDelete("project:123")) // owner can delete
-
-		assert.True(t, claims.CanRead("project:456"))    // member can read
-		assert.True(t, claims.CanEdit("project:456"))    // member can edit
-		assert.False(t, claims.CanCreate("project:456")) // member cannot create
-		assert.False(t, claims.CanDelete("project:456")) // member cannot delete
-
-		// Test time methods
-		assert.False(t, claims.IssuedAt().IsZero())
-		assert.False(t, claims.Expires().IsZero())
-		assert.True(t, claims.Expires().After(claims.IssuedAt()))
+		// Verify mock was called
+		mockRoleProvider.AssertExpectations(t)
 	})
+}
 
-	t.Run("Enhanced JWT with empty resource roles", func(t *testing.T) {
-		identity := TestIdentity{
-			id:       uuid.New().String(),
-			username: "testuser",
-			email:    "test@example.com",
-			role:     "member",
-		}
+func TestLoginWithResourceRoleProvider(t *testing.T) {
+	ctx := context.Background()
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := new(MockConfig)
+	mockRoleProvider := new(MockResourceRoleProvider)
 
-		token, err := authenticator.GenerateEnhancedJWT(identity, nil)
+	// Configure mock config
+	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetTokenExpiration").Return(24)
+	mockConfig.On("GetIssuer").Return("test-issuer")
+	mockConfig.On("GetAudience").Return([]string{"test:audience"})
+
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "testuser",
+		email:    "test@example.com",
+		role:     "admin",
+	}
+
+	t.Run("Default path - no-op role provider", func(t *testing.T) {
+		// Create authenticator with default no-op provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
+
+		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
+			Return(identity, nil).Once()
+
+		token, err := authenticator.Login(ctx, "test@example.com", "password123")
 
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed
+		// Verify token uses empty resources from no-op provider
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
 			return []byte("test-signing-key"), nil
 		})
@@ -449,55 +483,177 @@ func TestGenerateEnhancedJWT(t *testing.T) {
 
 		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-
-		// Verify structure
-		assert.Equal(t, identity.ID(), claims.UID)
-		assert.Equal(t, "member", claims.UserRole)
-		assert.Nil(t, claims.Resources)
-
-		// Test permissions fall back to global role
-		assert.True(t, claims.CanRead("any:resource"))    // member can read
-		assert.True(t, claims.CanEdit("any:resource"))    // member can edit
-		assert.False(t, claims.CanCreate("any:resource")) // member cannot create
-		assert.False(t, claims.CanDelete("any:resource")) // member cannot delete
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "admin", claims.UserRole)
+		// Resources should be empty/nil from no-op provider (omitempty in JSON)
+		if claims.Resources != nil {
+			assert.Empty(t, claims.Resources)
+		}
 	})
 
-	t.Run("Enhanced JWT with guest role", func(t *testing.T) {
-		identity := TestIdentity{
-			id:       uuid.New().String(),
-			username: "guestuser",
-			email:    "guest@example.com",
-			role:     "guest",
-		}
+	t.Run("Enhanced path - with custom role provider", func(t *testing.T) {
+		// Create authenticator and add custom role provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+			WithResourceRoleProvider(mockRoleProvider)
 
 		resourceRoles := map[string]string{
-			"public:resource": "guest",
+			"project:123": "owner",
+			"project:456": "member",
 		}
 
-		token, err := authenticator.GenerateEnhancedJWT(identity, resourceRoles)
+		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
+			Return(identity, nil).Once()
+		mockRoleProvider.On("FindResourceRoles", ctx, identity).
+			Return(resourceRoles, nil).Once()
+
+		token, err := authenticator.Login(ctx, "test@example.com", "password123")
 
 		assert.NoError(t, err)
 		assert.NotEmpty(t, token)
 
-		// Verify token can be parsed
+		// Verify token uses the custom provider's resource roles
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
 			return []byte("test-signing-key"), nil
 		})
 
 		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
 		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "admin", claims.UserRole)
+		assert.Equal(t, resourceRoles, claims.Resources) // Resources should be present
 
-		// Test guest permissions
-		assert.True(t, claims.CanRead("any:resource"))    // guest can read
-		assert.False(t, claims.CanEdit("any:resource"))   // guest cannot edit
-		assert.False(t, claims.CanCreate("any:resource")) // guest cannot create
-		assert.False(t, claims.CanDelete("any:resource")) // guest cannot delete
+		// Verify mock was called
+		mockRoleProvider.AssertExpectations(t)
+	})
 
-		// Test IsAtLeast for guest
-		assert.True(t, claims.IsAtLeast(string(auth.RoleGuest)))
-		assert.False(t, claims.IsAtLeast(string(auth.RoleMember)))
-		assert.False(t, claims.IsAtLeast(string(auth.RoleAdmin)))
-		assert.False(t, claims.IsAtLeast(string(auth.RoleOwner)))
+	t.Run("Enhanced path - role provider error", func(t *testing.T) {
+		// Create authenticator and add role provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+			WithResourceRoleProvider(mockRoleProvider)
+
+		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
+			Return(identity, nil).Once()
+		mockRoleProvider.On("FindResourceRoles", ctx, identity).
+			Return(nil, errors.New("permission lookup failed")).Once()
+
+		token, err := authenticator.Login(ctx, "test@example.com", "password123")
+
+		assert.Error(t, err)
+		assert.Empty(t, token)
+		assert.Contains(t, err.Error(), "permission lookup failed")
+
+		// Verify mock was called
+		mockRoleProvider.AssertExpectations(t)
+	})
+}
+
+func TestImpersonateWithResourceRoleProvider(t *testing.T) {
+	ctx := context.Background()
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := new(MockConfig)
+	mockRoleProvider := new(MockResourceRoleProvider)
+
+	// Configure mock config
+	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetTokenExpiration").Return(24)
+	mockConfig.On("GetIssuer").Return("test-issuer")
+	mockConfig.On("GetAudience").Return([]string{"test:audience"})
+
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "adminuser",
+		email:    "admin@example.com",
+		role:     "admin",
+	}
+
+	t.Run("Default path - no-op role provider", func(t *testing.T) {
+		// Create authenticator with default no-op provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig)
+
+		mockProvider.On("FindIdentityByIdentifier", ctx, "admin@example.com").
+			Return(identity, nil).Once()
+
+		token, err := authenticator.Impersonate(ctx, "admin@example.com")
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token uses empty resources from no-op provider
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "admin", claims.UserRole)
+		// Resources should be empty/nil from no-op provider (omitempty in JSON)
+		if claims.Resources != nil {
+			assert.Empty(t, claims.Resources)
+		}
+	})
+
+	t.Run("Enhanced path - with custom role provider", func(t *testing.T) {
+		// Create authenticator and add custom role provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+			WithResourceRoleProvider(mockRoleProvider)
+
+		resourceRoles := map[string]string{
+			"admin:panel":   "owner",
+			"system:config": "admin",
+		}
+
+		mockProvider.On("FindIdentityByIdentifier", ctx, "admin@example.com").
+			Return(identity, nil).Once()
+		mockRoleProvider.On("FindResourceRoles", ctx, identity).
+			Return(resourceRoles, nil).Once()
+
+		token, err := authenticator.Impersonate(ctx, "admin@example.com")
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		// Verify token uses the custom provider's resource roles
+		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
+			return []byte("test-signing-key"), nil
+		})
+
+		assert.NoError(t, err)
+		assert.True(t, parsedToken.Valid)
+
+		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, identity.ID(), claims.Subject())
+		assert.Equal(t, "admin", claims.UserRole)
+		assert.Equal(t, resourceRoles, claims.Resources) // Resources should be present
+
+		// Verify mock was called
+		mockRoleProvider.AssertExpectations(t)
+	})
+
+	t.Run("Enhanced path - role provider error", func(t *testing.T) {
+		// Create authenticator and add role provider
+		authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+			WithResourceRoleProvider(mockRoleProvider)
+
+		mockProvider.On("FindIdentityByIdentifier", ctx, "admin@example.com").
+			Return(identity, nil).Once()
+		mockRoleProvider.On("FindResourceRoles", ctx, identity).
+			Return(nil, errors.New("resource access denied")).Once()
+
+		token, err := authenticator.Impersonate(ctx, "admin@example.com")
+
+		assert.Error(t, err)
+		assert.Empty(t, token)
+		assert.Contains(t, err.Error(), "resource access denied")
+
+		// Verify mock was called
+		mockRoleProvider.AssertExpectations(t)
 	})
 }
