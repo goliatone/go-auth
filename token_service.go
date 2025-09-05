@@ -85,25 +85,8 @@ func (ts *TokenServiceImpl) GenerateWithResources(identity Identity, resourceRol
 }
 
 // Validate parses and validates a token string, returning structured claims
-// Handles both new JWTClaims format and legacy jwt.MapClaims format for backward compatibility
 func (ts *TokenServiceImpl) Validate(tokenString string) (AuthClaims, error) {
-	// First, try to parse as new structured claims
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			ts.logger.Error("TokenService validate encountered unexpected signing method", "alg", t.Header["alg"])
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return ts.signingKey, nil
-	})
-
-	if err == nil && token.Valid {
-		if claims, ok := token.Claims.(*JWTClaims); ok {
-			return claims, nil
-		}
-	}
-
-	// If structured parsing failed, try legacy MapClaims format for backward compatibility
-	token, err = jwt.ParseWithClaims(tokenString, &jwt.MapClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			ts.logger.Error("TokenService validate encountered unexpected signing method", "alg", t.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -118,80 +101,10 @@ func (ts *TokenServiceImpl) Validate(tokenString string) (AuthClaims, error) {
 		return nil, errors.Wrap(err, ErrTokenMalformed.Category, ErrTokenMalformed.Message).WithTextCode(ErrTokenMalformed.TextCode)
 	}
 
-	if claims, ok := token.Claims.(*jwt.MapClaims); ok && token.Valid {
-		// Convert legacy MapClaims to structured AuthClaims
-		return ts.mapClaimsToAuthClaims(*claims)
+	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
+		return claims, nil
 	}
 
 	ts.logger.Error("TokenService validate could not decode or validate claims")
 	return nil, ErrUnableToDecodeSession
-}
-
-// mapClaimsToAuthClaims converts legacy jwt.MapClaims to AuthClaims for backward compatibility
-func (ts *TokenServiceImpl) mapClaimsToAuthClaims(claims jwt.MapClaims) (AuthClaims, error) {
-	// Extract standard claims
-	sub, err := claims.GetSubject()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	iss, err := claims.GetIssuer()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	aud, err := claims.GetAudience()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	eat, err := claims.GetExpirationTime()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	iat, err := claims.GetIssuedAt()
-	if err != nil {
-		return nil, ErrUnableToParseData
-	}
-
-	// Extract role from legacy "dat" field
-	role := ""
-	resources := make(map[string]string)
-
-	if datValue, exists := claims["dat"]; exists {
-		if dat, ok := datValue.(map[string]any); ok {
-			if roleValue, exists := dat["role"]; exists {
-				if roleStr, ok := roleValue.(string); ok {
-					role = roleStr
-				}
-			}
-			// Check if resources exist in legacy format
-			if resourcesValue, exists := dat["resources"]; exists {
-				if resourcesMap, ok := resourcesValue.(map[string]any); ok {
-					for resource, roleValue := range resourcesMap {
-						if roleStr, ok := roleValue.(string); ok {
-							resources[resource] = roleStr
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Create structured claims from legacy data
-	structuredClaims := &JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    iss,
-			Subject:   sub,
-			Audience:  aud,
-			ExpiresAt: eat,
-			IssuedAt:  iat,
-		},
-		UID:       sub,
-		UserRole:  role,
-		Resources: resources,
-	}
-
-	return structuredClaims, nil
 }
