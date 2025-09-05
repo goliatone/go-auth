@@ -1,5 +1,52 @@
 # Changelog
 
+# [0.7.0](https://github.com/goliatone/go-auth/compare/v0.6.0...v0.7.0) - (2025-09-05)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update tests ([4dc9c68](https://github.com/goliatone/go-auth/commit/4dc9c68235fc86d681d63714791f28bb18876271))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.7.0 ([c6c3269](https://github.com/goliatone/go-auth/commit/c6c32691a0459e6c19d3e7f3f90a2dbc48233108))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Update examples ([9f628ef](https://github.com/goliatone/go-auth/commit/9f628ef9e7fa6018fa313e1824f37189e9f32b30))  - (goliatone)
+- ResourceRoleProvider ([3534b2b](https://github.com/goliatone/go-auth/commit/3534b2b1eabdeaaacd20e4cceefcd1807f37f213))  - (goliatone)
+- New noop role provider ([742fcf7](https://github.com/goliatone/go-auth/commit/742fcf75acf2c1060ed147d4093e3afc2326489b))  - (goliatone)
+- New role and claims ([d5e5cda](https://github.com/goliatone/go-auth/commit/d5e5cda9e3274cc98673d7bbf0e1f89f1ebad011))  - (goliatone)
+- Helper auth methods ([6c3717c](https://github.com/goliatone/go-auth/commit/6c3717c693db8960ad631dcc919de1f580ab530c))  - (goliatone)
+- New and updated tests ([6f15f03](https://github.com/goliatone/go-auth/commit/6f15f0371cbdb9f37e3fe73f579f3bb18f7db5c0))  - (goliatone)
+- Roles to authenticator ([334e870](https://github.com/goliatone/go-auth/commit/334e8703d3db721fc5cd0bf80df4118762f4edb0))  - (goliatone)
+- Tests for token service ([4b96a74](https://github.com/goliatone/go-auth/commit/4b96a7455fe7894dfae9e3dbb61992b079da0868))  - (goliatone)
+- TokenService ([047ec9a](https://github.com/goliatone/go-auth/commit/047ec9aa5930371cd966a248e641e2a31f8459b4))  - (goliatone)
+- GenerateEnhancedJWT method ([1397f25](https://github.com/goliatone/go-auth/commit/1397f2526975a9d4e7d1ff1f427997dfa3444eb4))  - (goliatone)
+- Session implements roles ([0fc5bee](https://github.com/goliatone/go-auth/commit/0fc5bee068e324f45f3aa5e625045d2d905f2cd9))  - (goliatone)
+- RoleCapableSession ([5dea035](https://github.com/goliatone/go-auth/commit/5dea035c96fb94ce7308f4313ab566cb7fa58b12))  - (goliatone)
+- Roles ([19338f4](https://github.com/goliatone/go-auth/commit/19338f46c198086319333e35815632fb6662f7f6))  - (goliatone)
+- Claims struct ([3632f28](https://github.com/goliatone/go-auth/commit/3632f2873f00ade24b38c6542b5eb2fa30098402))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Use new claims ([7c332bb](https://github.com/goliatone/go-auth/commit/7c332bbefc59bcd99b4835d9456673c830d0d23d))  - (goliatone)
+- Update tests for new code ([d4ca6f5](https://github.com/goliatone/go-auth/commit/d4ca6f5b230391828b7a483c27ac8ca2bae23103))  - (goliatone)
+- Remove legacy jwt claims ([e8d8105](https://github.com/goliatone/go-auth/commit/e8d810543cd1b0af48be0363570b41b579e63a91))  - (goliatone)
+- Use TokenSerivce ([4181411](https://github.com/goliatone/go-auth/commit/4181411e24221a21b46d9a07151f1e8befc44130))  - (goliatone)
+- UserRole string ([e7162bb](https://github.com/goliatone/go-auth/commit/e7162bb348108f33c5b934fe5b40cab2a49fd176))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.6.0 ([92590a6](https://github.com/goliatone/go-auth/commit/92590a6d9eae969b9d30c41915ec8576c5fffaad))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#4](https://github.com/goliatone/go-auth/pull/4): roles tokens ([7354507](https://github.com/goliatone/go-auth/commit/735450743750e8fd39817045ed3bc7765944dbb7))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([1888f38](https://github.com/goliatone/go-auth/commit/1888f383d81b2350e5ac245b6b7bdd03be147827))  - (goliatone)
+
 # [0.6.0](https://github.com/goliatone/go-auth/compare/v0.5.0...v0.6.0) - (2025-08-23)
 
 ## <!-- 13 -->📦 Bumps
