@@ -243,68 +243,6 @@ func TestTokenService_Validate(t *testing.T) {
 		identity.AssertExpectations(t)
 	})
 
-	t.Run("validates legacy MapClaims token", func(t *testing.T) {
-		// Create a legacy token with MapClaims format based on existing patterns
-		now := time.Now()
-		legacyClaims := jwt.MapClaims{
-			"iss": issuer,
-			"sub": "user-456",
-			"aud": audience,
-			"iat": jwt.NewNumericDate(now),
-			"exp": jwt.NewNumericDate(now.Add(24 * time.Hour)),
-			"dat": map[string]any{
-				"role": "member",
-				"resources": map[string]any{
-					"project-1": "owner",
-				},
-			},
-		}
-
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, legacyClaims)
-		tokenString, err := token.SignedString(signingKey)
-		assert.NoError(t, err)
-
-		// Validate the legacy token
-		claims, err := service.Validate(tokenString)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, claims)
-		assert.Equal(t, "user-456", claims.Subject())
-		assert.Equal(t, "user-456", claims.UserID())
-		assert.Equal(t, "member", claims.Role())
-		assert.True(t, claims.CanRead("project-1"))
-		assert.True(t, claims.CanDelete("project-1")) // owner role can delete
-	})
-
-	t.Run("validates legacy MapClaims token without resources", func(t *testing.T) {
-		// Create a legacy token without resources
-		now := time.Now()
-		legacyClaims := jwt.MapClaims{
-			"iss": issuer,
-			"sub": "user-789",
-			"aud": audience,
-			"iat": jwt.NewNumericDate(now),
-			"exp": jwt.NewNumericDate(now.Add(24 * time.Hour)),
-			"dat": map[string]any{
-				"role": "guest",
-			},
-		}
-
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, legacyClaims)
-		tokenString, err := token.SignedString(signingKey)
-		assert.NoError(t, err)
-
-		// Validate the legacy token
-		claims, err := service.Validate(tokenString)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, claims)
-		assert.Equal(t, "user-789", claims.Subject())
-		assert.Equal(t, "guest", claims.Role())
-		assert.True(t, claims.CanRead("any-resource"))  // guest can read
-		assert.False(t, claims.CanEdit("any-resource")) // guest cannot edit
-	})
-
 	t.Run("returns error for expired token", func(t *testing.T) {
 		// Create an expired token
 		now := time.Now()
@@ -385,51 +323,6 @@ func TestTokenService_Validate(t *testing.T) {
 		assert.Nil(t, validatedClaims)
 	})
 
-	t.Run("handles legacy token with malformed data", func(t *testing.T) {
-		// Create a legacy token with malformed dat field
-		now := time.Now()
-		legacyClaims := jwt.MapClaims{
-			"iss": issuer,
-			"sub": "user-malformed",
-			"aud": audience,
-			"iat": jwt.NewNumericDate(now).Unix(),
-			"exp": jwt.NewNumericDate(now.Add(24 * time.Hour)).Unix(),
-			"dat": "not-an-object", // This should be a map[string]interface{}
-		}
-
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, legacyClaims)
-		tokenString, err := token.SignedString(signingKey)
-		assert.NoError(t, err)
-
-		// Validate the token with malformed data
-		claims, err := service.Validate(tokenString)
-
-		assert.NoError(t, err) // Should not error, just use empty role
-		assert.NotNil(t, claims)
-		assert.Equal(t, "user-malformed", claims.Subject())
-		assert.Equal(t, "", claims.Role()) // Should be empty due to malformed data
-	})
-
-	t.Run("handles legacy token with missing claims", func(t *testing.T) {
-		// Create a token missing required claims - based on the implementation,
-		// the token service is designed to be tolerant of missing claims
-		incompleteClaims := jwt.MapClaims{
-			"sub": "user-incomplete",
-			// Missing iss, aud, iat, exp - the implementation handles these gracefully
-		}
-
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, incompleteClaims)
-		tokenString, err := token.SignedString(signingKey)
-		assert.NoError(t, err)
-
-		// Validate should succeed but with empty/default values for missing claims
-		claims, err := service.Validate(tokenString)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, claims)
-		assert.Equal(t, "user-incomplete", claims.Subject())
-		assert.Equal(t, "", claims.Role()) // Empty role due to missing dat
-	})
 }
 
 func TestTokenService_Integration(t *testing.T) {

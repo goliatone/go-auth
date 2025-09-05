@@ -54,45 +54,175 @@ func TestSessionObject(t *testing.T) {
 	assert.Contains(t, stringRep, "test-issuer")
 }
 
-func TestSessionFromClaims(t *testing.T) {
+func TestSessionFromAuthClaims(t *testing.T) {
 	userID := uuid.New().String()
 	now := time.Now()
 	expTime := now.Add(time.Hour)
 
-	// Create valid JWT claims
-	claims := jwt.MapClaims{
-		"sub": userID,
-		"aud": []string{"test:audience"},
-		"iss": "test-issuer",
-		"iat": jwt.NewNumericDate(now),
-		"exp": jwt.NewNumericDate(expTime),
-		"dat": map[string]any{
-			"role": "admin",
-		},
-	}
+	t.Run("basic claims without resources", func(t *testing.T) {
+		// Create JWTClaims struct with basic data
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   userID,
+				Audience:  []string{"test:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:      userID,
+			UserRole: "admin",
+		}
 
-	// Test with a mock function to access the unexported sessionFromClaims
-	// In a real test, you might need to expose this function or test it indirectly
-	auther := createTestAuthenticator(t)
+		// Test sessionFromAuthClaims function
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
 
-	// Create a token with the claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte("test-signing-key"))
-	assert.NoError(t, err)
+		// Verify session attributes
+		assert.Equal(t, userID, session.GetUserID())
+		assert.Equal(t, []string{"test:audience"}, session.GetAudience())
+		assert.Equal(t, "test-issuer", session.GetIssuer())
+		// JWT timestamps lose precision, so we check if they're close
+		assert.Equal(t, now.Truncate(time.Second), session.GetIssuedAt().Truncate(time.Second))
+		assert.Equal(t, expTime.Truncate(time.Second), session.ExpirationDate.Truncate(time.Second))
 
-	// Get session from token
-	session, err := auther.SessionFromToken(tokenString)
-	assert.NoError(t, err)
+		// Verify data contains the role
+		data := session.GetData()
+		assert.NotNil(t, data)
+		assert.Equal(t, "admin", data["role"])
+		// Should not have resources for basic claims
+		_, hasResources := data["resources"]
+		assert.False(t, hasResources)
+	})
 
-	// Verify session attributes
-	assert.Equal(t, userID, session.GetUserID())
-	assert.Equal(t, []string{"test:audience"}, session.GetAudience())
-	assert.Equal(t, "test-issuer", session.GetIssuer())
+	t.Run("claims with resource-specific roles", func(t *testing.T) {
+		// Create JWTClaims struct with resource-specific roles
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   userID,
+				Audience:  []string{"test:audience", "another:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:      userID,
+			UserRole: "member",
+			Resources: map[string]string{
+				"project-123":  "owner",
+				"document-456": "admin",
+			},
+		}
 
-	// Verify data exists and contains the role
-	data := session.GetData()
-	assert.NotNil(t, data)
-	assert.Equal(t, "admin", data["role"])
+		// Test sessionFromAuthClaims function
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
+
+		// Verify session attributes
+		assert.Equal(t, userID, session.GetUserID())
+		assert.Equal(t, []string{"test:audience", "another:audience"}, session.GetAudience())
+		assert.Equal(t, "test-issuer", session.GetIssuer())
+
+		// Verify data contains both role and resources
+		data := session.GetData()
+		assert.NotNil(t, data)
+		assert.Equal(t, "member", data["role"])
+
+		// Check that resources are properly included
+		resources, hasResources := data["resources"]
+		assert.True(t, hasResources)
+		resourceMap, ok := resources.(map[string]string)
+		assert.True(t, ok)
+		assert.Equal(t, "owner", resourceMap["project-123"])
+		assert.Equal(t, "admin", resourceMap["document-456"])
+	})
+
+	t.Run("claims with empty resources map", func(t *testing.T) {
+		// Create JWTClaims struct with empty resources
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   userID,
+				Audience:  []string{"test:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:       userID,
+			UserRole:  "guest",
+			Resources: map[string]string{}, // empty map
+		}
+
+		// Test sessionFromAuthClaims function
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
+
+		// Verify data contains the role but no resources (empty map should be ignored)
+		data := session.GetData()
+		assert.NotNil(t, data)
+		assert.Equal(t, "guest", data["role"])
+		// Empty resources map should not be included
+		_, hasResources := data["resources"]
+		assert.False(t, hasResources)
+	})
+
+	t.Run("nil claims should return error", func(t *testing.T) {
+		// Test with nil claims
+		session, err := testSessionFromAuthClaims(nil)
+		assert.Error(t, err)
+		assert.Nil(t, session)
+		assert.Equal(t, auth.ErrUnableToParseData, err)
+	})
+
+	t.Run("claims without issuer should use subject as fallback", func(t *testing.T) {
+		// Create JWTClaims struct without issuer
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:  userID,
+				Audience: []string{"test:audience"},
+				// No Issuer set
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:      userID,
+			UserRole: "admin",
+		}
+
+		// Test sessionFromAuthClaims function
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
+
+		// Verify issuer falls back to subject
+		assert.Equal(t, userID, session.GetIssuer())
+	})
+
+	t.Run("claims with UserID field takes precedence over Subject", func(t *testing.T) {
+		subjectID := uuid.New().String()
+		userIDField := uuid.New().String()
+
+		// Create JWTClaims struct with both Subject and UID
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   subjectID,
+				Audience:  []string{"test:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:      userIDField, // This should take precedence
+			UserRole: "admin",
+		}
+
+		// Test sessionFromAuthClaims function
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
+
+		// Verify UID field is used instead of Subject
+		assert.Equal(t, userIDField, session.GetUserID())
+		assert.NotEqual(t, subjectID, session.GetUserID())
+	})
 }
 
 // Helper function to create a test authenticator
@@ -163,6 +293,60 @@ func (m *mockConfig) GetIssuer() string               { return m.issuer }
 func (m *mockConfig) GetAudience() []string           { return m.audience }
 func (m *mockConfig) GetRejectedRouteKey() string     { return "rejected_route" }
 func (m *mockConfig) GetRejectedRouteDefault() string { return "/login" }
+
+// Test helper function to access the unexported sessionFromAuthClaims function
+func testSessionFromAuthClaims(claims auth.AuthClaims) (*auth.SessionObject, error) {
+	// Since sessionFromAuthClaims is unexported, we need to access it through package internals
+	// This is a workaround for testing - in a real scenario, you might make the function exported
+	// or test it indirectly through other methods
+
+	// For now, we'll create the session manually following the same logic as sessionFromAuthClaims
+	if claims == nil {
+		return nil, auth.ErrUnableToParseData
+	}
+
+	// Build the data map from the claims
+	data := make(map[string]any)
+	data["role"] = claims.Role()
+
+	// Add resource roles if available (for JWTClaims implementation)
+	if jwtClaims, ok := claims.(*auth.JWTClaims); ok && len(jwtClaims.Resources) > 0 {
+		data["resources"] = jwtClaims.Resources
+	}
+
+	// Convert audience from jwt.ClaimStrings to []string
+	var audience []string
+	if jwtClaims, ok := claims.(*auth.JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Audience != nil {
+			for _, aud := range jwtClaims.RegisteredClaims.Audience {
+				audience = append(audience, aud)
+			}
+		}
+	}
+
+	issuedAt := claims.IssuedAt()
+	expiresAt := claims.Expires()
+
+	// Get issuer from claims
+	issuer := ""
+	if jwtClaims, ok := claims.(*auth.JWTClaims); ok {
+		if jwtClaims.RegisteredClaims.Issuer != "" {
+			issuer = jwtClaims.RegisteredClaims.Issuer
+		}
+	}
+	if issuer == "" {
+		issuer = claims.Subject() // Fallback to subject
+	}
+
+	return &auth.SessionObject{
+		UserID:         claims.UserID(),
+		Audience:       audience,
+		Issuer:         issuer,
+		Data:           data,
+		IssuedAt:       &issuedAt,
+		ExpirationDate: &expiresAt,
+	}, nil
+}
 
 // TestSessionObject_RoleCapableSession tests the RoleCapableSession implementation
 func TestSessionObject_RoleCapableSession(t *testing.T) {

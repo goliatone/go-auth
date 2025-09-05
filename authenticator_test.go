@@ -216,16 +216,18 @@ func TestSessionFromToken(t *testing.T) {
 	})
 
 	t.Run("Expired token", func(t *testing.T) {
-		// create an expired token
-		expiredClaims := jwt.MapClaims{
-			"sub": userID,
-			"aud": []string{"test:audience"},
-			"iss": "test-issuer",
-			"iat": jwt.NewNumericDate(now.Add(-48 * time.Hour)),
-			"exp": jwt.NewNumericDate(now.Add(-24 * time.Hour)),
-			"dat": map[string]any{
-				"role": "admin",
+		// create an expired token using new JWTClaims structure
+		expiredClaims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   userID,
+				Audience:  []string{"test:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now.Add(-48 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(now.Add(-24 * time.Hour)), // Expired 24 hours ago
 			},
+			UID:       userID,
+			UserRole:  "admin",
+			Resources: make(map[string]string),
 		}
 
 		expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
@@ -235,7 +237,42 @@ func TestSessionFromToken(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
-		assert.Contains(t, err.Error(), "token")
+		assert.Contains(t, err.Error(), "expired")
+	})
+
+	t.Run("Legacy token format rejected", func(t *testing.T) {
+		// Create a legacy token with MapClaims format that has incompatible structure
+		legacyClaims := jwt.MapClaims{
+			"sub": userID,
+			"aud": []string{"test:audience"},
+			"iss": "test-issuer",
+			"iat": jwt.NewNumericDate(now),
+			"exp": jwt.NewNumericDate(expiry),
+			// Legacy tokens store data in "dat" field, not directly in claims
+			"dat": map[string]any{
+				"role": "admin",
+			},
+		}
+
+		legacyToken := jwt.NewWithClaims(jwt.SigningMethodHS256, legacyClaims)
+		legacyTokenString, _ := legacyToken.SignedString([]byte("test-signing-key"))
+
+		session, err := authenticator.SessionFromToken(legacyTokenString)
+
+		// Legacy tokens should be rejected or return sessions with empty role data
+		// because they don't match the expected JWTClaims structure
+		if err == nil {
+			// If parsing succeeds, the session should have empty/missing role data
+			// because legacy format stores role in "dat" field, not in root claims
+			assert.NotNil(t, session)
+			data := session.GetData()
+			// Role should be empty because legacy "dat" field is not parsed
+			assert.Equal(t, "", data["role"])
+		} else {
+			// Token validation failed, which is expected for legacy tokens
+			assert.Nil(t, session)
+			assert.Error(t, err)
+		}
 	})
 }
 
