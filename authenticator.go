@@ -3,9 +3,6 @@ package auth
 import (
 	"context"
 	"reflect"
-
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/goliatone/go-errors"
 )
 
 type Auther struct {
@@ -13,7 +10,7 @@ type Auther struct {
 	signingKey      []byte
 	tokenExpiration int
 	issuer          string
-	audience        jwt.ClaimStrings
+	audience        []string
 	logger          Logger
 	tokenService    TokenService
 }
@@ -110,32 +107,21 @@ func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Ident
 }
 
 func (s Auther) SessionFromToken(raw string) (Session, error) {
-	token, err := jwt.ParseWithClaims(raw, &jwt.MapClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			s.logger.Error("SessionFromToken encountered unexpected signing method", "alg", t.Header["alg"])
-			return nil, errors.New("unexpected signing method")
-		}
-		return s.signingKey, nil
-	})
-
+	// Use TokenService to validate the token and get AuthClaims
+	claims, err := s.tokenService.Validate(raw)
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, ErrTokenExpired
-		}
-
-		return nil, errors.Wrap(err, ErrTokenMalformed.Category, ErrTokenMalformed.Message).WithTextCode(ErrTokenMalformed.TextCode)
+		s.logger.Error("SessionFromToken validation failed", "error", err)
+		return nil, err
 	}
 
-	if claims, ok := token.Claims.(*jwt.MapClaims); ok && token.Valid {
-		session, err := sessionFromClaims(*claims)
-		if err != nil {
-			return nil, err
-		}
-		return session, nil
+	// Convert AuthClaims to SessionObject
+	session, err := sessionFromAuthClaims(claims)
+	if err != nil {
+		s.logger.Error("SessionFromToken failed to create session from claims", "error", err)
+		return nil, err
 	}
 
-	s.logger.Error("SessionFromToken could not decode or validate claims")
-	return nil, ErrUnableToDecodeSession
+	return session, nil
 }
 
 func (s Auther) generateJWT(identity Identity) (string, error) {
