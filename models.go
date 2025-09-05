@@ -49,7 +49,7 @@ type User struct {
 // https://stackoverflow.com/a/42954907/125083
 func (u *User) AddMetadata(key string, val any) *User {
 	if u.Metadata == nil {
-		u.Metadata = make(map[string]interface{})
+		u.Metadata = make(map[string]any)
 	}
 	u.Metadata[key] = val
 	return u

@@ -26,6 +26,29 @@ type Session interface {
 	GetData() map[string]any
 }
 
+// RoleCapableSession extends Session with role-based access control capabilities
+type RoleCapableSession interface {
+	Session // Embed the existing Session interface
+
+	// CanRead checks if the role can read a specific resource
+	CanRead(resource string) bool
+
+	// CanEdit checks if the role can edit a specific resource
+	CanEdit(resource string) bool
+
+	// CanCreate checks if the role can create a specific resource
+	CanCreate(resource string) bool
+
+	// CanDelete checks if the role can delete a specific resource
+	CanDelete(resource string) bool
+
+	// HasRole checks if the user has a specific role
+	HasRole(role string) bool
+
+	// IsAtLeast checks if the user's role is at least the minimum required role
+	IsAtLeast(minRole UserRole) bool
+}
+
 // Authenticator holds methods to deal with authentication
 type Authenticator interface {
 	Login(ctx context.Context, identifier, password string) (string, error)
