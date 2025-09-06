@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.9.0](https://github.com/goliatone/go-auth/compare/v0.8.0...v0.9.0) - (2025-09-06)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.9.0 ([50ecc38](https://github.com/goliatone/go-auth/commit/50ecc38d6cfbf89dbbc248fe819bda3f554dd2e2))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Websocket adapter ([6ca718e](https://github.com/goliatone/go-auth/commit/6ca718eb668ecb858b281b2e97a1535b447f25a9))  - (goliatone)
+- Websocket example ([a44284f](https://github.com/goliatone/go-auth/commit/a44284fcd5ede95537e22eeb423be5e5dcc9fdac))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.8.0 ([4436b37](https://github.com/goliatone/go-auth/commit/4436b37ea7f630a1f32796b71c9ddcd9dbca8136))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([fbd5bfe](https://github.com/goliatone/go-auth/commit/fbd5bfe811b74266ecdc5613e0547c603e3fd9b7))  - (goliatone)
+- Update deps ([084fa9f](https://github.com/goliatone/go-auth/commit/084fa9f5d601718f0df300b0aa622deab601e72c))  - (goliatone)
+
 # [0.8.0](https://github.com/goliatone/go-auth/compare/v0.7.0...v0.8.0) - (2025-09-05)
 
 ## <!-- 13 -->📦 Bumps
