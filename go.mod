@@ -11,7 +11,7 @@ require (
 	github.com/goliatone/go-errors v0.9.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.4.3
-	github.com/goliatone/go-router v0.5.0
+	github.com/goliatone/go-router v0.6.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
@@ -37,6 +37,7 @@ require (
 	github.com/goliatone/go-masker v0.1.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
@@ -58,8 +59,10 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
+	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
+	golang.org/x/time v0.8.0 // indirect
 	google.golang.org/protobuf v1.36.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

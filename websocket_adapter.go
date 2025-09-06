@@ -82,16 +82,16 @@ func (w *WSAuthClaimsAdapter) IsAtLeast(minRole string) bool {
 // using the go-auth TokenService. This is a convenience function for go-auth users.
 func (a *Auther) NewWSAuthMiddleware(config ...router.WSAuthConfig) router.WebSocketMiddleware {
 	validator := NewWSTokenValidator(a.tokenService)
-	
+
 	// Use provided config or create default
 	var cfg router.WSAuthConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	
+
 	// Always set our token validator
 	cfg.TokenValidator = validator
-	
+
 	return router.NewWSAuth(cfg)
 }
 
@@ -102,12 +102,12 @@ func WSAuthClaimsFromContext(ctx context.Context) (AuthClaims, bool) {
 	if !ok {
 		return nil, false
 	}
-	
+
 	// If it's our adapter, return the underlying go-auth claims
 	if adapter, ok := wsAuthClaims.(*WSAuthClaimsAdapter); ok {
 		return adapter.claims, true
 	}
-	
+
 	// Otherwise, return nil since it's not from go-auth
 	return nil, false
 }

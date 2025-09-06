@@ -86,19 +86,19 @@ func TestWSTokenValidator_Validate(t *testing.T) {
 	// Test successful validation
 	t.Run("successful validation", func(t *testing.T) {
 		token := "valid-token"
-		
+
 		mockTokenSvc.On("Validate", token).Return(mockClaims, nil)
-		
+
 		result, err := validator.Validate(token)
-		
+
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.IsType(t, &WSAuthClaimsAdapter{}, result)
-		
+
 		// Verify the adapter wraps the original claims
 		adapter := result.(*WSAuthClaimsAdapter)
 		assert.Equal(t, mockClaims, adapter.claims)
-		
+
 		mockTokenSvc.AssertExpectations(t)
 	})
 
@@ -106,15 +106,15 @@ func TestWSTokenValidator_Validate(t *testing.T) {
 	t.Run("validation error", func(t *testing.T) {
 		token := "invalid-token"
 		expectedErr := ErrTokenMalformed
-		
+
 		mockTokenSvc.On("Validate", token).Return(nil, expectedErr)
-		
+
 		result, err := validator.Validate(token)
-		
+
 		assert.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Nil(t, result)
-		
+
 		mockTokenSvc.AssertExpectations(t)
 	})
 }
@@ -128,9 +128,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 	t.Run("Subject", func(t *testing.T) {
 		expected := "user123"
 		mockClaims.On("Subject").Return(expected)
-		
+
 		result := adapter.Subject()
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -138,9 +138,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 	t.Run("UserID", func(t *testing.T) {
 		expected := "user123"
 		mockClaims.On("UserID").Return(expected)
-		
+
 		result := adapter.UserID()
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -148,9 +148,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 	t.Run("Role", func(t *testing.T) {
 		expected := "admin"
 		mockClaims.On("Role").Return(expected)
-		
+
 		result := adapter.Role()
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -159,9 +159,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		resource := "posts"
 		expected := true
 		mockClaims.On("CanRead", resource).Return(expected)
-		
+
 		result := adapter.CanRead(resource)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -170,9 +170,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		resource := "posts"
 		expected := false
 		mockClaims.On("CanEdit", resource).Return(expected)
-		
+
 		result := adapter.CanEdit(resource)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -181,9 +181,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		resource := "posts"
 		expected := true
 		mockClaims.On("CanCreate", resource).Return(expected)
-		
+
 		result := adapter.CanCreate(resource)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -192,9 +192,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		resource := "posts"
 		expected := false
 		mockClaims.On("CanDelete", resource).Return(expected)
-		
+
 		result := adapter.CanDelete(resource)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -203,9 +203,9 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		role := "admin"
 		expected := true
 		mockClaims.On("HasRole", role).Return(expected)
-		
+
 		result := adapter.HasRole(role)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
@@ -214,25 +214,37 @@ func TestWSAuthClaimsAdapter(t *testing.T) {
 		minRole := "user"
 		expected := true
 		mockClaims.On("IsAtLeast", minRole).Return(expected)
-		
+
 		result := adapter.IsAtLeast(minRole)
-		
+
 		assert.Equal(t, expected, result)
 		mockClaims.AssertExpectations(t)
 	})
 }
+
+type otherClaims struct{}
+
+func (o *otherClaims) Subject() string                { return "other" }
+func (o *otherClaims) UserID() string                 { return "other" }
+func (o *otherClaims) Role() string                   { return "other" }
+func (o *otherClaims) CanRead(resource string) bool   { return false }
+func (o *otherClaims) CanEdit(resource string) bool   { return false }
+func (o *otherClaims) CanCreate(resource string) bool { return false }
+func (o *otherClaims) CanDelete(resource string) bool { return false }
+func (o *otherClaims) HasRole(role string) bool       { return false }
+func (o *otherClaims) IsAtLeast(minRole string) bool  { return false }
 
 func TestWSAuthClaimsFromContext(t *testing.T) {
 	// Test with go-auth claims in context
 	t.Run("with go-auth claims", func(t *testing.T) {
 		mockClaims := &mockAuthClaims{}
 		adapter := &WSAuthClaimsAdapter{claims: mockClaims}
-		
+
 		// Put adapter in context using go-router's context key
 		ctx := context.WithValue(context.Background(), router.WSAuthContextKey{}, adapter)
-		
+
 		result, ok := WSAuthClaimsFromContext(ctx)
-		
+
 		assert.True(t, ok)
 		assert.Equal(t, mockClaims, result)
 	})
@@ -240,9 +252,9 @@ func TestWSAuthClaimsFromContext(t *testing.T) {
 	// Test with no claims in context
 	t.Run("no claims in context", func(t *testing.T) {
 		ctx := context.Background()
-		
+
 		result, ok := WSAuthClaimsFromContext(ctx)
-		
+
 		assert.False(t, ok)
 		assert.Nil(t, result)
 	})
@@ -250,22 +262,12 @@ func TestWSAuthClaimsFromContext(t *testing.T) {
 	// Test with non-go-auth claims in context
 	t.Run("non go-auth claims", func(t *testing.T) {
 		// Simulate some other implementation of WSAuthClaims
-		type otherClaims struct{}
-		func (o *otherClaims) Subject() string { return "other" }
-		func (o *otherClaims) UserID() string { return "other" }
-		func (o *otherClaims) Role() string { return "other" }
-		func (o *otherClaims) CanRead(resource string) bool { return false }
-		func (o *otherClaims) CanEdit(resource string) bool { return false }
-		func (o *otherClaims) CanCreate(resource string) bool { return false }
-		func (o *otherClaims) CanDelete(resource string) bool { return false }
-		func (o *otherClaims) HasRole(role string) bool { return false }
-		func (o *otherClaims) IsAtLeast(minRole string) bool { return false }
-		
+
 		other := &otherClaims{}
 		ctx := context.WithValue(context.Background(), router.WSAuthContextKey{}, other)
-		
+
 		result, ok := WSAuthClaimsFromContext(ctx)
-		
+
 		assert.False(t, ok)
 		assert.Nil(t, result)
 	})
