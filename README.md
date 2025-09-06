@@ -279,6 +279,8 @@ type Config interface {
 
 ## Middleware
 
+### HTTP Middleware
+
 The library provides HTTP middleware for route protection:
 
 ```go
@@ -296,6 +298,121 @@ func requireAdminRole(c router.Context) error {
     }
     return c.Next()
 }
+```
+
+### WebSocket Authentication
+
+The library provides seamless WebSocket authentication integration with `go-router` through the `WSTokenValidator` interface:
+
+#### Basic WebSocket Setup
+
+```go
+// Create authenticator (same as HTTP setup)
+authenticator := auth.NewAuthenticator(userProvider, config)
+
+// Create WebSocket authentication middleware using go-auth
+wsAuthMiddleware := authenticator.NewWSAuthMiddleware()
+
+// Apply to WebSocket routes
+router.WS("/chat", chatHandler, wsAuthMiddleware)
+```
+
+#### Custom WebSocket Configuration
+
+```go
+// Custom WebSocket auth configuration
+wsConfig := router.WSAuthConfig{
+    TokenExtractor: func(req *http.Request) (string, error) {
+        // Extract token from custom header
+        token := req.Header.Get("X-Auth-Token")
+        if token == "" {
+            return "", errors.New("missing auth token")
+        }
+        return token, nil
+    },
+    // Optional: custom error handling
+    ErrorHandler: func(ctx *router.WSContext, err error) {
+        ctx.WriteMessage(websocket.TextMessage, []byte(`{"error": "authentication failed"}`))
+        ctx.Close()
+    },
+}
+
+wsAuthMiddleware := authenticator.NewWSAuthMiddleware(wsConfig)
+router.WS("/secure-chat", secureHandler, wsAuthMiddleware)
+```
+
+#### Using Authentication in WebSocket Handlers
+
+```go
+func chatHandler(ctx *router.WSContext) error {
+    // Get authenticated user claims
+    claims, ok := auth.WSAuthClaimsFromContext(ctx.Context())
+    if !ok {
+        return errors.New("no authentication claims found")
+    }
+
+    userID := claims.UserID()
+    userRole := claims.Role()
+
+    // Use resource-level permissions
+    canModerate := claims.CanEdit("chat:moderation")
+    canBroadcast := claims.CanCreate("chat:announcements")
+
+    // Your WebSocket logic here
+    for {
+        messageType, message, err := ctx.ReadMessage()
+        if err != nil {
+            break
+        }
+
+        // Process message based on user permissions
+        if canModerate && isModerateCommand(message) {
+            handleModerationCommand(message, userID)
+        } else {
+            handleRegularMessage(message, userID)
+        }
+    }
+
+    return nil
+}
+```
+
+#### Advanced WebSocket Authentication
+
+For more complex scenarios, you can create a custom token validator:
+
+```go
+// Custom validator for additional WebSocket-specific logic
+type CustomWSValidator struct {
+    tokenService auth.TokenService
+    logger       Logger
+}
+
+func (v *CustomWSValidator) Validate(tokenString string) (router.WSAuthClaims, error) {
+    // Use go-auth token service for validation
+    claims, err := v.tokenService.Validate(tokenString)
+    if err != nil {
+        v.logger.Error("WebSocket token validation failed", "error", err)
+        return nil, err
+    }
+
+    // Additional WebSocket-specific validation
+    if !claims.CanRead("websocket:access") {
+        return nil, errors.New("insufficient permissions for WebSocket access")
+    }
+
+    // Return adapter for go-router compatibility
+    return &auth.WSAuthClaimsAdapter{Claims: claims}, nil
+}
+
+// Use custom validator
+validator := &CustomWSValidator{
+    tokenService: authenticator.TokenService(),
+    logger:       logger,
+}
+
+wsConfig := router.WSAuthConfig{TokenValidator: validator}
+wsAuth := router.NewWSAuth(wsConfig)
 ```
 
 ## Command Handlers
