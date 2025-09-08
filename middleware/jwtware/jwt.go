@@ -64,6 +64,14 @@ type Config struct {
 	// ContextEnricher is an optional function to propagate claims to the standard
 	// Go context. If provided, it will be called after successful token validation.
 	ContextEnricher func(c context.Context, claims AuthClaims) context.Context
+
+	// Template integration fields for automatic user context registration
+	// TemplateUserKey specifies the key for storing user data for templates in router context.
+	// If set, the middleware will automatically store user data under this key for template usage.
+	TemplateUserKey string
+	// UserProvider is an optional function to convert AuthClaims to a User object for templates.
+	// If not provided, the AuthClaims will be stored directly under TemplateUserKey.
+	UserProvider func(AuthClaims) (any, error)
 }
 
 type SigningKey struct {
@@ -83,21 +91,38 @@ func New(config ...Config) router.HandlerFunc {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		// Use TokenValidator for token validation
 		claims, err := cfg.TokenValidator.Validate(a)
 		if err != nil {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		// Perform RBAC authorization checks if configured
 		if err := performAuthorizationChecks(claims, cfg); err != nil {
 			return cfg.ErrorHandler(ctx, err)
 		}
 
-		// Store AuthClaims in router context
 		ctx.Locals(cfg.ContextKey, claims)
 
-		// If a context enricher is provided, use it to propagate claims to the standard Go context
+		// Store user data for template usage if configured
+		if cfg.TemplateUserKey != "" {
+			var templateUser any
+			if cfg.UserProvider != nil {
+				// Try to get full user object using the provider
+				user, err := cfg.UserProvider(claims)
+				if err != nil {
+					// Log error but don't fail - use claims instead
+					// TODO: Consider adding logging interface to Config for better error reporting
+					templateUser = claims
+				} else {
+					templateUser = user
+				}
+			} else {
+				// Use claims directly as template user data
+				templateUser = claims
+			}
+			ctx.Locals(cfg.TemplateUserKey, templateUser)
+		}
+
+		// if a context enricher we use it to propagate claims to the standard context
 		if cfg.ContextEnricher != nil {
 			stdCtx := ctx.Context()
 			stdCtxWithClaims := cfg.ContextEnricher(stdCtx, claims)
@@ -108,18 +133,6 @@ func New(config ...Config) router.HandlerFunc {
 	}
 }
 
-// // claimsCtxKey is the context key for storing AuthClaims in standard context
-// var claimsCtxKey = &contextKey{"claims"}
-//
-// type contextKey struct {
-//   name string
-// }
-//
-// // withClaimsContext sets the AuthClaims in the given context
-// func withClaimsContext(ctx context.Context, claims AuthClaims) context.Context {
-//   return context.WithValue(ctx, claimsCtxKey, claims)
-// }
-
 // performAuthorizationChecks performs RBAC authorization checks using the configured options
 func performAuthorizationChecks(claims AuthClaims, cfg Config) error {
 	// If no RBAC configuration is provided, skip authorization checks
@@ -127,21 +140,20 @@ func performAuthorizationChecks(claims AuthClaims, cfg Config) error {
 		return nil
 	}
 
-	// Check if user has the required exact role
 	if cfg.RequiredRole != "" {
 		if !claims.HasRole(cfg.RequiredRole) {
 			return fmt.Errorf("access denied: required role '%s' not found", cfg.RequiredRole)
 		}
 	}
 
-	// Check if user has at least the minimum role level
+	// user has at least the minimum role level?
 	if cfg.MinimumRole != "" {
 		if !claims.IsAtLeast(cfg.MinimumRole) {
 			return fmt.Errorf("access denied: minimum role '%s' required", cfg.MinimumRole)
 		}
 	}
 
-	// Use custom role checker if provided
+	// use custom role checker if provided
 	if cfg.RoleChecker != nil {
 		// RoleChecker can check against either RequiredRole or MinimumRole
 		roleToCheck := cfg.RequiredRole
