@@ -18,6 +18,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
+	"github.com/goliatone/go-auth/middleware/jwtware"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
 	gconfig "github.com/goliatone/go-config/config"
@@ -132,13 +133,76 @@ func ProtectedRoutes(app *App) {
 
 	cfg := app.Config().GetAuth()
 
-	protected := app.auther.ProtectedRoute(
-		cfg,
-		app.auther.MakeClientRouteAuthErrorHandler(false),
-	)
+	// Create enhanced JWT middleware with template support
+	protected := CreateTemplateAwareJWTMiddleware(app, cfg)
 
 	p.Get("/me", ProfileShow(app), protected)
 	p.Post("/me", ProfileUpdate(app), protected)
+}
+
+// CreateTemplateAwareJWTMiddleware creates JWT middleware with automatic current_user injection
+func CreateTemplateAwareJWTMiddleware(app *App, cfg auth.Config) router.MiddlewareFunc {
+	return func(hf router.HandlerFunc) router.HandlerFunc {
+		jwtConfig := jwtware.Config{
+			ErrorHandler: app.auther.MakeClientRouteAuthErrorHandler(false),
+			SigningKey: jwtware.SigningKey{
+				Key:    []byte(cfg.GetSigningKey()),
+				JWTAlg: cfg.GetSigningMethod(),
+			},
+			AuthScheme:      cfg.GetAuthScheme(),
+			ContextKey:      cfg.GetContextKey(),
+			TokenLookup:     cfg.GetTokenLookup(),
+			// Add TokenValidator - use the authenticator's token service if available
+			TokenValidator: &TokenServiceAdapter{app.auth},
+			// Template integration - automatic current_user injection
+			TemplateUserKey: "current_user",
+			UserProvider: func(claims jwtware.AuthClaims) (any, error) {
+				// Convert JWT claims to full User object for templates
+				userID := claims.UserID()
+				if userID == "" {
+					app.GetLogger("jwt").Warn("Empty user ID in claims, using claims directly")
+					return claims, nil // Fallback to claims
+				}
+				
+				user, err := app.repo.Users().GetByID(context.Background(), userID)
+				if err != nil {
+					app.GetLogger("jwt").Warn("Failed to load user for template, using claims", "user_id", userID, "error", err)
+					return claims, nil // Fallback to claims
+				}
+				
+				app.GetLogger("jwt").Debug("Loaded user for template context", "user_id", userID, "username", user.Username)
+				return user, nil
+			},
+		}
+
+		return jwtware.New(jwtConfig)
+	}
+}
+
+// TokenServiceAdapter adapts Authenticator to jwtware.TokenValidator interface
+type TokenServiceAdapter struct {
+	auth auth.Authenticator
+}
+
+// Validate implements the jwtware.TokenValidator interface
+func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims, error) {
+	// Use SessionFromToken to validate and get claims
+	session, err := tsa.auth.SessionFromToken(tokenString)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert Session to AuthClaims
+	// Assuming the session has the necessary data, we create a basic claims object
+	if authClaims, ok := session.(jwtware.AuthClaims); ok {
+		return authClaims, nil
+	}
+	
+	// If session doesn't implement AuthClaims, create a basic implementation
+	return &auth.JWTClaims{
+		UID:      session.GetUserID(),
+		UserRole: session.GetData()["role"].(string),
+	}, nil
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
@@ -155,6 +219,9 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 		os.DirFS(vcfg.GetDirFS()),
 	)
 	vcfg.SetTemplatesFS([]fs.FS{comp})
+
+	// Add authentication template helpers globally
+	vcfg.SetTemplateFunctions(auth.TemplateHelpers())
 
 	engine, err := router.InitializeViewEngine(vcfg, app.GetLogger("views"))
 	if err != nil {
@@ -308,7 +375,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 	// Step 1: Create a standard authenticator (backward compatible)
 	// This will use the default no-op resource role provider internally
 	authenticator := auth.NewAuthenticator(userProvider, cfg)
-	authenticator = authenticator.WithLogger(app.GetLogger("auth:authz"))
+	authenticator.WithLogger(app.GetLogger("auth:authz"))
 
 	// Step 2: Optionally enhance the authenticator with resource-level permissions
 	// This is completely opt-in and doesn't break existing functionality
@@ -319,7 +386,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 		repo:   repo,
 		logger: app.GetLogger("auth:roles"),
 	}
-	authenticator = authenticator.WithResourceRoleProvider(resourceRoleProvider)
+	authenticator.WithResourceRoleProvider(resourceRoleProvider)
 
 	// The authenticator will now generate JWT tokens with resource-specific roles
 	// which enable fine-grained permission checking in your application
@@ -401,6 +468,7 @@ func NewUserDTO(user *auth.User) UserRecord {
 }
 
 // ProfileShow will render the user's profile page
+// Note: current_user is automatically injected by JWT middleware
 func ProfileShow(app *App) func(c router.Context) error {
 
 	contextKey := app.Config().GetAuth().GetContextKey()
@@ -420,42 +488,14 @@ func ProfileShow(app *App) func(c router.Context) error {
 			})
 		}
 
-		// Demonstration of enhanced resource-level permissions using the new claims interface
-		// Check if session implements the enhanced RoleCapableSession interface
-		var resourcePermissions map[string]interface{}
-		if roleCapableSession, ok := session.(auth.RoleCapableSession); ok {
-			// The session now has enhanced role-based methods available
-			permissions := map[string]interface{}{
-				"can_read_admin_dashboard": roleCapableSession.CanRead("admin:dashboard"),
-				"can_edit_admin_settings":  roleCapableSession.CanEdit("admin:settings"),
-				"can_create_projects":      roleCapableSession.CanCreate("project:default"),
-				"can_delete_admin_users":   roleCapableSession.CanDelete("admin:users"),
-				"has_admin_role":           roleCapableSession.HasRole("admin"),
-				"has_moderator_role":       roleCapableSession.HasRole("moderator"),
-				"is_at_least_member":       roleCapableSession.IsAtLeast("member"),
-				"global_role":              session.GetData()["role"], // Original global role
-			}
-			resourcePermissions = permissions
-
-			// Log the enhanced permissions for demonstration
-			app.GetLogger("profile").Info("Enhanced permissions available for user",
-				"user_id", session.GetUserID(),
-				"permissions", permissions)
-		} else {
-			// Fallback for basic session (backward compatibility)
-			resourcePermissions = map[string]interface{}{
-				"note":        "Using basic session - enhanced permissions not available",
-				"global_role": session.GetData()["role"],
-			}
-
-			app.GetLogger("profile").Info("Using basic session for user",
-				"user_id", session.GetUserID())
-		}
+		// Simplified - current_user automatically available from JWT middleware!
+		app.GetLogger("profile").Debug("Rendering profile with automatic current_user injection",
+			"user_id", session.GetUserID())
 
 		return c.Render("profile", router.ViewContext{
-			"errors":      nil,
-			"record":      NewUserDTO(user),
-			"permissions": resourcePermissions, // Pass permissions to template for display
+			"errors": nil,
+			"record": NewUserDTO(user),
+			// current_user automatically injected by JWT middleware
 		})
 	}
 }
@@ -510,9 +550,11 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 			})
 		}
 
+		// Simplified - current_user automatically available from JWT middleware!
 		return c.Render("profile", router.ViewContext{
 			"errors": nil,
 			"record": NewUserDTO(user),
+			// current_user automatically injected by JWT middleware
 		})
 	}
 }
