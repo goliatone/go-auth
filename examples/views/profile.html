@@ -255,6 +255,22 @@
         </div>
 
         <!-- Template helpers demonstration -->
+        <!-- WebSocket Demo Section -->
+        <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 class="font-semibold text-blue-800">🚀 Real-Time Features</h4>
+            <p class="text-sm text-blue-700 mt-1">
+              Test WebSocket authentication and real-time communication:
+            </p>
+            <div class="mt-2">
+              <a href="/websocket-demo" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded text-sm transition-colors">
+                Launch WebSocket Demo
+              </a>
+            </div>
+            <p class="text-xs text-blue-600 mt-2">
+              Features: Real-time chat, role-based permissions, user presence, admin commands
+            </p>
+        </div>
+
         {% if has_role(current_user, "admin") %}
           <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <h4 class="font-semibold text-yellow-800">Admin Panel Access</h4>
@@ -264,7 +280,8 @@
             <div class="mt-2">
               <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">Admin Dashboard</a> |
               <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">User Management</a> |
-              <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">System Settings</a>
+              <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">System Settings</a> |
+              <a href="/websocket-demo" class="text-yellow-800 hover:text-yellow-900 underline text-sm">WebSocket Demo</a>
             </div>
           </div>
         {% endif %}
