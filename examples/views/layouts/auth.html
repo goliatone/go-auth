@@ -22,5 +22,7 @@
     <!-- {% include "partials/footer.html" %} -->
     {{ js("main-*.js") | safe }}
 
+    {% block scripts %}
+    {% endblock %}
   </body>
 </html>
