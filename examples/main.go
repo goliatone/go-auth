@@ -120,6 +120,7 @@ func main() {
 	}
 
 	ProtectedRoutes(app)
+	WebSocketRoutes(app)
 
 	app.srv.Serve(":8978")
 
@@ -138,6 +139,230 @@ func ProtectedRoutes(app *App) {
 
 	p.Get("/me", ProfileShow(app), protected)
 	p.Post("/me", ProfileUpdate(app), protected)
+	p.Get("/websocket-demo", WebSocketDemoShow(app), protected)
+}
+
+func WebSocketRoutes(app *App) {
+	routerInstance := app.srv.Router()
+
+	// Register Fiber WebSocket factory for go-router compatibility
+	router.RegisterFiberWebSocketFactory(nil)
+
+	// Create WebSocket token validator using our authenticator
+	tokenValidator := &WebSocketTokenValidator{auth: app.auth}
+
+	// For now, skip query-based authentication and handle auth via first message
+	// We'll authenticate when the client sends their first message with the token
+
+	// Note: Middleware not needed since authentication is handled in message handlers
+
+	// Create WebSocket hub for managing connections
+	hub := router.NewWSHub()
+
+	// Handle new connections (authentication will happen via first message)
+	hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
+		app.GetLogger("websocket").Info("🔗 New WebSocket connection established", "client_id", client.ID())
+		app.GetLogger("websocket").Info("query request", "token", client.Query("token"))
+
+		// Send a message requesting authentication
+		authReqMsg := map[string]any{
+			"type":    "auth_required",
+			"message": "Please send your authentication token to continue",
+		}
+
+		app.GetLogger("websocket").Info("📤 Sending auth_required message", "client_id", client.ID(), "message", authReqMsg)
+
+		err := client.SendJSON(authReqMsg)
+		if err != nil {
+			app.GetLogger("websocket").Error("❌ Failed to send auth_required", "client_id", client.ID(), "error", err)
+			return err
+		}
+
+		app.GetLogger("websocket").Info("✅ Auth_required message sent successfully", "client_id", client.ID())
+
+		token := client.Query("token", "")
+		if token == "" {
+			app.GetLogger("websocket").Error("❌ Token missing or invalid", "client_id", client.ID(), "token_empty", token == "")
+			return client.SendJSON(map[string]any{
+				"type":    "auth_error",
+				"message": "No token provided",
+			})
+		}
+
+		app.GetLogger("websocket").Info("✅ Token extracted", "client_id", client.ID(), "token_length", len(token))
+
+		// Validate the token using our token validator
+		claims, err := tokenValidator.Validate(token)
+		if err != nil {
+			app.GetLogger("websocket").Error("❌ Token validation failed", "error", err, "client_id", client.ID(), "token_length", len(token))
+			return client.SendJSON(map[string]any{
+				"type":    "auth_error",
+				"message": "Invalid token",
+			})
+		}
+
+		app.GetLogger("websocket").Info("✅ Token validated successfully", "client_id", client.ID(), "user_id", claims.UserID(), "role", claims.Role())
+
+		// Store user information in client state
+		client.Set("user_id", claims.UserID())
+		client.Set("role", claims.Role())
+		client.Set("authenticated", true)
+
+		// Join user to appropriate rooms
+		client.Join("users")
+		if claims.HasRole("admin") {
+			client.Join("admins")
+		}
+
+		app.GetLogger("websocket").Info("✅ User authenticated via WebSocket",
+			"client_id", client.ID(),
+			"user_id", claims.UserID(),
+			"role", claims.Role())
+
+		// Send success response
+		successMsg := map[string]any{
+			"type":    "auth_success",
+			"message": fmt.Sprintf("Welcome %s! You are connected as %s", claims.UserID(), claims.Role()),
+			"user_id": claims.UserID(),
+			"role":    claims.Role(),
+		}
+
+		app.GetLogger("websocket").Info("📤 Sending auth success message", "client_id", client.ID(), "message", successMsg)
+
+		err = client.SendJSON(successMsg)
+		if err != nil {
+			app.GetLogger("websocket").Error("❌ Failed to send auth success message", "client_id", client.ID(), "error", err)
+			return err
+		}
+
+		app.GetLogger("websocket").Info("✅ Auth success message sent", "client_id", client.ID())
+
+		return nil
+	})
+
+	// Handle disconnections
+	hub.OnDisconnect(func(ctx context.Context, client router.WSClient, _ any) error {
+		userID := client.GetString("user_id")
+		app.GetLogger("websocket").Info("User disconnected", "user_id", userID)
+
+		// Notify other users in the same rooms
+		for _, room := range client.Rooms() {
+			client.Room(room).Except(client).Emit("user_disconnected", map[string]string{
+				"user_id": userID,
+			})
+		}
+
+		return nil
+	})
+
+	// Handle chat messages with permission checking
+	hub.On("chat_message", func(ctx context.Context, client router.WSClient, data any) error {
+		// Check if user is authenticated
+		if !client.GetBool("authenticated") {
+			return client.SendJSON(map[string]any{
+				"type":    "error",
+				"message": "Authentication required",
+			})
+		}
+
+		userID := client.GetString("user_id")
+		role := client.GetString("role")
+
+		messageData := data.(map[string]any)
+
+		// Broadcast message to all users
+		response := map[string]any{
+			"type":      "new_message",
+			"user_id":   userID,
+			"role":      role,
+			"message":   messageData["text"],
+			"timestamp": time.Now().Format(time.RFC3339),
+		}
+
+		client.Room("users").Emit("message", response)
+		app.GetLogger("websocket").Debug("Chat message broadcasted", "user_id", userID)
+		return nil
+	})
+
+	// Handle admin commands (admin-only)
+	hub.On("admin_command", func(ctx context.Context, client router.WSClient, data any) error {
+		// Check if user is authenticated
+		if !client.GetBool("authenticated") {
+			return client.SendJSON(map[string]any{
+				"type":    "error",
+				"message": "Authentication required",
+			})
+		}
+
+		userID := client.GetString("user_id")
+		role := client.GetString("role")
+
+		// Check admin permissions
+		if role != "admin" {
+			return client.SendJSON(map[string]any{
+				"type":    "error",
+				"message": "Admin privileges required",
+			})
+		}
+
+		commandData := data.(map[string]any)
+		command := commandData["command"].(string)
+
+		app.GetLogger("websocket").Info("Admin command executed", "user_id", userID, "command", command)
+
+		// Broadcast admin notification
+		client.Room("users").Emit("admin_announcement", map[string]any{
+			"type":      "admin_announcement",
+			"message":   fmt.Sprintf("Admin executed: %s", command),
+			"admin_id":  userID,
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+
+		return nil
+	})
+
+	// Apply WebSocket upgrade middleware and register route
+	wsUpgradeMiddleware := router.WebSocketUpgrade(router.WebSocketConfig{})
+	wrappedHandler := wsUpgradeMiddleware(hub.Handler())
+	routerInstance.Get("/ws", wrappedHandler)
+	app.GetLogger("websocket").Info("WebSocket server configured with authentication", "endpoint", "/ws")
+}
+
+// WebSocketDemoShow renders the WebSocket demo page
+func WebSocketDemoShow(app *App) func(c router.Context) error {
+	contextKey := app.Config().GetAuth().GetContextKey()
+
+	return func(c router.Context) error {
+		session, err := auth.GetRouterSession(c, contextKey)
+		if err != nil {
+			app.GetLogger("websocket").Error("Session Auth error", "error", err)
+			return c.Status(http.StatusInternalServerError).SendString("Internal Server Error")
+		}
+
+		user, err := app.repo.Users().GetByID(c.Context(), session.GetUserID())
+		if err != nil {
+			app.GetLogger("websocket").Error("User GetByID error", "details", err)
+			return c.Render("errors/500", router.ViewContext{
+				"message": err.Error(),
+			})
+		}
+
+		// Generate a fresh JWT token for WebSocket connection using impersonation
+		// This allows us to generate a token without password verification since we already have a valid session
+		token, err := app.auth.Impersonate(c.Context(), session.GetUserID())
+		if err != nil {
+			app.GetLogger("websocket").Error("Failed to impersonate user for WebSocket token", "error", err)
+			return c.Render("errors/500", router.ViewContext{
+				"message": "Failed to generate WebSocket token",
+			})
+		}
+
+		return c.Render("websocket_demo", router.ViewContext{
+			"user":  NewUserDTO(user),
+			"token": token,
+			"wsUrl": "ws://localhost:8978/ws",
+		})
+	}
 }
 
 // CreateTemplateAwareJWTMiddleware creates JWT middleware with automatic current_user injection
@@ -149,13 +374,13 @@ func CreateTemplateAwareJWTMiddleware(app *App, cfg auth.Config) router.Middlewa
 				Key:    []byte(cfg.GetSigningKey()),
 				JWTAlg: cfg.GetSigningMethod(),
 			},
-			AuthScheme:      cfg.GetAuthScheme(),
-			ContextKey:      cfg.GetContextKey(),
-			TokenLookup:     cfg.GetTokenLookup(),
+			AuthScheme:  cfg.GetAuthScheme(),
+			ContextKey:  cfg.GetContextKey(),
+			TokenLookup: cfg.GetTokenLookup(),
 			// Add TokenValidator - use the authenticator's token service if available
 			TokenValidator: &TokenServiceAdapter{app.auth},
 			// Template integration - automatic current_user injection
-			TemplateUserKey: "current_user",
+			TemplateUserKey: auth.TemplateUserKey,
 			UserProvider: func(claims jwtware.AuthClaims) (any, error) {
 				// Convert JWT claims to full User object for templates
 				userID := claims.UserID()
@@ -163,13 +388,13 @@ func CreateTemplateAwareJWTMiddleware(app *App, cfg auth.Config) router.Middlewa
 					app.GetLogger("jwt").Warn("Empty user ID in claims, using claims directly")
 					return claims, nil // Fallback to claims
 				}
-				
+
 				user, err := app.repo.Users().GetByID(context.Background(), userID)
 				if err != nil {
 					app.GetLogger("jwt").Warn("Failed to load user for template, using claims", "user_id", userID, "error", err)
 					return claims, nil // Fallback to claims
 				}
-				
+
 				app.GetLogger("jwt").Debug("Loaded user for template context", "user_id", userID, "username", user.Username)
 				return user, nil
 			},
@@ -191,18 +416,139 @@ func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Convert Session to AuthClaims
 	// Assuming the session has the necessary data, we create a basic claims object
 	if authClaims, ok := session.(jwtware.AuthClaims); ok {
 		return authClaims, nil
 	}
-	
+
 	// If session doesn't implement AuthClaims, create a basic implementation
 	return &auth.JWTClaims{
 		UID:      session.GetUserID(),
 		UserRole: session.GetData()["role"].(string),
 	}, nil
+}
+
+// WebSocketTokenValidator implements the router.WSAuthClaims validation interface
+type WebSocketTokenValidator struct {
+	auth auth.Authenticator
+}
+
+// Validate validates a WebSocket token using our authenticator
+func (w *WebSocketTokenValidator) Validate(tokenString string) (router.WSAuthClaims, error) {
+	fmt.Printf("[DEBUG] WebSocketTokenValidator.Validate called with token length: %d\n", len(tokenString))
+	session, err := w.auth.SessionFromToken(tokenString)
+	if err != nil {
+		fmt.Printf("[ERROR] WebSocketTokenValidator.Validate failed: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("[DEBUG] WebSocketTokenValidator.Validate successful for user: %s\n", session.GetUserID())
+	// Convert session to WebSocket claims
+	return &WebSocketAuthClaims{session: session}, nil
+}
+
+// WebSocketAuthClaims adapts our session to WebSocket auth claims
+type WebSocketAuthClaims struct {
+	session auth.Session
+}
+
+func (w *WebSocketAuthClaims) UserID() string { return w.session.GetUserID() }
+func (w *WebSocketAuthClaims) Role() string {
+	if data := w.session.GetData(); data != nil {
+		if role, ok := data["role"].(string); ok {
+			return role
+		}
+	}
+	return "user"
+}
+func (w *WebSocketAuthClaims) Subject() string          { return w.session.GetUserID() }
+func (w *WebSocketAuthClaims) HasRole(role string) bool { return w.Role() == role }
+func (w *WebSocketAuthClaims) IsAtLeast(minRole string) bool {
+	currentRole := w.Role()
+	return currentRole == "admin" || (currentRole == "moderator" && minRole == "user") || minRole == "user"
+}
+func (w *WebSocketAuthClaims) CanCreate(resource string) bool {
+	return w.Role() == "admin" || w.Role() == "moderator"
+}
+func (w *WebSocketAuthClaims) CanRead(resource string) bool   { return true }
+func (w *WebSocketAuthClaims) CanEdit(resource string) bool   { return w.Role() == "admin" }
+func (w *WebSocketAuthClaims) CanDelete(resource string) bool { return w.Role() == "admin" }
+
+// handleChatMessage processes chat messages from authenticated users
+func handleChatMessage(ctx context.Context, client router.WSClient, claims router.WSAuthClaims, eventData any, app *App) error {
+	// Check if user can send messages
+	if !claims.CanCreate("chat_messages") {
+		client.SendJSON(map[string]string{
+			"type":    "error",
+			"message": "Not authorized to send messages",
+		})
+		return nil
+	}
+
+	messageData, ok := eventData.(map[string]any)
+	if !ok {
+		app.GetLogger("websocket").Error("Invalid chat message data format")
+		return nil
+	}
+
+	// Broadcast message to all users
+	response := map[string]any{
+		"type":      "new_message",
+		"user_id":   claims.UserID(),
+		"role":      claims.Role(),
+		"message":   messageData["text"],
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+
+	client.Room("users").Emit("message", response)
+	app.GetLogger("websocket").Debug("Chat message broadcasted", "user_id", claims.UserID())
+	return nil
+}
+
+// handleAdminCommand processes admin commands from authenticated admin users
+// min helper function
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func handleAdminCommand(ctx context.Context, client router.WSClient, claims router.WSAuthClaims, eventData any, app *App) error {
+	// Check admin permissions
+	if !claims.HasRole("admin") {
+		client.SendJSON(map[string]string{
+			"type":    "error",
+			"message": "Admin privileges required",
+		})
+		return nil
+	}
+
+	commandData, ok := eventData.(map[string]any)
+	if !ok {
+		app.GetLogger("websocket").Error("Invalid admin command data format")
+		return nil
+	}
+
+	command, ok := commandData["command"].(string)
+	if !ok {
+		app.GetLogger("websocket").Error("Missing command in admin command data")
+		return nil
+	}
+
+	app.GetLogger("websocket").Info("Admin command executed", "user_id", claims.UserID(), "command", command)
+
+	// Broadcast admin notification
+	client.Room("users").Emit("admin_announcement", map[string]any{
+		"type":      "admin_announcement",
+		"message":   fmt.Sprintf("Admin executed: %s", command),
+		"admin_id":  claims.UserID(),
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+
+	return nil
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
@@ -252,7 +598,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	srv.Router().Get("/", func(ctx router.Context) error {
 		return ctx.Render("test", router.ViewContext{
 			"title":   "Home Renderer",
-			"message": `<p>This is your Home Page</p><a href="/me">Profile</a>`,
+			"message": `<p>This is your Home Page</p><a href="/me">Profile</a> | <a href="/websocket-demo">WebSocket Demo</a>`,
 		})
 	})
 
