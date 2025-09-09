@@ -146,7 +146,7 @@ func WebSocketRoutes(app *App) {
 	routerInstance := app.srv.Router()
 
 	// Register Fiber WebSocket factory for go-router compatibility
-	router.RegisterFiberWebSocketFactory(nil)
+	router.RegisterFiberWebSocketFactory(app.GetLogger("websocket"))
 
 	// Create WebSocket token validator using our authenticator
 	tokenValidator := &WebSocketTokenValidator{auth: app.auth}
@@ -159,42 +159,81 @@ func WebSocketRoutes(app *App) {
 	// Create WebSocket hub for managing connections
 	hub := router.NewWSHub()
 
-	// Handle new connections (authentication will happen via first message)
-	hub.OnConnect(func(ctx context.Context, client router.WSClient, _ any) error {
+	// Handle new connections with query parameter authentication
+	hub.OnConnect(func(ctx context.Context, client router.WSClient, request any) error {
 		app.GetLogger("websocket").Info("🔗 New WebSocket connection established", "client_id", client.ID())
-		app.GetLogger("websocket").Info("query request", "token", client.Query("token"))
 
-		// Send a message requesting authentication
-		authReqMsg := map[string]any{
-			"type":    "auth_required",
-			"message": "Please send your authentication token to continue",
-		}
-
-		app.GetLogger("websocket").Info("📤 Sending auth_required message", "client_id", client.ID(), "message", authReqMsg)
-
-		err := client.SendJSON(authReqMsg)
-		if err != nil {
-			app.GetLogger("websocket").Error("❌ Failed to send auth_required", "client_id", client.ID(), "error", err)
-			return err
-		}
-
-		app.GetLogger("websocket").Info("✅ Auth_required message sent successfully", "client_id", client.ID())
-
-		token := client.Query("token", "")
+		// Try to get token from query parameters
+		token := client.Query("token")
 		if token == "" {
-			app.GetLogger("websocket").Error("❌ Token missing or invalid", "client_id", client.ID(), "token_empty", token == "")
-			return client.SendJSON(map[string]any{
+			app.GetLogger("websocket").Error("❌ No token provided in query parameters", "client_id", client.ID())
+			client.SendJSON(map[string]any{
 				"type":    "auth_error",
-				"message": "No token provided",
+				"message": "Token required in query parameter",
 			})
+			return nil // Don't return error to avoid closing connection
 		}
 
-		app.GetLogger("websocket").Info("✅ Token extracted", "client_id", client.ID(), "token_length", len(token))
+		app.GetLogger("websocket").Info("🔍 Validating token from query parameter", "client_id", client.ID(), "token_length", len(token))
 
 		// Validate the token using our token validator
 		claims, err := tokenValidator.Validate(token)
 		if err != nil {
-			app.GetLogger("websocket").Error("❌ Token validation failed", "error", err, "client_id", client.ID(), "token_length", len(token))
+			app.GetLogger("websocket").Error("❌ Token validation failed", "error", err, "client_id", client.ID())
+			client.SendJSON(map[string]any{
+				"type":    "auth_error",
+				"message": "Invalid token",
+			})
+			return nil // Don't return error to avoid closing connection
+		}
+
+		app.GetLogger("websocket").Info("✅ Token validated successfully", "client_id", client.ID(), "user_id", claims.UserID(), "role", claims.Role())
+
+		// Store user information in client state
+		client.Set("user_id", claims.UserID())
+		client.Set("role", claims.Role())
+		client.Set("authenticated", true)
+
+		// Add user to the users room
+		client.Join("users")
+
+		// Send successful auth response (ignore send errors to avoid connection closure)
+		client.SendJSON(map[string]any{
+			"type":    "auth_success",
+			"message": "Authentication successful",
+			"user_id": claims.UserID(),
+			"role":    claims.Role(),
+		})
+
+		return nil // Always return nil to keep connection open
+	})
+
+	// Handle authentication via message - since we can't get query params in OnConnect
+	hub.On("auth", func(ctx context.Context, client router.WSClient, data any) error {
+		app.GetLogger("websocket").Info("🔍 Processing auth message", "client_id", client.ID())
+
+		authData, ok := data.(map[string]any)
+		if !ok {
+			return client.SendJSON(map[string]any{
+				"type":    "auth_error",
+				"message": "Invalid auth data format",
+			})
+		}
+
+		token, ok := authData["token"].(string)
+		if !ok || token == "" {
+			return client.SendJSON(map[string]any{
+				"type":    "auth_error",
+				"message": "Token is required",
+			})
+		}
+
+		app.GetLogger("websocket").Info("🔍 Validating token", "client_id", client.ID(), "token_length", len(token))
+
+		// Validate the token using our token validator
+		claims, err := tokenValidator.Validate(token)
+		if err != nil {
+			app.GetLogger("websocket").Error("❌ Token validation failed", "error", err, "client_id", client.ID())
 			return client.SendJSON(map[string]any{
 				"type":    "auth_error",
 				"message": "Invalid token",
@@ -214,30 +253,13 @@ func WebSocketRoutes(app *App) {
 			client.Join("admins")
 		}
 
-		app.GetLogger("websocket").Info("✅ User authenticated via WebSocket",
-			"client_id", client.ID(),
-			"user_id", claims.UserID(),
-			"role", claims.Role())
-
 		// Send success response
-		successMsg := map[string]any{
+		return client.SendJSON(map[string]any{
 			"type":    "auth_success",
 			"message": fmt.Sprintf("Welcome %s! You are connected as %s", claims.UserID(), claims.Role()),
 			"user_id": claims.UserID(),
 			"role":    claims.Role(),
-		}
-
-		app.GetLogger("websocket").Info("📤 Sending auth success message", "client_id", client.ID(), "message", successMsg)
-
-		err = client.SendJSON(successMsg)
-		if err != nil {
-			app.GetLogger("websocket").Error("❌ Failed to send auth success message", "client_id", client.ID(), "error", err)
-			return err
-		}
-
-		app.GetLogger("websocket").Info("✅ Auth success message sent", "client_id", client.ID())
-
-		return nil
+		})
 	})
 
 	// Handle disconnections
@@ -321,10 +343,15 @@ func WebSocketRoutes(app *App) {
 		return nil
 	})
 
-	// Apply WebSocket upgrade middleware and register route
-	wsUpgradeMiddleware := router.WebSocketUpgrade(router.WebSocketConfig{})
-	wrappedHandler := wsUpgradeMiddleware(hub.Handler())
-	routerInstance.Get("/ws", wrappedHandler)
+	// Configure WebSocket settings
+	wsConfig := router.WebSocketConfig{
+		Origins: []string{
+			"*", // Allow all origins for testing
+		},
+	}
+
+	// Use the pattern that works with both HTTPRouter and FiberRouter
+	routerInstance.Get("/ws", hub.Handler(), router.WebSocketUpgrade(wsConfig))
 	app.GetLogger("websocket").Info("WebSocket server configured with authentication", "endpoint", "/ws")
 }
 
