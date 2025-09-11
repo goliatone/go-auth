@@ -1,5 +1,43 @@
 # Changelog
 
+# [0.10.0](https://github.com/goliatone/go-auth/compare/v0.9.0...v0.10.0) - (2025-09-11)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.10.0 ([b3d593b](https://github.com/goliatone/go-auth/commit/b3d593b209d4a605ab7ca10c2c1beac471d7982c))  - (goliatone)
+- Bump version: v0.1.0 ([645aa33](https://github.com/goliatone/go-auth/commit/645aa33d27952db518ec5896b73e170a976f542a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Script block ([813090e](https://github.com/goliatone/go-auth/commit/813090ebcb9084bbeab95908cfce80d9c3eaec5f))  - (goliatone)
+- Template helpers ([da5134a](https://github.com/goliatone/go-auth/commit/da5134a5740f915c450380afa60c815189bdd0c9))  - (goliatone)
+- Example to integreate with templates ([12ab750](https://github.com/goliatone/go-auth/commit/12ab750e8c19b9dcb7989206aad5afb1438b807a))  - (goliatone)
+- Template context integration ([ac043cf](https://github.com/goliatone/go-auth/commit/ac043cfb20167f1de80b1f8f3909f9042a57da1d))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Examples ([b69670c](https://github.com/goliatone/go-auth/commit/b69670c12fa228a6d370cc57f0885aa80c52331f))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update example ([b6e306e](https://github.com/goliatone/go-auth/commit/b6e306e8ff937f39201535715514589736ba876b))  - (goliatone)
+- Fixing conneciton issues ([45d20bf](https://github.com/goliatone/go-auth/commit/45d20bf85024aa1a5c182e74a240138b10096797))  - (goliatone)
+- Websocket demo ([c506040](https://github.com/goliatone/go-auth/commit/c5060407d6f1e09042ce4bc2171e759e90b6d2d5))  - (goliatone)
+- Update examples ([8029029](https://github.com/goliatone/go-auth/commit/80290294c201f269ff1814cb5d7e0cfff4b27085))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.0 ([a017655](https://github.com/goliatone/go-auth/commit/a01765547f66c090a2d9fef6e0fa23b0b78c31f5))  - (goliatone)
+- Update changelog for v0.9.0 ([cca30fc](https://github.com/goliatone/go-auth/commit/cca30fc024c226c3e55c5706906106fbdc12fcaf))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#5](https://github.com/goliatone/go-auth/pull/5): template helpers ([fde4309](https://github.com/goliatone/go-auth/commit/fde430957dd2caaf341e3a9bd5ef116b3cb7d062))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([0a08cc8](https://github.com/goliatone/go-auth/commit/0a08cc868bf8612fca6cbc49b82e103621a2561f))  - (goliatone)
+
 # [0.9.0](https://github.com/goliatone/go-auth/compare/v0.8.0...v0.9.0) - (2025-09-06)
 
 ## <!-- 13 -->📦 Bumps
