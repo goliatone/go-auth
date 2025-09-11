@@ -99,8 +99,8 @@ function gen:go {
 
 function dev:run {
     gen:go
-    lgr exec -- go build -o mh || exit 1
-    ./mh
+    lgr exec -- go build -o example || exit 1
+    ./example
 }
 
 ##

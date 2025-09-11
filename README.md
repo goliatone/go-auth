@@ -139,7 +139,7 @@ func profileHandler(c router.Context) error {
         // Use permissions for authorization logic
     }
 
-    return c.JSON(map[string]interface{}{
+    return c.JSON(map[string]any{
         "user_id": session.GetUserID(),
         "data": session.GetData(),
     })
