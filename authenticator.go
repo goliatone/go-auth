@@ -59,6 +59,11 @@ func (s Auther) WithResourceRoleProvider(provider ResourceRoleProvider) Auther {
 	return s
 }
 
+// TokenService returns the TokenService instance used by this Authenticator
+func (s *Auther) TokenService() TokenService {
+	return s.tokenService
+}
+
 func (s Auther) Login(ctx context.Context, identifier, password string) (string, error) {
 	var err error
 	var identity Identity
