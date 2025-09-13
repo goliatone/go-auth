@@ -146,6 +146,48 @@ func profileHandler(c router.Context) error {
 }
 ```
 
+## API Reference
+
+### TokenService Access
+
+The `Authenticator` provides access to its underlying `TokenService` for advanced use cases:
+
+```go
+// Access the token service directly
+tokenService := authenticator.TokenService()
+
+// Generate tokens manually with custom resource roles
+resourceRoles := map[string]string{
+    "project:123": "admin",
+    "files:uploads": "owner",
+}
+token, err := tokenService.Generate(identity, resourceRoles)
+
+// Validate tokens manually
+claims, err := tokenService.Validate(tokenString)
+```
+
+### JWT Middleware Integration
+
+Use the `TokenService` with JWT middleware for custom authentication flows:
+
+```go
+// Create TokenServiceAdapter for jwtware middleware
+tokenValidator := auth.NewTokenServiceAdapter(authenticator.TokenService())
+
+// Configure JWT middleware
+jwtConfig := jwtware.Config{
+    SigningKey: jwtware.SigningKey{
+        Key:    []byte(config.GetSigningKey()),
+        JWTAlg: config.GetSigningMethod(),
+    },
+    TokenValidator: tokenValidator,
+    ContextKey:     "auth",
+}
+
+middleware := jwtware.New(jwtConfig)
+```
+
 ## Core Concepts
 
 ### User Roles
