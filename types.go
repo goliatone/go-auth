@@ -64,6 +64,7 @@ type Authenticator interface {
 	Impersonate(ctx context.Context, identifier string) (string, error)
 	SessionFromToken(token string) (Session, error)
 	IdentityFromSession(ctx context.Context, session Session) (Identity, error)
+	TokenService() TokenService
 }
 
 type LoginPayload interface {
