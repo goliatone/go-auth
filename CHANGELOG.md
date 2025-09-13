@@ -1,5 +1,36 @@
 # Changelog
 
+# [0.11.0](https://github.com/goliatone/go-auth/compare/v0.10.0...v0.11.0) - (2025-09-13)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Use router context mock ([f0da5ab](https://github.com/goliatone/go-auth/commit/f0da5ab8b7b93bc61caeee98616aa9bd772c4ede))  - (goliatone)
+- Merge user map to template context ([8621f55](https://github.com/goliatone/go-auth/commit/8621f5590751b7e00c1600ffbfe275c0b6f624a2))  - (goliatone)
+- Example use token service adapter ([55ac278](https://github.com/goliatone/go-auth/commit/55ac278be2dd02dafcc7fe51bb0d85deca2baa0d))  - (goliatone)
+- Mock include new method ([97c052d](https://github.com/goliatone/go-auth/commit/97c052d777189410f8b26e9d465946cdedc42409))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.11.0 ([48d5f95](https://github.com/goliatone/go-auth/commit/48d5f9513c24e959ee8e48b02d1f5f0b7210e4c6))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- TokenService to interface ([446880f](https://github.com/goliatone/go-auth/commit/446880f686da6efc85c711102c01ed51f02191d8))  - (goliatone)
+- New token service adapter ([64eeac1](https://github.com/goliatone/go-auth/commit/64eeac1d6ab5acfa0fb39e5d48b8a356f7cec505))  - (goliatone)
+- Expose TokenService ([a5641c9](https://github.com/goliatone/go-auth/commit/a5641c9e67883eb13d9ecdf06335099690662bf6))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.10.0 ([e033ee2](https://github.com/goliatone/go-auth/commit/e033ee257e7acca517eb99567f8629a4457ffea6))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#6](https://github.com/goliatone/go-auth/pull/6): token service ([ea3f607](https://github.com/goliatone/go-auth/commit/ea3f6076015110bac7d7b6121bcec96edbecb69e))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([712c4ed](https://github.com/goliatone/go-auth/commit/712c4ed3b73fe81c6fc131854f2d1cac25dbe35d))  - (goliatone)
+
 # [0.10.0](https://github.com/goliatone/go-auth/compare/v0.9.0...v0.10.0) - (2025-09-11)
 
 ## <!-- 13 -->📦 Bumps
