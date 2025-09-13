@@ -119,7 +119,13 @@ func New(config ...Config) router.HandlerFunc {
 				// Use claims directly as template user data
 				templateUser = claims
 			}
-			ctx.Locals(cfg.TemplateUserKey, templateUser)
+
+			// Use LocalsMerge if templateUser is a map[string]any, otherwise use Locals
+			if userMap, ok := templateUser.(map[string]any); ok {
+				ctx.LocalsMerge(cfg.TemplateUserKey, userMap)
+			} else {
+				ctx.Locals(cfg.TemplateUserKey, templateUser)
+			}
 		}
 
 		// if a context enricher we use it to propagate claims to the standard context
@@ -252,6 +258,10 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 		cfg.LocalTokenSerilizer = func(t *jwt.Token) any {
 			return t
 		}
+	}
+
+	if cfg.TemplateUserKey == "" {
+		cfg.TemplateUserKey = "current_user"
 	}
 
 	return cfg
