@@ -119,6 +119,8 @@ func TestJWTWare_ValidToken(t *testing.T) {
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Run(func(args mock.Arguments) {
 		storedClaims = args.Get(1).(jwtware.AuthClaims)
 	}).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -241,6 +243,8 @@ func TestJWTWare_TokenLookupVariations(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -303,6 +307,8 @@ func TestJWTWare_CustomContextKey(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token")
 	ctx.On("Locals", "custom_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -356,6 +362,8 @@ func TestJWTWare_RequiredRole_Success(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -423,6 +431,8 @@ func TestJWTWare_MinimumRole_Success(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -496,6 +506,8 @@ func TestJWTWare_CustomRoleChecker_Success(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-manager-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-manager-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -570,6 +582,8 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_AccessDenied(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -646,6 +660,8 @@ func TestJWTWare_CustomRoleChecker_WithMinimumRole(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -680,6 +696,8 @@ func TestJWTWare_NoRBACConfiguration_AllowsAccess(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -719,6 +737,8 @@ func TestJWTWare_MultipleRoleRequirements(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-admin-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -767,6 +787,8 @@ func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-token-12345"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-12345")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	// Mock the Context() method to return an empty context initially
 	initialCtx := context.Background()
@@ -821,6 +843,8 @@ func TestJWTWare_ContextEnricher_NotCalled_When_Nil(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-token-67890"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-67890")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
 	err := middleware(ctx)
 
@@ -870,6 +894,8 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 	ctx.HeadersM["Authorization"] = "Bearer valid-owner-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-owner-token")
 	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	// The middleware also stores user for templates with default key "current_user"
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 	ctx.On("Context").Return(context.Background())
 	ctx.On("SetContext", mock.AnythingOfType("*context.valueCtx")).Return()
 
@@ -882,4 +908,183 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 	assert.NotNil(t, receivedClaims, "ContextEnricher should have been called with claims")
 	assert.Equal(t, expectedSubject, receivedClaims.Subject(), "Claims should have correct subject")
 	assert.Equal(t, expectedRole, receivedClaims.Role(), "Claims should have correct role")
+}
+
+//--------------------------------------------------------------------------------------
+// Template User Tests
+//--------------------------------------------------------------------------------------
+
+func TestJWTWare_TemplateUser_WithUserProvider_MapOutput_UsesLocalsMerge(t *testing.T) {
+	// Create mock claims for successful validation
+	claims := NewMockAuthClaims("user-123", "user-123", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	// UserProvider that returns a map[string]any (should trigger LocalsMerge)
+	userProvider := func(claims jwtware.AuthClaims) (any, error) {
+		return map[string]any{
+			"id":       claims.UserID(),
+			"username": "admin_user",
+			"role":     claims.Role(),
+			"email":    "admin@example.com",
+		}, nil
+	}
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		UserProvider:   userProvider,
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token-12345"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-12345")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	// This is the key test: LocalsMerge should be called with map data
+	var mergedData map[string]any
+	ctx.On("LocalsMerge", "current_user", mock.AnythingOfType("map[string]interface {}")).Run(func(args mock.Arguments) {
+		mergedData = args.Get(1).(map[string]any)
+	}).Return(map[string]any{})
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that LocalsMerge was called with correct map data
+	ctx.AssertCalled(t, "LocalsMerge", "current_user", mock.AnythingOfType("map[string]interface {}"))
+	assert.NotNil(t, mergedData, "LocalsMerge should have received map data")
+	assert.Equal(t, "user-123", mergedData["id"], "Map should contain user ID")
+	assert.Equal(t, "admin_user", mergedData["username"], "Map should contain username")
+	assert.Equal(t, "admin", mergedData["role"], "Map should contain role")
+	assert.Equal(t, "admin@example.com", mergedData["email"], "Map should contain email")
+}
+
+func TestJWTWare_TemplateUser_WithUserProvider_NonMapOutput_UsesLocals(t *testing.T) {
+	// Create mock claims for successful validation
+	claims := NewMockAuthClaims("user-456", "user-456", "member")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	// UserProvider that returns a struct (not a map, should use Locals)
+	type User struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+		Email    string `json:"email"`
+	}
+
+	userProvider := func(claims jwtware.AuthClaims) (any, error) {
+		return User{
+			ID:       claims.UserID(),
+			Username: "member_user",
+			Role:     claims.Role(),
+			Email:    "member@example.com",
+		}, nil
+	}
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		UserProvider:   userProvider,
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token-67890"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token-67890")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	// This should use Locals (not LocalsMerge) since output is not a map
+	var storedUser User
+	ctx.On("Locals", "current_user", mock.AnythingOfType("jwtware_test.User")).Run(func(args mock.Arguments) {
+		storedUser = args.Get(1).(User)
+	}).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that Locals was called with struct data (not LocalsMerge)
+	ctx.AssertCalled(t, "Locals", "current_user", mock.AnythingOfType("jwtware_test.User"))
+	ctx.AssertNotCalled(t, "LocalsMerge", mock.Anything, mock.Anything)
+	assert.Equal(t, "user-456", storedUser.ID, "User struct should contain correct ID")
+	assert.Equal(t, "member_user", storedUser.Username, "User struct should contain correct username")
+	assert.Equal(t, "member", storedUser.Role, "User struct should contain correct role")
+	assert.Equal(t, "member@example.com", storedUser.Email, "User struct should contain correct email")
+}
+
+func TestJWTWare_TemplateUser_DefaultKey_IsCurrentUser(t *testing.T) {
+	// Create mock claims for successful validation
+	claims := NewMockAuthClaims("user-999", "user-999", "guest")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		// No TemplateUserKey specified, should default to "current_user"
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	middleware := jwtware.New(cfg)
+
+	// Create mock context
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	// Should use default "current_user" key with claims directly (no UserProvider)
+	var storedClaims jwtware.AuthClaims
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Run(func(args mock.Arguments) {
+		storedClaims = args.Get(1).(jwtware.AuthClaims)
+	}).Return(nil)
+
+	err := middleware(ctx)
+
+	assert.NoError(t, err, "Middleware should succeed with valid token")
+	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
+
+	// Verify that template user was stored under "current_user" key
+	ctx.AssertCalled(t, "Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims"))
+	assert.NotNil(t, storedClaims, "Claims should be stored as template user")
+	assert.Equal(t, "user-999", storedClaims.Subject(), "Template user should have correct subject")
+	assert.Equal(t, "guest", storedClaims.Role(), "Template user should have correct role")
 }
