@@ -124,6 +124,31 @@ func (m *MockAuthenticator) IdentityFromSession(ctx context.Context, session aut
 	return args.Get(0).(auth.Identity), args.Error(1)
 }
 
+func (m *MockAuthenticator) TokenService() auth.TokenService {
+	args := m.Called()
+	return args.Get(0).(auth.TokenService)
+}
+
+// ////////////////////////////////////////////////////////////////////
+// MockTokenService implements auth.TokenService
+// ////////////////////////////////////////////////////////////////////
+type MockTokenService struct {
+	mock.Mock
+}
+
+func (m *MockTokenService) Generate(identity auth.Identity, resourceRoles map[string]string) (string, error) {
+	args := m.Called(identity, resourceRoles)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockTokenService) Validate(tokenString string) (auth.AuthClaims, error) {
+	args := m.Called(tokenString)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(auth.AuthClaims), args.Error(1)
+}
+
 // ////////////////////////////////////////////////////////////////////
 // MockLoginPayload implements auth.LoginPayload
 // ////////////////////////////////////////////////////////////////////

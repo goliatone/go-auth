@@ -615,8 +615,8 @@ func TestTemplateHelpersWithRouter(t *testing.T) {
 		{
 			name: "should extract user with default key",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("current_user", user)
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["current_user"] = user
 				return ctx
 			},
 			userKey:  "",
@@ -625,8 +625,8 @@ func TestTemplateHelpersWithRouter(t *testing.T) {
 		{
 			name: "should extract user with custom key",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("template_user", user)
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["template_user"] = user
 				return ctx
 			},
 			userKey:  "template_user",
@@ -635,7 +635,7 @@ func TestTemplateHelpersWithRouter(t *testing.T) {
 		{
 			name: "should return helpers without user when not in context",
 			setupCtx: func() router.Context {
-				return newMockRouterContext()
+				return router.NewMockContext()
 			},
 			userKey:  "current_user",
 			wantUser: false,
@@ -643,12 +643,12 @@ func TestTemplateHelpersWithRouter(t *testing.T) {
 		{
 			name: "should work with AuthClaims as user",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
+				ctx := router.NewMockContext()
 				claims := &JWTClaims{
 					UID:      "user123",
 					UserRole: "admin",
 				}
-				ctx.Locals("current_user", claims)
+				ctx.LocalsMock["current_user"] = claims
 				return ctx
 			},
 			userKey:  "",
@@ -702,8 +702,8 @@ func TestGetTemplateUser(t *testing.T) {
 		{
 			name: "should return user with default key",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("current_user", user)
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["current_user"] = user
 				return ctx
 			},
 			userKey:  "",
@@ -713,8 +713,8 @@ func TestGetTemplateUser(t *testing.T) {
 		{
 			name: "should return user with custom key",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("my_user", user)
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["my_user"] = user
 				return ctx
 			},
 			userKey:  "my_user",
@@ -724,7 +724,7 @@ func TestGetTemplateUser(t *testing.T) {
 		{
 			name: "should return false when user not found",
 			setupCtx: func() router.Context {
-				return newMockRouterContext()
+				return router.NewMockContext()
 			},
 			userKey:  "current_user",
 			wantUser: nil,
@@ -733,8 +733,8 @@ func TestGetTemplateUser(t *testing.T) {
 		{
 			name: "should return false when user is nil",
 			setupCtx: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("current_user", nil)
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["current_user"] = nil
 				return ctx
 			},
 			userKey:  "",
@@ -767,8 +767,8 @@ func TestTemplateIntegrationWorkflow(t *testing.T) {
 	}
 
 	// Create mock context as middleware would
-	ctx := newMockRouterContext()
-	ctx.Locals("current_user", user)
+	ctx := router.NewMockContext()
+	ctx.LocalsMock["current_user"] = user
 
 	// Extract user using helper function
 	templateUser, ok := GetTemplateUser(ctx, "current_user")

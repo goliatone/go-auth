@@ -16,6 +16,13 @@ type TokenServiceAdapter struct {
 	tokenService TokenService
 }
 
+// NewTokenServiceAdapter creates a new TokenServiceAdapter
+func NewTokenServiceAdapter(tokenService TokenService) *TokenServiceAdapter {
+	return &TokenServiceAdapter{
+		tokenService: tokenService,
+	}
+}
+
 // Validate implements the jwtware.TokenValidator interface
 func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims, error) {
 	return tsa.tokenService.Validate(tokenString)

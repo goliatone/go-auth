@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"mime/multipart"
 	"testing"
 	"time"
 
@@ -247,14 +246,14 @@ func TestGetRouterClaims(t *testing.T) {
 		{
 			name: "should return claims when present with default key",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("user", &JWTClaims{
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["user"] = &JWTClaims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						Subject: "user123",
 					},
 					UID:      "user123",
 					UserRole: "admin",
-				})
+				}
 				return ctx
 			},
 			key:    "", // Use default key
@@ -263,14 +262,14 @@ func TestGetRouterClaims(t *testing.T) {
 		{
 			name: "should return claims when present with custom key",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("custom-claims", &JWTClaims{
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["custom-claims"] = &JWTClaims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						Subject: "user123",
 					},
 					UID:      "user123",
 					UserRole: "admin",
-				})
+				}
 				return ctx
 			},
 			key:    "custom-claims",
@@ -279,7 +278,7 @@ func TestGetRouterClaims(t *testing.T) {
 		{
 			name: "should return false when key not present",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
+				ctx := router.NewMockContext()
 				return ctx
 			},
 			key:    "user",
@@ -288,8 +287,8 @@ func TestGetRouterClaims(t *testing.T) {
 		{
 			name: "should return false when value is wrong type",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("user", "not-a-claims-object")
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["user"] = "not-a-claims-object"
 				return ctx
 			},
 			key:    "user",
@@ -326,14 +325,14 @@ func TestCanFromRouter(t *testing.T) {
 		{
 			name: "should return true when admin can read",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("user", &JWTClaims{
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["user"] = &JWTClaims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						Subject: "user123",
 					},
 					UID:      "user123",
 					UserRole: "admin",
-				})
+				}
 				return ctx
 			},
 			resource:   "project-123",
@@ -343,14 +342,14 @@ func TestCanFromRouter(t *testing.T) {
 		{
 			name: "should return false when guest cannot create",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
-				ctx.Locals("user", &JWTClaims{
+				ctx := router.NewMockContext()
+				ctx.LocalsMock["user"] = &JWTClaims{
 					RegisteredClaims: jwt.RegisteredClaims{
 						Subject: "user123",
 					},
 					UID:      "user123",
 					UserRole: "guest",
-				})
+				}
 				return ctx
 			},
 			resource:   "project-123",
@@ -360,7 +359,7 @@ func TestCanFromRouter(t *testing.T) {
 		{
 			name: "should return false when no claims in context",
 			setupFn: func() router.Context {
-				ctx := newMockRouterContext()
+				ctx := router.NewMockContext()
 				return ctx
 			},
 			resource:   "project-123",
@@ -407,123 +406,6 @@ func TestWithClaimsContext(t *testing.T) {
 	assert.False(t, retrievedClaims.CanDelete("project-2")) // member cannot delete
 }
 
-// mockRouterContext is a complete test implementation of router.Context
-type mockRouterContext struct {
-	locals map[string]any
-	store  map[string]any
-}
-
-func newMockRouterContext() *mockRouterContext {
-	return &mockRouterContext{
-		locals: make(map[string]any),
-		store:  make(map[string]any),
-	}
-}
-
-// RequestContext interface methods
-func (m *mockRouterContext) Method() string { return "GET" }
-func (m *mockRouterContext) Path() string   { return "/" }
-func (m *mockRouterContext) Param(name string, defaultValue ...string) string {
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-	return ""
-}
-func (m *mockRouterContext) ParamsInt(key string, defaultValue int) int { return defaultValue }
-func (m *mockRouterContext) Query(name string, defaultValue ...string) string {
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-	return ""
-}
-func (m *mockRouterContext) QueryInt(name string, defaultValue int) int { return defaultValue }
-func (m *mockRouterContext) Queries() map[string]string                 { return nil }
-func (m *mockRouterContext) Body() []byte                               { return nil }
-func (m *mockRouterContext) Locals(key any, value ...any) any {
-	if len(value) > 0 {
-		keyStr := key.(string)
-		m.locals[keyStr] = value[0]
-		return value[0]
-	}
-	keyStr := key.(string)
-	return m.locals[keyStr]
-}
-func (m *mockRouterContext) Render(name string, bind any, layouts ...string) error { return nil }
-func (m *mockRouterContext) Cookie(cookie *router.Cookie)                          {}
-func (m *mockRouterContext) Cookies(key string, defaultValue ...string) string {
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-	return ""
-}
-func (m *mockRouterContext) CookieParser(out any) error                    { return nil }
-func (m *mockRouterContext) Redirect(location string, status ...int) error { return nil }
-func (m *mockRouterContext) RedirectToRoute(routeName string, params router.ViewContext, status ...int) error {
-	return nil
-}
-func (m *mockRouterContext) RedirectBack(fallback string, status ...int) error { return nil }
-func (m *mockRouterContext) Header(key string) string                          { return "" }
-func (m *mockRouterContext) Referer() string                                   { return "" }
-func (m *mockRouterContext) OriginalURL() string                               { return "/" }
-func (m *mockRouterContext) FormFile(key string) (*multipart.FileHeader, error) {
-	return nil, nil
-}
-func (m *mockRouterContext) FormValue(key string, defaultValue ...string) string {
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-	return ""
-}
-
-// ResponseWriter interface methods
-func (m *mockRouterContext) Status(code int) router.Context             { return m }
-func (m *mockRouterContext) Send(body []byte) error                     { return nil }
-func (m *mockRouterContext) SendString(body string) error               { return nil }
-func (m *mockRouterContext) SendStatus(code int) error                  { return nil }
-func (m *mockRouterContext) JSON(code int, v any) error                 { return nil }
-func (m *mockRouterContext) NoContent(code int) error                   { return nil }
-func (m *mockRouterContext) SetHeader(key, value string) router.Context { return m }
-
-// ContextStore interface methods
-func (m *mockRouterContext) Set(key string, value any) {
-	m.store[key] = value
-}
-func (m *mockRouterContext) Get(key string, def any) any {
-	if val, exists := m.store[key]; exists {
-		return val
-	}
-	return def
-}
-func (m *mockRouterContext) GetString(key string, def string) string {
-	if val, exists := m.store[key]; exists {
-		if str, ok := val.(string); ok {
-			return str
-		}
-	}
-	return def
-}
-func (m *mockRouterContext) GetInt(key string, def int) int {
-	if val, exists := m.store[key]; exists {
-		if i, ok := val.(int); ok {
-			return i
-		}
-	}
-	return def
-}
-func (m *mockRouterContext) GetBool(key string, def bool) bool {
-	if val, exists := m.store[key]; exists {
-		if b, ok := val.(bool); ok {
-			return b
-		}
-	}
-	return def
-}
-
-// Main Context interface methods
-func (m *mockRouterContext) Bind(v any) error               { return nil }
-func (m *mockRouterContext) Context() context.Context       { return context.Background() }
-func (m *mockRouterContext) SetContext(ctx context.Context) {}
-func (m *mockRouterContext) Next() error                    { return nil }
 
 //--------------------------------------------------------------------------------------
 // Integration Tests for GetClaims and Can Functions

@@ -153,7 +153,7 @@ func CreateTemplateAwareJWTMiddleware(app *App, cfg auth.Config) router.Middlewa
 			ContextKey:  cfg.GetContextKey(),
 			TokenLookup: cfg.GetTokenLookup(),
 			// Add TokenValidator - use the authenticator's token service if available
-			TokenValidator: &TokenServiceAdapter{app.auth},
+			TokenValidator: auth.NewTokenServiceAdapter(app.auth.TokenService()),
 			// Template integration - automatic current_user injection
 			TemplateUserKey: auth.TemplateUserKey,
 			UserProvider: func(claims jwtware.AuthClaims) (any, error) {

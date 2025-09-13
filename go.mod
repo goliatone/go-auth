@@ -11,7 +11,7 @@ require (
 	github.com/goliatone/go-errors v0.9.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.5.2
-	github.com/goliatone/go-router v0.6.0
+	github.com/goliatone/go-router v0.11.2
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
@@ -28,9 +28,11 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/ettle/strcase v0.2.0 // indirect
+	github.com/fasthttp/websocket v1.5.8 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/gertd/go-pluralize v0.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/gofiber/contrib/websocket v1.3.4 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/goliatone/go-composite-fs v0.0.1 // indirect
@@ -50,6 +52,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 // indirect
 	github.com/showa-93/go-mask v0.6.2 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect

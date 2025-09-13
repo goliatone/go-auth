@@ -20,6 +20,8 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/ettle/strcase v0.2.0 h1:fGNiVF21fHXpX1niBgk0aROov1LagYsOwV/xqKDKR/Q=
 github.com/ettle/strcase v0.2.0/go.mod h1:DajmHElDSaX76ITe3/VHVyMin4LWSJN5Z909Wp+ED1A=
+github.com/fasthttp/websocket v1.5.8 h1:k5DpirKkftIF/w1R8ZzjSgARJrs54Je9YJK37DL/Ah8=
+github.com/fasthttp/websocket v1.5.8/go.mod h1:d08g8WaT6nnyvg9uMm8K9zMYyDjfKyj3170AtPRuVU0=
 github.com/flosch/pongo2/v6 v6.0.0 h1:lsGru8IAzHgIAw6H2m4PCyleO58I40ow6apih0WprMU=
 github.com/flosch/pongo2/v6 v6.0.0/go.mod h1:CuDpFm47R0uGGE7z13/tTlt1Y6zdxvr2RLT5LJhsHEU=
 github.com/gertd/go-pluralize v0.2.1 h1:M3uASbVjMnTsPb0PNqg+E/24Vwigyo/tvyMTtAlLgiA=
@@ -28,6 +30,8 @@ github.com/go-ozzo/ozzo-validation/v4 v4.3.0 h1:byhDUpfEwjsVQb1vBunvIjh2BHQ9ead5
 github.com/go-ozzo/ozzo-validation/v4 v4.3.0/go.mod h1:2NKgrcHl3z6cJs+3Oo940FPRiTzuqKbvfrL2RxCj6Ew=
 github.com/gobwas/glob v0.2.3 h1:A4xDbljILXROh+kObIiy5kIaPYD8e96x1tgBhUI5J+Y=
 github.com/gobwas/glob v0.2.3/go.mod h1:d3Ez4x06l9bZtSvzIay5+Yzi0fmZzPgnTbPcKjJAkT8=
+github.com/gofiber/contrib/websocket v1.3.4 h1:tWeBdbJ8q0WFQXariLN4dBIbGH9KBU75s0s7YXplOSg=
+github.com/gofiber/contrib/websocket v1.3.4/go.mod h1:kTFBPC6YENCnKfKx0BoOFjgXxdz7E85/STdkmZPEmPs=
 github.com/gofiber/fiber/v2 v2.52.6 h1:Rfp+ILPiYSvvVuIPvxrBns+HJp8qGLDnLJawAu27XVI=
 github.com/gofiber/fiber/v2 v2.52.6/go.mod h1:YEcBbO/FB+5M1IZNBP9FO3J9281zgPAreiI1oqg8nDw=
 github.com/gofiber/template v1.8.3 h1:hzHdvMwMo/T2kouz2pPCA0zGiLCeMnoGsQZBTSYgZxc=
@@ -48,8 +52,8 @@ github.com/goliatone/go-print v0.4.1 h1:rRcmZOWd27gq25Ays0nRu09tAH6wgTdfshE4rPpN
 github.com/goliatone/go-print v0.4.1/go.mod h1:hx13/Im2TeOYwwBwj/ImfjneDQ0MyN0ybfrgHripAus=
 github.com/goliatone/go-repository-bun v0.5.2 h1:XZ5oevR9UIGy7gBI/9l3S7JB6BmLA+NduhZWg9oa85w=
 github.com/goliatone/go-repository-bun v0.5.2/go.mod h1:ZG2ZKOpbHhgi81rUtVgdtNCCApu49ihPhHpce4qjaOI=
-github.com/goliatone/go-router v0.6.0 h1:+YNcczkTQ9Zs0qZyYNAg8/G+Fb1yi5/Bm1n7kuD13lw=
-github.com/goliatone/go-router v0.6.0/go.mod h1:1CE170cGlC8UnIzsuxXw4pa7NZcIA6STuP3clIpiOiQ=
+github.com/goliatone/go-router v0.11.2 h1:ISRIe9S9Lp+wnIwFJM8nkHYbi7Gp0ZeCTQvMHEt/Dy4=
+github.com/goliatone/go-router v0.11.2/go.mod h1:Bgl3LturmoBNSGoxEVGYfF6MzeazYyw+5dkRKEObYxs=
 github.com/goliatone/hashid v0.1.1 h1:VfZZf7s0uM+JZ3ZBkqaEM1mL/CJfiTmFOzZ1QuXY3EM=
 github.com/goliatone/hashid v0.1.1/go.mod h1:K9jzegsVvT8S+Nn5wL1AuGVKcz2jcwYMxwe4g1UGz4E=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=
@@ -95,6 +99,8 @@ github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
+github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511 h1:KanIMPX0QdEdB4R3CiimCAbxFrhB3j7h0/OvpYGVQa8=
+github.com/savsgio/gotils v0.0.0-20240303185622-093b76447511/go.mod h1:sM7Mt7uEoCeFSCBM+qBrqvEo+/9vdmj19wzp3yzUhmg=
 github.com/showa-93/go-mask v0.6.2 h1:sJEUQRpbxUoMTfBKey5K9hCg+eSx5KIAZFT7pa1LXbM=
 github.com/showa-93/go-mask v0.6.2/go.mod h1:aswIj007gm0EPAzOGES9ACy1jDm3QT08/LPSClMp410=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
