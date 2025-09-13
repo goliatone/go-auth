@@ -448,6 +448,34 @@ func (m *mockRouterContext) Locals(key any, value ...any) any {
 	keyStr := key.(string)
 	return m.locals[keyStr]
 }
+func (m *mockRouterContext) LocalsMerge(key any, value map[string]any) map[string]any {
+	keyStr := key.(string)
+	existing, exists := m.locals[keyStr]
+
+	if !exists || existing == nil {
+		m.locals[keyStr] = value
+		return value
+	}
+
+	// Try to merge with existing map
+	if existingMap, ok := existing.(map[string]any); ok {
+		merged := make(map[string]any)
+		// Copy existing values
+		for k, v := range existingMap {
+			merged[k] = v
+		}
+		// Merge new values (overwrites existing keys)
+		for k, v := range value {
+			merged[k] = v
+		}
+		m.locals[keyStr] = merged
+		return merged
+	}
+
+	// If existing value is not a map, replace it
+	m.locals[keyStr] = value
+	return value
+}
 func (m *mockRouterContext) Render(name string, bind any, layouts ...string) error { return nil }
 func (m *mockRouterContext) Cookie(cookie *router.Cookie)                          {}
 func (m *mockRouterContext) Cookies(key string, defaultValue ...string) string {
@@ -517,6 +545,14 @@ func (m *mockRouterContext) GetBool(key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+// Route Context interface methods
+func (m *mockRouterContext) RouteName() string {
+	return ""
+}
+func (m *mockRouterContext) RouteParams() map[string]string {
+	return nil
 }
 
 // Main Context interface methods
