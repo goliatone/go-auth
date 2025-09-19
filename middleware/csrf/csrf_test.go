@@ -100,3 +100,9 @@ func TestStatelessTokenExpiration(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrTokenExpired)
 }
+
+func TestShortSecureKeyPanics(t *testing.T) {
+	require.Panics(t, func() {
+		_ = New(Config{SecureKey: []byte("short")})
+	})
+}
