@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"maps"
+
 	"github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-router"
 )
@@ -45,10 +47,8 @@ func TemplateHelpers() map[string]any {
 		},
 	}
 
-	// Merge CSRF template helpers
-	for key, value := range csrf.CSRFTemplateHelpers() {
-		helpers[key] = value
-	}
+	// add CSRF template helpers
+	maps.Copy(helpers, csrf.CSRFTemplateHelpers())
 
 	return helpers
 }
