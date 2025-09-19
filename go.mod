@@ -11,7 +11,7 @@ require (
 	github.com/goliatone/go-errors v0.9.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.5.2
-	github.com/goliatone/go-router v0.13.0
+	github.com/goliatone/go-router v0.14.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/nyaruka/phonenumbers v1.5.0
