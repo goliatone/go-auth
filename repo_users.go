@@ -104,9 +104,11 @@ func (a *users) Get(ctx context.Context, criteria ...repository.SelectCriteria) 
 	}
 
 	if err := q.Limit(1).Scan(ctx); err != nil {
+		// TODO: Propagate error so we can see the original error
 		return nil, repository.NewRecordNotFound().
 			WithMetadata(map[string]any{
 				"criteria": criteria,
+				"error":    err.Error(),
 			})
 	}
 
@@ -237,7 +239,7 @@ func (a *users) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *Use
 	now := time.Now()
 	record.LoginAttemptAt = &now
 
-	_, err := a.UpdateTx(ctx, a.db, record, criteria...)
+	_, err := a.UpdateTx(ctx, tx, record, criteria...)
 
 	return err
 }
