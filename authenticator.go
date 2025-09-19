@@ -39,7 +39,7 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 	}
 }
 
-func (s Auther) WithLogger(logger Logger) Auther {
+func (s *Auther) WithLogger(logger Logger) *Auther {
 	s.logger = logger
 	// Update the TokenService logger as well
 	s.tokenService = NewTokenService(
@@ -54,7 +54,7 @@ func (s Auther) WithLogger(logger Logger) Auther {
 
 // WithResourceRoleProvider sets a custom ResourceRoleProvider for the Auther.
 // This enables resource-level permissions in JWT tokens.
-func (s Auther) WithResourceRoleProvider(provider ResourceRoleProvider) Auther {
+func (s *Auther) WithResourceRoleProvider(provider ResourceRoleProvider) *Auther {
 	s.roleProvider = provider
 	return s
 }
