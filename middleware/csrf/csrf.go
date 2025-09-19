@@ -413,6 +413,9 @@ func initializeSecureKey(current []byte, storage Storage) []byte {
 		return current
 	}
 	if len(current) > 0 {
+		if len(current) < 32 {
+			panic(fmt.Errorf("csrf: secure key must be at least 32 bytes, got %d", len(current)))
+		}
 		return current
 	}
 	key := make([]byte, 32)
