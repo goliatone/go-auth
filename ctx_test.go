@@ -406,7 +406,6 @@ func TestWithClaimsContext(t *testing.T) {
 	assert.False(t, retrievedClaims.CanDelete("project-2")) // member cannot delete
 }
 
-
 //--------------------------------------------------------------------------------------
 // Integration Tests for GetClaims and Can Functions
 //--------------------------------------------------------------------------------------
