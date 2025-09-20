@@ -65,7 +65,7 @@
     </div>
 
     <form action="/me" method="post">
-      {{ csrf_field }}
+      {{ csrf_field|safe }}
       <input type="hidden" name="id" id="id" value="{{record.id}}">
 
         <div class="space-y-12">
