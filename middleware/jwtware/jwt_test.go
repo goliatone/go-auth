@@ -107,7 +107,9 @@ func TestJWTWare_ValidToken(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Test with valid token
 	ctx := router.NewMockContext()
@@ -122,7 +124,7 @@ func TestJWTWare_ValidToken(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err)
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -145,13 +147,15 @@ func TestJWTWare_MissingToken(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Test with missing token
 	ctx := router.NewMockContext()
 	ctx.On("GetString", "Authorization", "").Return("")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "missing or malformed JWT")
@@ -174,14 +178,16 @@ func TestJWTWare_MalformedToken(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Test with malformed token
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer malformed.token.structure"
 	ctx.On("GetString", "Authorization", "").Return("Bearer malformed.token.structure")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "token is malformed")
@@ -204,14 +210,15 @@ func TestJWTWare_ExpiredToken(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
-	// Test with expired token
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer expired-token-12345"
 	ctx.On("GetString", "Authorization", "").Return("Bearer expired-token-12345")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "token is expired")
@@ -236,7 +243,9 @@ func TestJWTWare_TokenLookupVariations(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Test with Authorization header token
 	ctx := router.NewMockContext()
@@ -246,7 +255,7 @@ func TestJWTWare_TokenLookupVariations(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err)
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -270,13 +279,15 @@ func TestJWTWare_FilterFunction(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Test filtered path (should skip auth)
 	ctx := router.NewMockContext()
 	ctx.On("Path").Return("/public/resource")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err)
 	assert.True(t, ctx.NextCalled, "Next() should be called for filtered path")
@@ -301,7 +312,9 @@ func TestJWTWare_CustomContextKey(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
@@ -310,7 +323,7 @@ func TestJWTWare_CustomContextKey(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err)
 	assert.True(t, ctx.NextCalled, "Next() should be called")
@@ -356,7 +369,9 @@ func TestJWTWare_RequiredRole_Success(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -365,7 +380,7 @@ func TestJWTWare_RequiredRole_Success(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access for user with required admin role")
 	assert.True(t, ctx.NextCalled, "Next() should be called when role requirement is satisfied")
@@ -390,13 +405,15 @@ func TestJWTWare_RequiredRole_AccessDenied(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-member-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-member-token")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err, "Should deny access when user doesn't have required role")
 	assert.Contains(t, err.Error(), "access denied: required role 'admin' not found")
@@ -425,7 +442,9 @@ func TestJWTWare_MinimumRole_Success(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -434,7 +453,7 @@ func TestJWTWare_MinimumRole_Success(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access for user exceeding minimum role")
 	assert.True(t, ctx.NextCalled, "Next() should be called when minimum role requirement is satisfied")
@@ -459,13 +478,15 @@ func TestJWTWare_MinimumRole_AccessDenied(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err, "Should deny access when user is below minimum role")
 	assert.Contains(t, err.Error(), "access denied: minimum role 'member' required")
@@ -500,7 +521,9 @@ func TestJWTWare_CustomRoleChecker_Success(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-manager-token"
@@ -509,7 +532,7 @@ func TestJWTWare_CustomRoleChecker_Success(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access when custom role checker returns true")
 	assert.True(t, ctx.NextCalled, "Next() should be called when custom role checker succeeds")
@@ -537,13 +560,15 @@ func TestJWTWare_CustomRoleChecker_AccessDenied(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err, "Should deny access when required role is not met")
 	// Note: RequiredRole check happens before RoleChecker, so we get the "required role not found" error
@@ -576,7 +601,9 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_AccessDenied(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -585,7 +612,7 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_AccessDenied(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	// Since no RequiredRole or MinimumRole is set, and RoleChecker gets empty string,
 	// the custom role check should not be invoked per the implementation logic
@@ -615,13 +642,15 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_WithMinimumRole_AccessDenied(t *tes
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
 	ctx.On("GetString", "Authorization", "").Return("Bearer valid-guest-token")
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.Error(t, err, "Should deny access when minimum role check fails")
 	// MinimumRole check happens before RoleChecker, so we get the minimum role error
@@ -654,7 +683,9 @@ func TestJWTWare_CustomRoleChecker_WithMinimumRole(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -663,7 +694,7 @@ func TestJWTWare_CustomRoleChecker_WithMinimumRole(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access when custom role checker validates minimum role")
 	assert.True(t, ctx.NextCalled, "Next() should be called when custom role checker succeeds for minimum role")
@@ -690,7 +721,9 @@ func TestJWTWare_NoRBACConfiguration_AllowsAccess(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -699,7 +732,7 @@ func TestJWTWare_NoRBACConfiguration_AllowsAccess(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access when no RBAC configuration is provided")
 	assert.True(t, ctx.NextCalled, "Next() should be called when RBAC checks are skipped")
@@ -731,7 +764,9 @@ func TestJWTWare_MultipleRoleRequirements(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -740,7 +775,7 @@ func TestJWTWare_MultipleRoleRequirements(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Should allow access when all role requirements are satisfied")
 	assert.True(t, ctx.NextCalled, "Next() should be called when all role checks pass")
@@ -780,7 +815,9 @@ func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context with initial standard context
 	ctx := router.NewMockContext()
@@ -800,7 +837,7 @@ func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
 		enrichedCtx = args.Get(0).(context.Context)
 	}).Return()
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -836,7 +873,9 @@ func TestJWTWare_ContextEnricher_NotCalled_When_Nil(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -846,7 +885,7 @@ func TestJWTWare_ContextEnricher_NotCalled_When_Nil(t *testing.T) {
 	// The middleware also stores user for templates with default key "current_user"
 	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -887,7 +926,9 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -899,7 +940,7 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 	ctx.On("Context").Return(context.Background())
 	ctx.On("SetContext", mock.AnythingOfType("*context.valueCtx")).Return()
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -946,7 +987,9 @@ func TestJWTWare_TemplateUser_WithUserProvider_MapOutput_UsesLocalsMerge(t *test
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -960,7 +1003,7 @@ func TestJWTWare_TemplateUser_WithUserProvider_MapOutput_UsesLocalsMerge(t *test
 		mergedData = args.Get(1).(map[string]any)
 	}).Return(map[string]any{})
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -1013,7 +1056,9 @@ func TestJWTWare_TemplateUser_WithUserProvider_NonMapOutput_UsesLocals(t *testin
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1027,7 +1072,7 @@ func TestJWTWare_TemplateUser_WithUserProvider_NonMapOutput_UsesLocals(t *testin
 		storedUser = args.Get(1).(User)
 	}).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
@@ -1063,7 +1108,9 @@ func TestJWTWare_TemplateUser_DefaultKey_IsCurrentUser(t *testing.T) {
 		},
 	}
 
-	middleware := jwtware.New(cfg)
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1077,7 +1124,7 @@ func TestJWTWare_TemplateUser_DefaultKey_IsCurrentUser(t *testing.T) {
 		storedClaims = args.Get(1).(jwtware.AuthClaims)
 	}).Return(nil)
 
-	err := middleware(ctx)
+	err := handler(ctx)
 
 	assert.NoError(t, err, "Middleware should succeed with valid token")
 	assert.True(t, ctx.NextCalled, "Next() should be called for valid token")
