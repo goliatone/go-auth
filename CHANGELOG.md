@@ -1,5 +1,50 @@
 # Changelog
 
+# [0.12.0](https://github.com/goliatone/go-auth/compare/v0.11.1...v0.12.0) - (2025-09-20)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Refactor token service ([f02c58f](https://github.com/goliatone/go-auth/commit/f02c58f8a6c6dd2824d46f6588aece374b25fc90))  - (goliatone)
+- Check for min length in key ([8fd1d56](https://github.com/goliatone/go-auth/commit/8fd1d561c31f5e4858b4a62b20e39546cc94a2c6))  - (goliatone)
+- Use modern maps copy ([9eb83ec](https://github.com/goliatone/go-auth/commit/9eb83eca6fb4e6c24353bba83c4c23c0a75796d9))  - (goliatone)
+- Use tx in update tx ([188fc6d](https://github.com/goliatone/go-auth/commit/188fc6dae2c771d9e8a31d8487b2cdd34c578109))  - (goliatone)
+- Ensure we use sessionID and email from session ([54d1e68](https://github.com/goliatone/go-auth/commit/54d1e688d0dd7823a09731725463ff67fcca1892))  - (goliatone)
+- Auther should chain with pointer ([710e355](https://github.com/goliatone/go-auth/commit/710e3558f1ffe0a1a7d5d985341bb09b0a14acd1))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.12.0 ([4aeef88](https://github.com/goliatone/go-auth/commit/4aeef88ebe7395161e08fca8a17f827e272ef0e0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Update example to use CSRF tokens ([882cc47](https://github.com/goliatone/go-auth/commit/882cc47c264a48685d2e03eeb4559dfb548f0b79))  - (goliatone)
+- Updated example with new features ([bfbd90d](https://github.com/goliatone/go-auth/commit/bfbd90d59aafc212e74f7d6548d544bc35500d16))  - (goliatone)
+- Auto merge csrf template helpers per route ([b8a028a](https://github.com/goliatone/go-auth/commit/b8a028a99a72b5794465eec1da380a27e83078a3))  - (goliatone)
+- Csrf route to expose token for SPA service ([645a954](https://github.com/goliatone/go-auth/commit/645a9547d5ea26c624a16b71d9df721702dff1e5))  - (goliatone)
+- CSRF middleware ([4bb9e7b](https://github.com/goliatone/go-auth/commit/4bb9e7bcea72f6a081000d58724b17c45ed6077b))  - (goliatone)
+- Template helpers for CSRF ([58c403c](https://github.com/goliatone/go-auth/commit/58c403cbb4407a93c493113becc05e3d890b977c))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Middleware should return MiddlewareFunc ([b816953](https://github.com/goliatone/go-auth/commit/b8169532cdc34ac32ce36952c3c084c6b634b35f))  - (goliatone)
+
+## <!-- 22 -->🚧 WIP
+
+- Update CSRF ([ae7ea8f](https://github.com/goliatone/go-auth/commit/ae7ea8fffe2e65d0eaae55b45f1e98d7bda66e3c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.11.1 ([8e8f523](https://github.com/goliatone/go-auth/commit/8e8f523bdb8187056f2f59a54a99bca36d348db7))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#7](https://github.com/goliatone/go-auth/pull/7): CSRF token support ([19a91b0](https://github.com/goliatone/go-auth/commit/19a91b0ef504567c828e2bcb4e215de46ba597a3))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([a08fb6e](https://github.com/goliatone/go-auth/commit/a08fb6e0b860e046c0abc53a20ae69bf604ad6e1))  - (goliatone)
+- Update deps ([fa0c5c3](https://github.com/goliatone/go-auth/commit/fa0c5c3018e50f03191d82f74764b05795bf0072))  - (goliatone)
+
 # [0.11.1](https://github.com/goliatone/go-auth/compare/v0.11.0...v0.11.1) - (2025-09-17)
 
 ## <!-- 13 -->📦 Bumps
