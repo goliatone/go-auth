@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"slices"
 	"strconv"
@@ -447,10 +446,10 @@ func initializeSecureKey(current []byte, storage Storage) []byte {
 // CSRFTemplateHelpers returns template helper functions for CSRF protection
 func CSRFTemplateHelpers() map[string]any {
 	return map[string]any{
-		"csrf_token":       csrfToken,
-		"csrf_field":       csrfField,
-		"csrf_meta":        csrfMeta,
-		"csrf_header_name": csrfHeaderName,
+		"csrf_token":       "",
+		"csrf_field":       `<input type="hidden" name="` + DefaultFormFieldName + `" value="">`,
+		"csrf_meta":        `<meta name="csrf-token" content="">`,
+		"csrf_header_name": DefaultHeaderName,
 	}
 }
 
@@ -460,7 +459,12 @@ func CSRFTemplateHelpersWithRouter(ctx router.Context, tokenKey string) map[stri
 		tokenKey = DefaultContextKey
 	}
 
-	helpers := CSRFTemplateHelpers()
+	token := ""
+	if value := ctx.Locals(tokenKey); value != nil {
+		if str, ok := value.(string); ok {
+			token = str
+		}
+	}
 
 	fieldName := DefaultFormFieldName
 	if raw := ctx.Locals(tokenKey + "_field"); raw != nil {
@@ -476,42 +480,10 @@ func CSRFTemplateHelpersWithRouter(ctx router.Context, tokenKey string) map[stri
 		}
 	}
 
-	// Override functions to use the actual token from context
-	if token := ctx.Locals(tokenKey); token != nil {
-		if tokenStr, ok := token.(string); ok {
-			helpers["csrf_token"] = func() string { return tokenStr }
-			helpers["csrf_field"] = func() template.HTML {
-				return template.HTML(`<input type="hidden" name="` + fieldName + `" value="` + tokenStr + `">`)
-			}
-			helpers["csrf_meta"] = func() template.HTML {
-				return template.HTML(`<meta name="csrf-token" content="` + tokenStr + `">`)
-			}
-		}
+	return map[string]any{
+		"csrf_token":       token,
+		"csrf_field":       `<input type="hidden" name="` + fieldName + `" value="` + token + `">`,
+		"csrf_meta":        `<meta name="csrf-token" content="` + token + `">`,
+		"csrf_header_name": headerName,
 	}
-
-	helpers["csrf_header_name"] = func() string { return headerName }
-
-	return helpers
-}
-
-// Template helper functions
-
-// csrfToken returns the CSRF token (placeholder - requires context integration)
-func csrfToken() string {
-	return "{{ .csrf_token }}"
-}
-
-// csrfField returns an HTML hidden input field with the CSRF token
-func csrfField() template.HTML {
-	return template.HTML(`<input type="hidden" name="` + DefaultFormFieldName + `" value="{{ .csrf_token }}">`)
-}
-
-// csrfMeta returns an HTML meta tag with the CSRF token
-func csrfMeta() template.HTML {
-	return template.HTML(`<meta name="csrf-token" content="{{ .csrf_token }}">`)
-}
-
-// csrfHeaderName returns the default CSRF header name
-func csrfHeaderName() string {
-	return DefaultHeaderName
 }
