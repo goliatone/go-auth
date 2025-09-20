@@ -339,7 +339,7 @@ func TestJWTWare_RequiredTokenValidator(t *testing.T) {
 			},
 			// No TokenValidator provided
 		}
-		jwtware.New(cfg)
+		_ = jwtware.New(cfg)(func(ctx router.Context) error { return nil })
 	}, "Should panic when TokenValidator is not provided")
 }
 
