@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.13.0](https://github.com/goliatone/go-auth/compare/v0.12.0...v0.13.0) - (2025-09-20)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update http controller to merge csrf token data in views ([d08b50d](https://github.com/goliatone/go-auth/commit/d08b50dd5953a9b04981d52f0792ffe710c68fc5))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.13.0 ([6b9e80b](https://github.com/goliatone/go-auth/commit/6b9e80b4cd7a06d330f2149acf3af2c8e26cad82))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Update views ([c849736](https://github.com/goliatone/go-auth/commit/c84973656bc36ab955d0e0a611428f682fb6ad87))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.12.0 ([3204d11](https://github.com/goliatone/go-auth/commit/3204d116ad8fcd981814294b61d84583c27a19b4))  - (goliatone)
+
 # [0.12.0](https://github.com/goliatone/go-auth/compare/v0.11.1...v0.12.0) - (2025-09-20)
 
 ## <!-- 1 -->🐛 Bug Fixes
