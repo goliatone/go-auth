@@ -22,7 +22,12 @@ import (
 	"github.com/uptrace/bun"
 )
 
-func setupTestController(_ *testing.T) (*auth.AuthController, *MockRepositoryManager, *MockUsers, *MockPasswordResets, *MockHTTPAuthenticator, router.Server[*fiber.App]) {
+func setupTestController(t *testing.T) (*auth.AuthController, *MockRepositoryManager, *MockUsers, *MockPasswordResets, *MockHTTPAuthenticator, router.Server[*fiber.App]) {
+	engine := django.New("./testdata/views", ".html")
+	return setupTestControllerWithViews(t, engine)
+}
+
+func setupTestControllerWithViews(_ *testing.T, views fiber.Views) (*auth.AuthController, *MockRepositoryManager, *MockUsers, *MockPasswordResets, *MockHTTPAuthenticator, router.Server[*fiber.App]) {
 	mockRepo := new(MockRepositoryManager)
 	mockUsers := new(MockUsers)
 	mockPasswordResets := new(MockPasswordResets)
@@ -31,11 +36,9 @@ func setupTestController(_ *testing.T) (*auth.AuthController, *MockRepositoryMan
 	mockRepo.On("Users").Return(mockUsers)
 	mockRepo.On("PasswordResets").Return(mockPasswordResets)
 
-	engine := django.New("./testdata/views", ".html")
-
 	adapter := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
 		return fiber.New(fiber.Config{
-			Views:             engine,
+			Views:             views,
 			PassLocalsToViews: true,
 		})
 	})
@@ -50,6 +53,31 @@ func setupTestController(_ *testing.T) (*auth.AuthController, *MockRepositoryMan
 	)
 
 	return controller, mockRepo, mockUsers, mockPasswordResets, mockHTTPAuth, adapter
+}
+
+type recordingViews struct {
+	lastView    string
+	lastContext router.ViewContext
+}
+
+func (r *recordingViews) Load() error {
+	return nil
+}
+
+func (r *recordingViews) Render(w io.Writer, name string, binding interface{}, layouts ...string) error {
+	r.lastView = name
+	switch ctx := binding.(type) {
+	case router.ViewContext:
+		r.lastContext = ctx
+	case map[string]any:
+		r.lastContext = router.ViewContext(ctx)
+	default:
+		if fiberMap, ok := binding.(fiber.Map); ok {
+			r.lastContext = router.ViewContext(fiberMap)
+		}
+	}
+	_, err := w.Write([]byte("ok"))
+	return err
 }
 
 func TestLoginShow(t *testing.T) {
@@ -286,7 +314,9 @@ func TestPasswordResetPost_Success(t *testing.T) {
 	mockRepo.On("Users").Return(mockUsers)
 	mockUsers.On("GetByIdentifier", mock.Anything, "user@example.com").Return(user, nil)
 
+	resetID := uuid.New()
 	reset := &auth.PasswordReset{
+		ID:     resetID,
 		Email:  user.Email,
 		Status: "requested",
 		UserID: &user.ID,
@@ -317,6 +347,78 @@ func TestPasswordResetPost_Success(t *testing.T) {
 
 	mockRepo.AssertExpectations(t)
 	mockUsers.AssertExpectations(t)
+}
+
+func TestPasswordResetPost_PropagatesSessionID(t *testing.T) {
+	recorder := &recordingViews{}
+	controller, mockRepo, mockUsers, mockPasswordResets, _, adapter := setupTestControllerWithViews(t, recorder)
+	r := adapter.Router()
+
+	userID := uuid.New()
+	user := &auth.User{
+		ID:    userID,
+		Email: "user@example.com",
+	}
+
+	mockRepo.On("Users").Return(mockUsers)
+	mockUsers.On("GetByIdentifier", mock.Anything, "user@example.com").Return(user, nil)
+
+	resetID := uuid.New()
+	reset := &auth.PasswordReset{
+		ID:     resetID,
+		Email:  user.Email,
+		Status: "requested",
+		UserID: &user.ID,
+	}
+
+	mockPasswordResets.On("CreateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(reset, nil).
+		Once()
+
+	mockRepo.On("RunInTx", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		fn := args.Get(2).(func(context.Context, bun.Tx) error)
+		fn(context.Background(), bun.Tx{})
+	}).Return(nil)
+
+	r.Post("/password-reset", controller.PasswordResetPost)
+
+	form := url.Values{}
+	form.Add("email", "user@example.com")
+	form.Add("stage", auth.ResetInit)
+
+	req := httptest.NewRequest("POST", "/password-reset", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := adapter.WrappedRouter().Test(req)
+
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.NotNil(t, recorder.lastContext)
+	resetValue, exists := recorder.lastContext["reset"]
+	require.True(t, exists)
+
+	var resetCtx map[string]string
+	switch v := resetValue.(type) {
+	case map[string]string:
+		resetCtx = v
+	case map[string]any:
+		resetCtx = make(map[string]string, len(v))
+		for key, value := range v {
+			if str, ok := value.(string); ok {
+				resetCtx[key] = str
+			}
+		}
+	default:
+		require.Fail(t, "unexpected reset context type", "%T", v)
+	}
+
+	assert.Equal(t, resetID.String(), resetCtx["session"])
+	assert.Equal(t, string(auth.AccountVerification), resetCtx["stage"])
+
+	mockRepo.AssertExpectations(t)
+	mockUsers.AssertExpectations(t)
+	mockPasswordResets.AssertExpectations(t)
 }
 
 func TestPasswordResetForm_Invalid(t *testing.T) {

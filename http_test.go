@@ -122,6 +122,11 @@ func TestRouteAuthenticator_ProtectedRoute(t *testing.T) {
 
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetExtendedTokenDuration").Return(48)
+	mockConfig.On("GetSigningKey").Return("secret")
+	mockConfig.On("GetSigningMethod").Return("HS256")
+	mockConfig.On("GetAuthScheme").Return("Bearer")
+	mockConfig.On("GetContextKey").Return("user")
+	mockConfig.On("GetTokenLookup").Return("header:Authorization")
 
 	httpAuth, err := auth.NewHTTPAuthenticator(mockAuth, mockConfig)
 	require.NoError(t, err)

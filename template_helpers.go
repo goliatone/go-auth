@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"maps"
+
+	"github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-router"
 )
 
@@ -21,8 +24,10 @@ var TemplateUserKey = "current_user"
 //	{% if current_user %}
 //	{% if current_user|has_role:"admin" %}
 //	{% if current_user|can_create:"posts" %}
+//	{{ csrf_field }}
+//	{{ csrf_token }}
 func TemplateHelpers() map[string]any {
-	return map[string]any{
+	helpers := map[string]any{
 		// Authentication helper functions
 		"is_authenticated": isAuthenticated,
 		"has_role":         hasRole,
@@ -41,6 +46,11 @@ func TemplateHelpers() map[string]any {
 			"owner":  string(RoleOwner),
 		},
 	}
+
+	// add CSRF template helpers
+	maps.Copy(helpers, csrf.CSRFTemplateHelpers())
+
+	return helpers
 }
 
 // TemplateHelpersWithUser returns template helpers with a specific user set as current_user.
@@ -61,6 +71,7 @@ func TemplateHelpersWithUser(user *User) map[string]any {
 
 // TemplateHelpersWithRouter returns template helpers with user data extracted from router context.
 // This is useful for automatically injecting the current user from JWT middleware context.
+// It also includes CSRF token helpers when a CSRF token is available in the context.
 //
 // Usage:
 //
@@ -85,6 +96,11 @@ func TemplateHelpersWithRouter(ctx router.Context, userKey string) map[string]an
 	// Try to get user from router context
 	if user := ctx.Locals(userKey); user != nil {
 		helpers[TemplateUserKey] = user
+	}
+
+	// Merge CSRF helpers with router context for actual token values
+	for key, value := range csrf.CSRFTemplateHelpersWithRouter(ctx, csrf.DefaultContextKey) {
+		helpers[key] = value
 	}
 
 	return helpers

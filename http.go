@@ -86,26 +86,24 @@ func (a RouteAuthenticator) GetExtendedCookieDuration() time.Duration {
 }
 
 func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
-	return func(hf router.HandlerFunc) router.HandlerFunc {
-		jwtConfig := jwtware.Config{
-			ErrorHandler: errorHandler,
-			SigningKey: jwtware.SigningKey{
-				Key:    []byte(cfg.GetSigningKey()),
-				JWTAlg: cfg.GetSigningMethod(),
-			},
-			AuthScheme:      cfg.GetAuthScheme(),
-			ContextKey:      cfg.GetContextKey(),
-			TokenLookup:     cfg.GetTokenLookup(),
-			ContextEnricher: contextEnricherAdapter,
-		}
-
-		// If the Auther has a TokenService, use it for enhanced validation
-		if auther, ok := a.auth.(*Auther); ok && auther.tokenService != nil {
-			jwtConfig.TokenValidator = &TokenServiceAdapter{tokenService: auther.tokenService}
-		}
-
-		return jwtware.New(jwtConfig)
+	jwtConfig := jwtware.Config{
+		ErrorHandler: errorHandler,
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte(cfg.GetSigningKey()),
+			JWTAlg: cfg.GetSigningMethod(),
+		},
+		AuthScheme:      cfg.GetAuthScheme(),
+		ContextKey:      cfg.GetContextKey(),
+		TokenLookup:     cfg.GetTokenLookup(),
+		ContextEnricher: contextEnricherAdapter,
 	}
+
+	// If the Auther has a TokenService, use it for enhanced validation
+	if auther, ok := a.auth.(*Auther); ok && auther.tokenService != nil {
+		jwtConfig.TokenValidator = &TokenServiceAdapter{tokenService: auther.tokenService}
+	}
+
+	return jwtware.New(jwtConfig)
 }
 
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {

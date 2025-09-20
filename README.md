@@ -11,7 +11,7 @@ A Go authentication library providing JWT based authentication, password managem
 - Role based access control (RBAC) with hierarchical permissions
 - Resource level permissions for fine grained access control
 - HTTP middleware for route protection
-- Built-in authentication controllers for web applications
+- Built in authentication controllers for web applications
 - Database persistence layer using Bun ORM
 - Customizable identity providers and role providers
 
@@ -67,7 +67,7 @@ func main() {
 }
 ```
 
-### Enhanced Resource-Level Permissions
+### Enhanced Resource Level Permissions
 
 ```go
 // Implement ResourceRoleProvider for fine-grained permissions
@@ -145,6 +145,113 @@ func profileHandler(c router.Context) error {
     })
 }
 ```
+
+### CSRF Protection
+
+`go-auth` ships with a CSRF middleware that plugs into `go-router` and the template helper stack.
+
+**Stateless (default)**
+
+```go
+import (
+    csrf "github.com/goliatone/go-auth/middleware/csrf"
+    "github.com/goliatone/go-router"
+)
+
+func main() {
+    app := router.New()
+
+    // HMAC-signed tokens; no backing store required
+    app.Use(csrf.New(csrf.Config{
+        SecureKey: []byte("your-32-byte-secret"),
+    }))
+
+    app.Post("/submit", func(ctx router.Context) error {
+        // Token checked automatically
+        return ctx.SendStatus(router.StatusNoContent)
+    })
+
+    app.Listen(":8080")
+}
+```
+
+**Stateful (storage backed)**
+
+```go
+type redisStorage struct{ client *redis.Client }
+
+func (r *redisStorage) Get(key string) (string, error) {
+    return r.client.Get(context.Background(), key).Result()
+}
+
+// Set/Delete omitted for brevity
+
+app.Use(csrf.New(csrf.Config{
+    Storage:    &redisStorage{client: redisClient},
+    Expiration: 24 * time.Hour,
+}))
+```
+
+**Templates**
+
+```go
+// Inside your handler
+helpers := auth.TemplateHelpersWithRouter(ctx, auth.TemplateUserKey)
+
+// `helpers` now contains:
+// - csrf_token(): returns the actual token string
+// - csrf_field():  `<input type="hidden" name="_token" ...>` (respects custom name)
+// - csrf_meta():   `<meta name="csrf-token" ...>`
+// - csrf_header_name(): header to use for AJAX requests
+
+return ctx.Render("form", helpers)
+```
+
+```html
+<form method="post">
+    {{ csrf_field }}
+    <!-- other fields -->
+</form>
+
+<script>
+    const token = "{{ csrf_token }}";
+    const header = "{{ csrf_header_name }}";
+    fetch("/submit", {
+        method: "POST",
+        headers: { [header]: token },
+    });
+</script>
+```
+
+```html
+<!-- Layout head section -->
+{{ csrf_meta }}
+<meta name="another-example" content="value">
+```
+
+See `middleware/csrf/README.md` for more examples and configuration options (custom token lookup, skipping routes, etc.).
+
+**AJAX/SPA bootstrap endpoint**
+
+For clients that need to refresh tokens via XHR (e.g., SPAs), register the helper route:
+
+```go
+import csrf "github.com/goliatone/go-auth/middleware/csrf"
+
+csrf.RegisterRoutes(app.Router())
+```
+
+The handler returns JSON:
+
+```json
+{
+  "token": "...",
+  "field_name": "_token",
+  "header_name": "X-CSRF-Token"
+}
+```
+
+Responses include `Cache-Control: no-store`, so clients fetch fresh tokens as needed. Call this endpoint whenever a token expires or before issuing state-changing requests in a long-lived SPA session.
 
 ## API Reference
 

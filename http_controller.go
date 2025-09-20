@@ -477,11 +477,29 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 	}
 
 	if res.Success && res.Stage == AccountVerification {
+		if res.Reset == nil {
+			return flash.WithSuccess(ctx, router.ViewContext{
+				"system_message": "If an account with that email exists, a password reset link has been sent.",
+			}).Redirect(a.Routes.Login)
+		}
+
+		sessionID := res.Reset.ID.String()
+		if sessionID == "" {
+			return flash.WithSuccess(ctx, router.ViewContext{
+				"system_message": "If an account with that email exists, a password reset link has been sent.",
+			}).Redirect(a.Routes.Login)
+		}
+
+		email := res.Reset.Email
+		if email == "" {
+			email = req.Email
+		}
+
 		return ctx.Render(a.Views.PasswordReset, router.ViewContext{
 			"reset": map[string]string{
 				stageKey:   AccountVerification,
-				sessionKey: req.Session,
-				emailKey:   req.Email,
+				sessionKey: sessionID,
+				emailKey:   email,
 			},
 		})
 	}
