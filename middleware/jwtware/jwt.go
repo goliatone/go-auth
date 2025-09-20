@@ -79,63 +79,65 @@ type SigningKey struct {
 	Key    any
 }
 
-func New(config ...Config) router.HandlerFunc {
-	cfg := GetDefaultConfig(config...)
-	return func(ctx router.Context) error {
-		if cfg.Filter != nil && cfg.Filter(ctx) {
-			return ctx.Next()
-		}
+func New(config ...Config) router.MiddlewareFunc {
+	return func(hf router.HandlerFunc) router.HandlerFunc {
+		cfg := GetDefaultConfig(config...)
+		return func(ctx router.Context) error {
+			if cfg.Filter != nil && cfg.Filter(ctx) {
+				return ctx.Next()
+			}
 
-		a, err := ExtractRawTokenFromContext(ctx, cfg.getExtractors())
-		if err != nil {
-			return cfg.ErrorHandler(ctx, err)
-		}
+			a, err := ExtractRawTokenFromContext(ctx, cfg.getExtractors())
+			if err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
 
-		claims, err := cfg.TokenValidator.Validate(a)
-		if err != nil {
-			return cfg.ErrorHandler(ctx, err)
-		}
+			claims, err := cfg.TokenValidator.Validate(a)
+			if err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
 
-		if err := performAuthorizationChecks(claims, cfg); err != nil {
-			return cfg.ErrorHandler(ctx, err)
-		}
+			if err := performAuthorizationChecks(claims, cfg); err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
 
-		ctx.Locals(cfg.ContextKey, claims)
+			ctx.Locals(cfg.ContextKey, claims)
 
-		// Store user data for template usage if configured
-		if cfg.TemplateUserKey != "" {
-			var templateUser any
-			if cfg.UserProvider != nil {
-				// Try to get full user object using the provider
-				user, err := cfg.UserProvider(claims)
-				if err != nil {
-					// Log error but don't fail - use claims instead
-					// TODO: Consider adding logging interface to Config for better error reporting
-					templateUser = claims
+			// Store user data for template usage if configured
+			if cfg.TemplateUserKey != "" {
+				var templateUser any
+				if cfg.UserProvider != nil {
+					// Try to get full user object using the provider
+					user, err := cfg.UserProvider(claims)
+					if err != nil {
+						// Log error but don't fail - use claims instead
+						// TODO: Consider adding logging interface to Config for better error reporting
+						templateUser = claims
+					} else {
+						templateUser = user
+					}
 				} else {
-					templateUser = user
+					// Use claims directly as template user data
+					templateUser = claims
 				}
-			} else {
-				// Use claims directly as template user data
-				templateUser = claims
+
+				// Use LocalsMerge if templateUser is a map[string]any, otherwise use Locals
+				if userMap, ok := templateUser.(map[string]any); ok {
+					ctx.LocalsMerge(cfg.TemplateUserKey, userMap)
+				} else {
+					ctx.Locals(cfg.TemplateUserKey, templateUser)
+				}
 			}
 
-			// Use LocalsMerge if templateUser is a map[string]any, otherwise use Locals
-			if userMap, ok := templateUser.(map[string]any); ok {
-				ctx.LocalsMerge(cfg.TemplateUserKey, userMap)
-			} else {
-				ctx.Locals(cfg.TemplateUserKey, templateUser)
+			// if a context enricher we use it to propagate claims to the standard context
+			if cfg.ContextEnricher != nil {
+				stdCtx := ctx.Context()
+				stdCtxWithClaims := cfg.ContextEnricher(stdCtx, claims)
+				ctx.SetContext(stdCtxWithClaims)
 			}
-		}
 
-		// if a context enricher we use it to propagate claims to the standard context
-		if cfg.ContextEnricher != nil {
-			stdCtx := ctx.Context()
-			stdCtxWithClaims := cfg.ContextEnricher(stdCtx, claims)
-			ctx.SetContext(stdCtxWithClaims)
+			return cfg.SuccessHandler(ctx)
 		}
-
-		return cfg.SuccessHandler(ctx)
 	}
 }
 
