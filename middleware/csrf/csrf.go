@@ -29,6 +29,9 @@ var (
 // DefaultTokenLength is the default length for CSRF tokens
 const DefaultTokenLength = 32
 
+// DefaultTemplateHelpersKey defines the default context key used when merging CSRF template helpers.
+const DefaultTemplateHelpersKey = "template_helpers"
+
 // DefaultContextKey is the default key for storing CSRF tokens in context
 const DefaultContextKey = "csrf_token"
 
@@ -77,6 +80,11 @@ type Config struct {
 
 	// SecureKey is used for token generation when using stateless mode
 	SecureKey []byte
+
+	// DisableTemplateHelpers disables automatic template helper injection when true.
+	DisableTemplateHelpers bool
+	// TemplateHelpersKey defines the context key used when storing helper maps via LocalsMerge.
+	TemplateHelpersKey string
 }
 
 // Storage interface for storing and retrieving CSRF tokens
@@ -107,6 +115,10 @@ func New(config ...Config) router.MiddlewareFunc {
 			ctx.Locals(cfg.ContextKey, token)
 			ctx.Locals(cfg.ContextKey+"_field", cfg.FormFieldName)
 			ctx.Locals(cfg.ContextKey+"_header", cfg.HeaderName)
+			if !cfg.DisableTemplateHelpers {
+				helpers := CSRFTemplateHelpersWithRouter(ctx, cfg.ContextKey)
+				ctx.LocalsMerge(cfg.TemplateHelpersKey, helpers)
+			}
 
 			// safe methods don't require validation
 			method := strings.ToUpper(ctx.Method())
@@ -336,12 +348,13 @@ func extractorFromHeader(headerName string) TokenExtractor {
 func configDefault(config ...Config) Config {
 	if len(config) < 1 {
 		base := Config{
-			TokenLength:   DefaultTokenLength,
-			ContextKey:    DefaultContextKey,
-			FormFieldName: DefaultFormFieldName,
-			HeaderName:    DefaultHeaderName,
-			SafeMethods:   []string{"GET", "HEAD", "OPTIONS", "TRACE"},
-			Expiration:    24 * time.Hour,
+			TokenLength:        DefaultTokenLength,
+			ContextKey:         DefaultContextKey,
+			FormFieldName:      DefaultFormFieldName,
+			HeaderName:         DefaultHeaderName,
+			SafeMethods:        []string{"GET", "HEAD", "OPTIONS", "TRACE"},
+			Expiration:         24 * time.Hour,
+			TemplateHelpersKey: DefaultTemplateHelpersKey,
 			SuccessHandler: func(ctx router.Context) error {
 				return ctx.Next()
 			},
@@ -386,6 +399,10 @@ func configDefault(config ...Config) Config {
 		cfg.SuccessHandler = func(ctx router.Context) error {
 			return ctx.Next()
 		}
+	}
+
+	if cfg.TemplateHelpersKey == "" {
+		cfg.TemplateHelpersKey = DefaultTemplateHelpersKey
 	}
 
 	cfg.SecureKey = initializeSecureKey(cfg.SecureKey, cfg.Storage)
