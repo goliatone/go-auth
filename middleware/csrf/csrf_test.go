@@ -32,10 +32,10 @@ func TestStatelessTokenValidationSuccess(t *testing.T) {
 		},
 	}
 
-	mw := New(cfg)
+	handler := New(cfg)(func(ctx router.Context) error { return nil })
 
 	getCtx := newMockContextWithBase("GET")
-	err := mw(getCtx)
+	err := handler(getCtx)
 	require.NoError(t, err)
 
 	tokenVal, ok := getCtx.LocalsMock[DefaultContextKey].(string)
@@ -45,7 +45,7 @@ func TestStatelessTokenValidationSuccess(t *testing.T) {
 	postCtx := newMockContextWithBase("POST")
 	postCtx.On("FormValue", DefaultFormFieldName).Return(tokenVal)
 
-	err = mw(postCtx)
+	err = handler(postCtx)
 	require.NoError(t, err)
 	require.True(t, postCtx.NextCalled)
 }
@@ -61,15 +61,15 @@ func TestStatelessTokenValidationMismatch(t *testing.T) {
 		},
 	}
 
-	mw := New(cfg)
+	handler := New(cfg)(func(ctx router.Context) error { return nil })
 
 	getCtx := newMockContextWithBase("GET")
-	require.NoError(t, mw(getCtx))
+	require.NoError(t, handler(getCtx))
 
 	postCtx := newMockContextWithBase("POST")
 	postCtx.On("FormValue", DefaultFormFieldName).Return("tampered")
 
-	err := mw(postCtx)
+	err := handler(postCtx)
 	require.Error(t, err)
 	require.ErrorIs(t, captured, ErrTokenMismatch)
 }
@@ -84,10 +84,10 @@ func TestStatelessTokenExpiration(t *testing.T) {
 		},
 	}
 
-	mw := New(cfg)
+	handler := New(cfg)(func(ctx router.Context) error { return nil })
 
 	getCtx := newMockContextWithBase("GET")
-	require.NoError(t, mw(getCtx))
+	require.NoError(t, handler(getCtx))
 
 	tokenVal := getCtx.LocalsMock[DefaultContextKey].(string)
 
@@ -96,13 +96,14 @@ func TestStatelessTokenExpiration(t *testing.T) {
 	postCtx := newMockContextWithBase("POST")
 	postCtx.On("FormValue", DefaultFormFieldName).Return(tokenVal)
 
-	err := mw(postCtx)
+	err := handler(postCtx)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrTokenExpired)
 }
 
 func TestShortSecureKeyPanics(t *testing.T) {
 	require.Panics(t, func() {
-		_ = New(Config{SecureKey: []byte("short")})
+		handler := New(Config{SecureKey: []byte("short")})(func(ctx router.Context) error { return nil })
+		handler(newMockContextWithBase("GET"))
 	})
 }
