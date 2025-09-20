@@ -20,6 +20,7 @@ func newMockContextWithBase(method string) *router.MockContext {
 	ctx.On("Locals", DefaultContextKey, mock.Anything).Return(nil)
 	ctx.On("Locals", DefaultContextKey+"_field", mock.Anything).Return(nil)
 	ctx.On("Locals", DefaultContextKey+"_header", mock.Anything).Return(nil)
+	ctx.On("LocalsMerge", mock.Anything, mock.Anything).Return(map[string]any{}).Maybe()
 	return ctx
 }
 
