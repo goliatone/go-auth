@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
 	"fmt"
 	"io/fs"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +20,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
-	"github.com/goliatone/go-auth/middleware/jwtware"
+	"github.com/goliatone/go-auth/middleware/csrf"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
 	gconfig "github.com/goliatone/go-config/config"
@@ -28,6 +30,7 @@ import (
 	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
+	mflash "github.com/goliatone/go-router/middleware/flash"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
@@ -133,50 +136,30 @@ func ProtectedRoutes(app *App) {
 
 	cfg := app.Config().GetAuth()
 
-	// Create enhanced JWT middleware with template support
-	protected := CreateTemplateAwareJWTMiddleware(app, cfg)
+	protected := app.auther.ProtectedRoute(cfg, app.auther.MakeClientRouteAuthErrorHandler(false))
 
 	p.Get("/me", ProfileShow(app), protected)
 	p.Post("/me", ProfileUpdate(app), protected)
 }
 
-// CreateTemplateAwareJWTMiddleware creates JWT middleware with automatic current_user injection
-func CreateTemplateAwareJWTMiddleware(app *App, cfg auth.Config) router.MiddlewareFunc {
-	return func(hf router.HandlerFunc) router.HandlerFunc {
-		jwtConfig := jwtware.Config{
-			ErrorHandler: app.auther.MakeClientRouteAuthErrorHandler(false),
-			SigningKey: jwtware.SigningKey{
-				Key:    []byte(cfg.GetSigningKey()),
-				JWTAlg: cfg.GetSigningMethod(),
-			},
-			AuthScheme:  cfg.GetAuthScheme(),
-			ContextKey:  cfg.GetContextKey(),
-			TokenLookup: cfg.GetTokenLookup(),
-			// Add TokenValidator - use the authenticator's token service if available
-			TokenValidator: auth.NewTokenServiceAdapter(app.auth.TokenService()),
-			// Template integration - automatic current_user injection
-			TemplateUserKey: auth.TemplateUserKey,
-			UserProvider: func(claims jwtware.AuthClaims) (any, error) {
-				// Convert JWT claims to full User object for templates
-				userID := claims.UserID()
-				if userID == "" {
-					app.GetLogger("jwt").Warn("Empty user ID in claims, using claims directly")
-					return claims, nil // Fallback to claims
-				}
-
-				user, err := app.repo.Users().GetByID(context.Background(), userID)
-				if err != nil {
-					app.GetLogger("jwt").Warn("Failed to load user for template, using claims", "user_id", userID, "error", err)
-					return claims, nil // Fallback to claims
-				}
-
-				app.GetLogger("jwt").Debug("Loaded user for template context", "user_id", userID, "username", user.Username)
-				return user, nil
-			},
-		}
-
-		return jwtware.New(jwtConfig)
+func viewContextWithGlobals(ctx router.Context, data router.ViewContext) router.ViewContext {
+	if data == nil {
+		data = router.ViewContext{}
 	}
+	merged := router.ViewContext{}
+
+	if helpers, ok := ctx.Locals(csrf.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
+		maps.Copy(merged, helpers)
+	} else {
+		maps.Copy(merged, auth.TemplateHelpersWithRouter(ctx, auth.TemplateUserKey))
+	}
+
+	maps.Copy(merged, data)
+	return merged
+}
+
+func renderWithGlobals(ctx router.Context, name string, data router.ViewContext) error {
+	return ctx.Render(name, viewContextWithGlobals(ctx, data))
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
@@ -214,17 +197,24 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 
 	srv.Router().WithLogger(app.GetLogger("router"))
 
-	srv.Router().Use(flash.ToMiddleware(flash.DefaultFlash, "flash"))
+	key := sha256.Sum256([]byte(app.Config().GetAuth().GetSigningKey()))
+	srv.Router().Use(csrf.New(csrf.Config{
+		SecureKey: key[:],
+	}))
+
+	csrf.RegisterRoutes(srv.Router())
+
+	srv.Router().Use(mflash.New(mflash.ConfigDefault))
 
 	srv.Router().Get("/test", func(ctx router.Context) error {
-		return ctx.Render("test", router.ViewContext{
+		return renderWithGlobals(ctx, "test", router.ViewContext{
 			"title":   "View Renderer",
 			"message": "This is a message renderer",
 		})
 	})
 
 	srv.Router().Get("/", func(ctx router.Context) error {
-		return ctx.Render("test", router.ViewContext{
+		return renderWithGlobals(ctx, "test", router.ViewContext{
 			"title":   "Home Renderer",
 			"message": `<p>This is your Home Page</p><a href="/me">Profile</a> | <a href="/websocket-demo">WebSocket Demo</a>`,
 		})
@@ -457,7 +447,7 @@ func ProfileShow(app *App) func(c router.Context) error {
 		user, err := app.repo.Users().GetByID(c.Context(), session.GetUserID())
 		if err != nil {
 			app.GetLogger("profile").Error("User GetByID error", "details", err)
-			return c.Render("errors/500", router.ViewContext{
+			return renderWithGlobals(c, "errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
@@ -466,7 +456,7 @@ func ProfileShow(app *App) func(c router.Context) error {
 		app.GetLogger("profile").Debug("Rendering profile with automatic current_user injection",
 			"user_id", session.GetUserID())
 
-		return c.Render("profile", router.ViewContext{
+		return renderWithGlobals(c, "profile", router.ViewContext{
 			"errors": nil,
 			"record": NewUserDTO(user),
 			// current_user automatically injected by JWT middleware
@@ -487,24 +477,24 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 		payload := new(UserRecord)
 
 		if err := c.Bind(payload); err != nil {
-			return c.Render("errors/500", router.ViewContext{
+			return renderWithGlobals(c, "errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
 
 		if err := payload.Validate(); err != nil {
-			return flash.WithError(c, router.ViewContext{
+			return flash.WithError(c, viewContextWithGlobals(c, router.ViewContext{
 				"error_message":  err.Message,
 				"system_message": "Error validating payload",
-			}).Render("profile", router.ViewContext{
+			})).Render("profile", viewContextWithGlobals(c, router.ViewContext{
 				"record":     payload,
 				"validation": err.ValidationMap(),
-			})
+			}))
 		}
 
 		uid, err := session.GetUserUUID()
 		if err != nil {
-			return c.Render("errors/500", router.ViewContext{
+			return renderWithGlobals(c, "errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
@@ -519,13 +509,13 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 
 		user, err := app.repo.Users().Update(c.Context(), record)
 		if err != nil {
-			return c.Render("errors/500", router.ViewContext{
+			return renderWithGlobals(c, "errors/500", router.ViewContext{
 				"message": err.Error(),
 			})
 		}
 
 		// Simplified - current_user automatically available from JWT middleware!
-		return c.Render("profile", router.ViewContext{
+		return renderWithGlobals(c, "profile", router.ViewContext{
 			"errors": nil,
 			"record": NewUserDTO(user),
 			// current_user automatically injected by JWT middleware
