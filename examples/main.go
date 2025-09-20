@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log"
 	"maps"
@@ -149,7 +150,16 @@ func viewContextWithGlobals(ctx router.Context, data router.ViewContext) router.
 	merged := router.ViewContext{}
 
 	if helpers, ok := ctx.Locals(csrf.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
-		maps.Copy(merged, helpers)
+		for key, value := range helpers {
+			switch v := value.(type) {
+			case func() string:
+				merged[key] = v()
+			case func() template.HTML:
+				merged[key] = v()
+			default:
+				merged[key] = value
+			}
+		}
 	} else {
 		maps.Copy(merged, auth.TemplateHelpersWithRouter(ctx, auth.TemplateUserKey))
 	}
