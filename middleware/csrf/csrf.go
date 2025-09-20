@@ -90,34 +90,36 @@ type Storage interface {
 type TokenExtractor func(router.Context) (string, error)
 
 // New creates a new CSRF middleware
-func New(config ...Config) router.HandlerFunc {
-	cfg := configDefault(config...)
+func New(config ...Config) router.MiddlewareFunc {
+	return func(hf router.HandlerFunc) router.HandlerFunc {
+		cfg := configDefault(config...)
 
-	return func(ctx router.Context) error {
-		if cfg.Skip != nil && cfg.Skip(ctx) {
-			return ctx.Next()
-		}
+		return func(ctx router.Context) error {
+			if cfg.Skip != nil && cfg.Skip(ctx) {
+				return ctx.Next()
+			}
 
-		token, err := getOrGenerateToken(ctx, cfg)
-		if err != nil {
-			return cfg.ErrorHandler(ctx, err)
-		}
+			token, err := getOrGenerateToken(ctx, cfg)
+			if err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
 
-		ctx.Locals(cfg.ContextKey, token)
-		ctx.Locals(cfg.ContextKey+"_field", cfg.FormFieldName)
-		ctx.Locals(cfg.ContextKey+"_header", cfg.HeaderName)
+			ctx.Locals(cfg.ContextKey, token)
+			ctx.Locals(cfg.ContextKey+"_field", cfg.FormFieldName)
+			ctx.Locals(cfg.ContextKey+"_header", cfg.HeaderName)
 
-		// safe methods don't require validation
-		method := strings.ToUpper(ctx.Method())
-		if slices.Contains(cfg.SafeMethods, method) {
+			// safe methods don't require validation
+			method := strings.ToUpper(ctx.Method())
+			if slices.Contains(cfg.SafeMethods, method) {
+				return cfg.SuccessHandler(ctx)
+			}
+
+			if err := validateToken(ctx, cfg, token); err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
+
 			return cfg.SuccessHandler(ctx)
 		}
-
-		if err := validateToken(ctx, cfg, token); err != nil {
-			return cfg.ErrorHandler(ctx, err)
-		}
-
-		return cfg.SuccessHandler(ctx)
 	}
 }
 
