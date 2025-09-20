@@ -35,6 +35,7 @@
         <form
             action="/register" method="post"
             class="group flex flex-col gap-8 p-8 pl-0" novalidate>
+            {{ csrf_field }}
 
             <h3 class="text-3xl font-bold">Create An Account</h3>
 
