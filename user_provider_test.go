@@ -28,6 +28,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 			PasswordHash:  passwordHash,
 			Role:          auth.RoleAdmin,
 			LoginAttempts: 0,
+			Status:        auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -55,6 +56,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 			PasswordHash:  passwordHash,
 			Role:          auth.RoleAdmin,
 			LoginAttempts: 0,
+			Status:        auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -94,6 +96,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 			Role:           auth.RoleAdmin,
 			LoginAttempts:  auth.MaxLoginAttempts + 1,
 			LoginAttemptAt: &now,
+			Status:         auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -119,6 +122,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 			Role:           auth.RoleAdmin,
 			LoginAttempts:  auth.MaxLoginAttempts + 1,
 			LoginAttemptAt: &oldAttempt,
+			Status:         auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -149,6 +153,7 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 			Username: "testuser",
 			Email:    "test@example.com",
 			Role:     auth.RoleAdmin,
+			Status:   auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -185,6 +190,7 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 			Username: "testuser",
 			Email:    "test@example.com",
 			Role:     "invalid_role",
+			Status:   auth.UserStatusActive,
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
@@ -197,6 +203,64 @@ func TestUserProviderFindIdentityByIdentifier(t *testing.T) {
 
 		mockTracker.AssertExpectations(t)
 	})
+}
+
+func TestUserProviderRejectsInactiveStatuses(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name        string
+		status      auth.UserStatus
+		expectedErr error
+	}{
+		{"suspended", auth.UserStatusSuspended, auth.ErrUserSuspended},
+		{"disabled", auth.UserStatusDisabled, auth.ErrUserDisabled},
+		{"archived", auth.UserStatusArchived, auth.ErrUserArchived},
+		{"pending", auth.UserStatusPending, auth.ErrUserPending},
+	}
+
+	for _, tc := range cases {
+		t.Run("VerifyIdentity/"+tc.name, func(t *testing.T) {
+			tracker := new(MockUserTracker)
+			provider := auth.NewUserProvider(tracker)
+			passwordHash, _ := auth.HashPassword("password123")
+			user := &auth.User{
+				ID:           uuid.New(),
+				Username:     "blocked",
+				Email:        tc.name + "@example.com",
+				PasswordHash: passwordHash,
+				Role:         auth.RoleMember,
+				Status:       tc.status,
+			}
+
+			tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+
+			identity, err := provider.VerifyIdentity(ctx, user.Email, "password123")
+			assert.ErrorIs(t, err, tc.expectedErr)
+			assert.Nil(t, identity)
+
+			tracker.AssertExpectations(t)
+		})
+
+		t.Run("FindIdentity/"+tc.name, func(t *testing.T) {
+			tracker := new(MockUserTracker)
+			provider := auth.NewUserProvider(tracker)
+			user := &auth.User{
+				ID:       uuid.New(),
+				Username: "blocked",
+				Email:    tc.name + "-find@example.com",
+				Role:     auth.RoleMember,
+				Status:   tc.status,
+			}
+
+			tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+
+			identity, err := provider.FindIdentityByIdentifier(ctx, user.Email)
+			assert.ErrorIs(t, err, tc.expectedErr)
+			assert.Nil(t, identity)
+
+			tracker.AssertExpectations(t)
+		})
+	}
 }
 
 func TestUserProviderValidation(t *testing.T) {

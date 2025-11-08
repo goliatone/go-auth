@@ -10,6 +10,8 @@ import (
 	"github.com/goliatone/go-auth"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // TestIdentity is a simple implementation of Identity interface for testing
@@ -18,12 +20,28 @@ type TestIdentity struct {
 	username string
 	email    string
 	role     string
+	status   auth.UserStatus
 }
 
 func (t TestIdentity) ID() string       { return t.id }
 func (t TestIdentity) Username() string { return t.username }
 func (t TestIdentity) Email() string    { return t.email }
 func (t TestIdentity) Role() string     { return t.role }
+func (t TestIdentity) Status() auth.UserStatus {
+	if t.status == "" {
+		return auth.UserStatusActive
+	}
+	return t.status
+}
+
+func newMockConfig() *MockConfig {
+	mockConfig := new(MockConfig)
+	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetTokenExpiration").Return(24)
+	mockConfig.On("GetIssuer").Return("test-issuer")
+	mockConfig.On("GetAudience").Return([]string{"test:audience"})
+	return mockConfig
+}
 
 func TestLogin(t *testing.T) {
 	// Setup test environment
@@ -47,6 +65,7 @@ func TestLogin(t *testing.T) {
 			username: "testuser",
 			email:    "test@example.com",
 			role:     "admin",
+			status:   auth.UserStatusActive,
 		}
 
 		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
@@ -96,6 +115,24 @@ func TestLogin(t *testing.T) {
 		assert.Empty(t, token)
 		assert.Contains(t, err.Error(), "identity not found")
 	})
+
+	t.Run("Login blocked when status inactive", func(t *testing.T) {
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "frozen",
+			email:    "suspended@example.com",
+			role:     "member",
+			status:   auth.UserStatusSuspended,
+		}
+
+		mockProvider.On("VerifyIdentity", ctx, identity.email, "password123").
+			Return(identity, nil).Once()
+
+		token, err := authenticator.Login(ctx, identity.email, "password123")
+
+		assert.ErrorIs(t, err, auth.ErrUserSuspended)
+		assert.Empty(t, token)
+	})
 }
 
 func TestImpersonate(t *testing.T) {
@@ -120,6 +157,7 @@ func TestImpersonate(t *testing.T) {
 			username: "adminuser",
 			email:    "admin@example.com",
 			role:     "admin",
+			status:   auth.UserStatusActive,
 		}
 
 		mockProvider.On("FindIdentityByIdentifier", ctx, "admin@example.com").
@@ -157,6 +195,24 @@ func TestImpersonate(t *testing.T) {
 		assert.Error(t, err)
 		assert.Empty(t, token)
 		assert.Contains(t, err.Error(), "identity not found")
+	})
+
+	t.Run("Impersonation blocked when status inactive", func(t *testing.T) {
+		identity := TestIdentity{
+			id:       uuid.New().String(),
+			username: "blocked-admin",
+			email:    "blocked@example.com",
+			role:     "admin",
+			status:   auth.UserStatusDisabled,
+		}
+
+		mockProvider.On("FindIdentityByIdentifier", ctx, identity.email).
+			Return(identity, nil).Once()
+
+		token, err := authenticator.Impersonate(ctx, identity.email)
+
+		assert.ErrorIs(t, err, auth.ErrUserDisabled)
+		assert.Empty(t, token)
 	})
 }
 
@@ -276,6 +332,62 @@ func TestSessionFromToken(t *testing.T) {
 	})
 }
 
+func TestLoginActivitySink(t *testing.T) {
+	ctx := context.Background()
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "audit-user",
+		email:    "audit@example.com",
+		role:     "member",
+		status:   auth.UserStatusActive,
+	}
+
+	t.Run("success event", func(t *testing.T) {
+		provider := new(MockIdentityProvider)
+		config := newMockConfig()
+		sink := new(MockActivitySink)
+
+		authenticator := auth.NewAuthenticator(provider, config).WithActivitySink(sink)
+
+		provider.On("VerifyIdentity", ctx, identity.Email(), "password").
+			Return(identity, nil).Once()
+
+		sink.On("Record", mock.Anything, mock.MatchedBy(func(evt auth.ActivityEvent) bool {
+			return evt.EventType == auth.ActivityEventLoginSuccess &&
+				evt.UserID == identity.ID()
+		})).Return(nil).Once()
+
+		_, err := authenticator.Login(ctx, identity.Email(), "password")
+		require.NoError(t, err)
+
+		sink.AssertExpectations(t)
+		provider.AssertExpectations(t)
+	})
+
+	t.Run("failure event", func(t *testing.T) {
+		provider := new(MockIdentityProvider)
+		config := newMockConfig()
+		sink := new(MockActivitySink)
+
+		authenticator := auth.NewAuthenticator(provider, config).WithActivitySink(sink)
+
+		provider.On("VerifyIdentity", ctx, "unknown@example.com", "password").
+			Return(nil, errors.New("boom")).Once()
+
+		sink.On("Record", mock.Anything, mock.MatchedBy(func(evt auth.ActivityEvent) bool {
+			return evt.EventType == auth.ActivityEventLoginFailure &&
+				evt.UserID == "" &&
+				evt.Metadata["identifier"] == "unknown@example.com"
+		})).Return(nil).Once()
+
+		_, err := authenticator.Login(ctx, "unknown@example.com", "password")
+		require.Error(t, err)
+
+		sink.AssertExpectations(t)
+		provider.AssertExpectations(t)
+	})
+}
+
 func TestIdentityFromSession(t *testing.T) {
 	ctx := context.Background()
 	mockProvider := new(MockIdentityProvider)
@@ -305,6 +417,7 @@ func TestIdentityFromSession(t *testing.T) {
 			username: "testuser",
 			email:    "test@example.com",
 			role:     "admin",
+			status:   auth.UserStatusActive,
 		}
 
 		mockProvider.On("FindIdentityByIdentifier", ctx, userID).
@@ -354,6 +467,7 @@ func TestNewAuthenticator(t *testing.T) {
 			username: "testuser",
 			email:    "test@example.com",
 			role:     "admin",
+			status:   auth.UserStatusActive,
 		}
 
 		mockProvider.On("VerifyIdentity", ctx, "test@example.com", "password123").
@@ -407,6 +521,7 @@ func TestWithResourceRoleProvider(t *testing.T) {
 			username: "testuser",
 			email:    "test@example.com",
 			role:     "admin",
+			status:   auth.UserStatusActive,
 		}
 
 		resourceRoles := map[string]string{
@@ -442,6 +557,121 @@ func TestWithResourceRoleProvider(t *testing.T) {
 	})
 }
 
+func TestClaimsDecoratorIntegration(t *testing.T) {
+	ctx := context.Background()
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := newMockConfig()
+
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "decorator-user",
+		email:    "decorator@example.com",
+		role:     "admin",
+		status:   auth.UserStatusActive,
+	}
+
+	mockProvider.On("VerifyIdentity", ctx, identity.email, "password123").
+		Return(identity, nil).Once()
+
+	decorator := auth.ClaimsDecoratorFunc(func(ctx context.Context, identity auth.Identity, claims *auth.JWTClaims) error {
+		if claims.Metadata == nil {
+			claims.Metadata = map[string]any{}
+		}
+		claims.Metadata["tenant"] = "acme"
+		if claims.Resources == nil {
+			claims.Resources = map[string]string{}
+		}
+		claims.Resources["project:alpha"] = "editor"
+		return nil
+	})
+
+	authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+		WithClaimsDecorator(decorator)
+
+	token, err := authenticator.Login(ctx, identity.email, "password123")
+	require.NoError(t, err)
+	require.NotEmpty(t, token)
+
+	parsedClaims, err := authenticator.TokenService().Validate(token)
+	require.NoError(t, err)
+
+	jwtClaims, ok := parsedClaims.(*auth.JWTClaims)
+	require.True(t, ok)
+	assert.Equal(t, "acme", jwtClaims.Metadata["tenant"])
+	assert.Equal(t, "editor", jwtClaims.Resources["project:alpha"])
+
+	session, err := authenticator.SessionFromToken(token)
+	require.NoError(t, err)
+	metadata, ok := session.GetData()["metadata"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "acme", metadata["tenant"])
+
+	mockProvider.AssertExpectations(t)
+}
+
+func TestClaimsDecoratorErrorStopsLogin(t *testing.T) {
+	ctx := context.Background()
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := newMockConfig()
+
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "decorator-user",
+		email:    "decorator-error@example.com",
+		role:     "admin",
+		status:   auth.UserStatusActive,
+	}
+
+	mockProvider.On("VerifyIdentity", ctx, identity.email, "password123").
+		Return(identity, nil).Once()
+
+	expectedErr := errors.New("decorator boom")
+	decorator := auth.ClaimsDecoratorFunc(func(ctx context.Context, identity auth.Identity, claims *auth.JWTClaims) error {
+		return expectedErr
+	})
+
+	authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+		WithClaimsDecorator(decorator)
+
+	token, err := authenticator.Login(ctx, identity.email, "password123")
+	assert.ErrorIs(t, err, expectedErr)
+	assert.Empty(t, token)
+
+	mockProvider.AssertExpectations(t)
+}
+
+func TestClaimsDecoratorImmutableGuard(t *testing.T) {
+	ctx := context.Background()
+	mockProvider := new(MockIdentityProvider)
+	mockConfig := newMockConfig()
+
+	identity := TestIdentity{
+		id:       uuid.New().String(),
+		username: "immutable-user",
+		email:    "immutable@example.com",
+		role:     "admin",
+		status:   auth.UserStatusActive,
+	}
+
+	mockProvider.On("VerifyIdentity", ctx, identity.email, "password123").
+		Return(identity, nil).Once()
+
+	decorator := auth.ClaimsDecoratorFunc(func(ctx context.Context, identity auth.Identity, claims *auth.JWTClaims) error {
+		claims.RegisteredClaims.Subject = "mutated"
+		return nil
+	})
+
+	authenticator := auth.NewAuthenticator(mockProvider, mockConfig).
+		WithClaimsDecorator(decorator)
+
+	token, err := authenticator.Login(ctx, identity.email, "password123")
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, auth.ErrImmutableClaimMutation)
+	assert.Empty(t, token)
+
+	mockProvider.AssertExpectations(t)
+}
+
 func TestLoginWithResourceRoleProvider(t *testing.T) {
 	ctx := context.Background()
 	mockProvider := new(MockIdentityProvider)
@@ -459,6 +689,7 @@ func TestLoginWithResourceRoleProvider(t *testing.T) {
 		username: "testuser",
 		email:    "test@example.com",
 		role:     "admin",
+		status:   auth.UserStatusActive,
 	}
 
 	t.Run("Default path - no-op role provider", func(t *testing.T) {
@@ -567,6 +798,7 @@ func TestImpersonateWithResourceRoleProvider(t *testing.T) {
 		username: "adminuser",
 		email:    "admin@example.com",
 		role:     "admin",
+		status:   auth.UserStatusActive,
 	}
 
 	t.Run("Default path - no-op role provider", func(t *testing.T) {

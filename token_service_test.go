@@ -246,6 +246,50 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 	})
 }
 
+func TestTokenService_SignClaims(t *testing.T) {
+	signingKey := []byte("test-signing-key")
+	tokenExpiration := 24
+	issuer := "test-issuer"
+	audience := jwt.ClaimStrings{"test-audience"}
+	logger := &MockLogger{}
+
+	service := auth.NewTokenService(signingKey, tokenExpiration, issuer, audience, logger)
+	impl := service.(*auth.TokenServiceImpl)
+
+	t.Run("signs decorated claims", func(t *testing.T) {
+		now := time.Now()
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    issuer,
+				Subject:   "user-123",
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(tokenExpiration) * time.Hour)),
+			},
+			UID:      "user-123",
+			UserRole: "admin",
+			Metadata: map[string]any{"tenant": "acme"},
+		}
+
+		token, err := impl.SignClaims(claims)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+
+		parsed, err := service.Validate(token)
+		assert.NoError(t, err)
+
+		jwtClaims, ok := parsed.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, "acme", jwtClaims.Metadata["tenant"])
+	})
+
+	t.Run("returns error when claims nil", func(t *testing.T) {
+		token, err := impl.SignClaims(nil)
+		assert.Error(t, err)
+		assert.Empty(t, token)
+	})
+}
+
 func TestTokenService_Validate(t *testing.T) {
 	signingKey := []byte("test-signing-key")
 	tokenExpiration := 24

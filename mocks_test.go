@@ -141,6 +141,11 @@ func (m *MockTokenService) Generate(identity auth.Identity, resourceRoles map[st
 	return args.String(0), args.Error(1)
 }
 
+func (m *MockTokenService) SignClaims(claims *auth.JWTClaims) (string, error) {
+	args := m.Called(claims)
+	return args.String(0), args.Error(1)
+}
+
 func (m *MockTokenService) Validate(tokenString string) (auth.AuthClaims, error) {
 	args := m.Called(tokenString)
 	if args.Get(0) == nil {
@@ -251,6 +256,7 @@ func (m *MockRepositoryManager) PasswordResets() repository.Repository[*auth.Pas
 // ////////////////////////////////////////////////////////////////////
 type MockUsers struct {
 	mock.Mock
+	repository.Repository[*auth.User]
 }
 
 func (m *MockUsers) Raw(ctx context.Context, sql string, args ...any) ([]*auth.User, error) {
@@ -279,7 +285,7 @@ func (m *MockUsers) GetByID(ctx context.Context, id string, criteria ...reposito
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetByIdentifier(ctx context.Context, identifier string) (*auth.User, error) {
+func (m *MockUsers) GetByIdentifier(ctx context.Context, identifier string, criteria ...repository.SelectCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, identifier)
 	if mockArgs.Get(0) == nil {
 		return nil, mockArgs.Error(1)
@@ -287,7 +293,7 @@ func (m *MockUsers) GetByIdentifier(ctx context.Context, identifier string) (*au
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string) (*auth.User, error) {
+func (m *MockUsers) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...repository.SelectCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, identifier)
 	if mockArgs.Get(0) == nil {
 		return nil, mockArgs.Error(1)
@@ -330,7 +336,7 @@ func (m *MockUsers) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *aut
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
-func (m *MockUsers) CreateTx(ctx context.Context, tx bun.IDB, record *auth.User) (*auth.User, error) {
+func (m *MockUsers) CreateTx(ctx context.Context, tx bun.IDB, record *auth.User, criteria ...repository.InsertCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, tx, record)
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
@@ -365,6 +371,38 @@ func (m *MockUsers) UpsertTx(ctx context.Context, tx bun.IDB, record *auth.User,
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
+func (m *MockUsers) UpdateStatus(ctx context.Context, id uuid.UUID, status auth.UserStatus, opts ...auth.StatusUpdateOption) (*auth.User, error) {
+	mockArgs := m.Called(ctx, id, status, opts)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
+}
+
+func (m *MockUsers) UpdateStatusTx(ctx context.Context, tx bun.IDB, id uuid.UUID, status auth.UserStatus, opts ...auth.StatusUpdateOption) (*auth.User, error) {
+	mockArgs := m.Called(ctx, tx, id, status, opts)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
+}
+
+func (m *MockUsers) Suspend(ctx context.Context, actor auth.ActorRef, user *auth.User, opts ...auth.TransitionOption) (*auth.User, error) {
+	mockArgs := m.Called(ctx, actor, user, opts)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
+}
+
+func (m *MockUsers) Reinstate(ctx context.Context, actor auth.ActorRef, user *auth.User, opts ...auth.TransitionOption) (*auth.User, error) {
+	mockArgs := m.Called(ctx, actor, user, opts)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
+}
+
 func (m *MockUsers) ResetPassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
 	args := m.Called(ctx, id, passwordHash)
 	return args.Error(0)
@@ -372,6 +410,18 @@ func (m *MockUsers) ResetPassword(ctx context.Context, id uuid.UUID, passwordHas
 
 func (m *MockUsers) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
 	args := m.Called(ctx, tx, id, passwordHash)
+	return args.Error(0)
+}
+
+// ////////////////////////////////////////////////////////////////////
+// MockActivitySink
+// ////////////////////////////////////////////////////////////////////
+type MockActivitySink struct {
+	mock.Mock
+}
+
+func (m *MockActivitySink) Record(ctx context.Context, event auth.ActivityEvent) error {
+	args := m.Called(ctx, event)
 	return args.Error(0)
 }
 
