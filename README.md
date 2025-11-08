@@ -339,6 +339,27 @@ The library generates structured JWT claims:
 }
 ```
 
+### ClaimsDecorator Hook
+
+Use `Auther.WithClaimsDecorator` to enrich JWTs with tenant metadata or derived resource roles before they are signed. Decorators receive the pending `JWTClaims` and **may only** mutate extension fields such as `Resources`, `Metadata`, or additional custom payload that your product documents. Core claims (`sub`, `uid`, `iss`, `aud`, `iat`, `exp`) are guarded and any attempt to edit them aborts token generation.
+
+```go
+decorator := auth.ClaimsDecoratorFunc(func(ctx context.Context, identity auth.Identity, claims *auth.JWTClaims) error {
+	if claims.Metadata == nil {
+		claims.Metadata = map[string]any{}
+	}
+	claims.Metadata["tenant_id"] = lookUpTenant(identity.ID())
+	if claims.Resources == nil {
+		claims.Resources = map[string]string{}
+	}
+	claims.Resources["team:"+identity.ID()] = "editor"
+	return nil
+})
+
+auther := auth.NewAuthenticator(provider, cfg).
+	WithClaimsDecorator(decorator)
+```
+
 ## Database Schema
 
 The library requires two database tables:
