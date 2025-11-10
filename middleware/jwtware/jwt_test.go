@@ -1135,3 +1135,90 @@ func TestJWTWare_TemplateUser_DefaultKey_IsCurrentUser(t *testing.T) {
 	assert.Equal(t, "user-999", storedClaims.Subject(), "Template user should have correct subject")
 	assert.Equal(t, "guest", storedClaims.Role(), "Template user should have correct role")
 }
+
+func TestJWTWare_ValidationListenersCalled(t *testing.T) {
+	claims := NewMockAuthClaims("user-123", "user-123", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	listenerCalled := false
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		ValidationListeners: []jwtware.ValidationListener{
+			func(ctx router.Context, received jwtware.AuthClaims) error {
+				listenerCalled = true
+				assert.Equal(t, claims.UserID(), received.UserID())
+				return nil
+			},
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := handler(ctx)
+
+	assert.NoError(t, err)
+	assert.True(t, listenerCalled, "validation listener should have been invoked")
+	assert.True(t, ctx.NextCalled, "Next() should be called when listener succeeds")
+}
+
+func TestJWTWare_ValidationListenerError(t *testing.T) {
+	claims := NewMockAuthClaims("user-321", "user-321", "member")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	listenerErr := errors.New("listener failed")
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		ValidationListeners: []jwtware.ValidationListener{
+			func(ctx router.Context, received jwtware.AuthClaims) error {
+				return listenerErr
+			},
+		},
+		SuccessHandler: func(ctx router.Context) error {
+			return ctx.Next()
+		},
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	handler := jwtware.New(cfg)(func(ctx router.Context) error {
+		return nil
+	})
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token")
+
+	err := handler(ctx)
+
+	assert.Equal(t, listenerErr, err, "listener error should propagate")
+	assert.False(t, ctx.NextCalled, "Next() should not run when listener fails")
+}

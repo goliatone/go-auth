@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/goliatone/go-auth/middleware/jwtware"
 	"github.com/goliatone/go-router"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetClaims(t *testing.T) {
@@ -578,4 +580,110 @@ func TestGetClaimsIntegration_EndToEnd(t *testing.T) {
 		assert.False(t, hasOriginalClaims, "Original context should not have claims")
 		assert.False(t, originalCanRead, "Original context should not allow permissions")
 	})
+}
+
+func TestActorContextFromClaims(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-1",
+		},
+		UID:      "user-1",
+		UserRole: "admin",
+		Resources: map[string]string{
+			"users": "owner",
+		},
+		Metadata: map[string]any{
+			"tenant_id":       "tenant-99",
+			"organization_id": "org-77",
+			"impersonator_id": "system-user",
+			"custom":          "value",
+		},
+	}
+
+	actor := ActorContextFromClaims(claims)
+	require.NotNil(t, actor)
+	assert.Equal(t, "user-1", actor.ActorID)
+	assert.Equal(t, "subject-1", actor.Subject)
+	assert.Equal(t, "admin", actor.Role)
+	assert.Equal(t, "tenant-99", actor.TenantID)
+	assert.Equal(t, "org-77", actor.OrganizationID)
+	assert.Equal(t, "system-user", actor.ImpersonatorID)
+	assert.True(t, actor.IsImpersonated)
+	assert.Equal(t, map[string]string{"users": "owner"}, actor.ResourceRoles)
+	assert.Equal(t, "value", actor.Metadata["custom"])
+}
+
+func TestActorContextFromClaims_ClonesMaps(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-1",
+		},
+		UID:       "user-1",
+		UserRole:  "admin",
+		Resources: map[string]string{"users": "owner"},
+		Metadata: map[string]any{
+			"tenant_id": "tenant-1",
+		},
+	}
+
+	actor := ActorContextFromClaims(claims)
+	require.NotNil(t, actor)
+
+	actor.ResourceRoles["users"] = "viewer"
+	actor.Metadata["tenant_id"] = "mutated"
+
+	assert.Equal(t, "owner", claims.Resources["users"])
+	assert.Equal(t, "tenant-1", claims.Metadata["tenant_id"])
+}
+
+func TestActorContextHelpers(t *testing.T) {
+	ctx := context.Background()
+	actor := &ActorContext{
+		ActorID: "actor-1",
+		Role:    "admin",
+	}
+
+	ctx = WithActorContext(ctx, actor)
+
+	fromCtx, ok := ActorFromContext(ctx)
+	assert.True(t, ok)
+	assert.Equal(t, actor, fromCtx)
+
+	emptyCtx := context.Background()
+	_, ok = ActorFromContext(emptyCtx)
+	assert.False(t, ok)
+}
+
+func TestActorFromRouterContext(t *testing.T) {
+	routerCtx := router.NewMockContext()
+	base := WithActorContext(context.Background(), &ActorContext{ActorID: "actor-99"})
+	routerCtx.On("Context").Return(base)
+
+	fromRouter, ok := ActorFromRouterContext(routerCtx)
+	assert.True(t, ok)
+	assert.Equal(t, "actor-99", fromRouter.ActorID)
+}
+
+func TestContextEnricherAdapterStoresActorContext(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-ctx",
+		},
+		UID:      "user-ctx",
+		UserRole: "member",
+		Metadata: map[string]any{
+			"tenant": "tenant-ctx",
+		},
+	}
+
+	ctx := contextEnricherAdapter(context.Background(), jwtware.AuthClaims(claims))
+
+	storedClaims, ok := GetClaims(ctx)
+	require.True(t, ok)
+	assert.Equal(t, claims, storedClaims)
+
+	actor, ok := ActorFromContext(ctx)
+	require.True(t, ok)
+	assert.Equal(t, "user-ctx", actor.ActorID)
+	assert.Equal(t, "tenant-ctx", actor.TenantID)
 }

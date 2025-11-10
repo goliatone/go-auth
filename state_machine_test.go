@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -179,4 +180,63 @@ func TestUserStateMachineEmitsActivityEvent(t *testing.T) {
 
 	repo.AssertExpectations(t)
 	sink.AssertExpectations(t)
+}
+
+func TestUserStateMachineDefaultHookErrorHandlerPanics(t *testing.T) {
+	repo := &MockUsers{}
+	user := &auth.User{
+		ID:     uuid.New(),
+		Status: auth.UserStatusActive,
+	}
+
+	sm := auth.NewUserStateMachine(repo)
+
+	require.Panics(t, func() {
+		_, _ = sm.Transition(
+			context.Background(),
+			auth.ActorRef{ID: "admin"},
+			user,
+			auth.UserStatusSuspended,
+			auth.WithBeforeTransitionHook(func(ctx context.Context, tc auth.TransitionContext) error {
+				return errors.New("before hook failure")
+			}),
+		)
+	})
+
+	repo.AssertNotCalled(t, "UpdateStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestUserStateMachineCustomHookErrorHandlerReturnsError(t *testing.T) {
+	repo := &MockUsers{}
+	user := &auth.User{
+		ID:     uuid.New(),
+		Status: auth.UserStatusActive,
+	}
+
+	var phaseSeen auth.TransitionHookPhase
+	customErr := errors.New("converted hook failure")
+
+	sm := auth.NewUserStateMachine(
+		repo,
+		auth.WithStateMachineHookErrorHandler(func(ctx context.Context, phase auth.TransitionHookPhase, err error, tc auth.TransitionContext) error {
+			phaseSeen = phase
+			return customErr
+		}),
+	)
+
+	result, err := sm.Transition(
+		context.Background(),
+		auth.ActorRef{ID: "admin"},
+		user,
+		auth.UserStatusSuspended,
+		auth.WithBeforeTransitionHook(func(ctx context.Context, tc auth.TransitionContext) error {
+			return errors.New("boom")
+		}),
+	)
+
+	assert.Nil(t, result)
+	require.Error(t, err)
+	assert.Equal(t, customErr, err)
+	assert.Equal(t, auth.HookPhaseBefore, phaseSeen)
+	repo.AssertNotCalled(t, "UpdateStatus", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
