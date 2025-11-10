@@ -1,5 +1,20 @@
 # Changelog
 
+# [Unreleased](https://github.com/goliatone/go-auth/compare/v0.13.0...HEAD) - (TBD)
+
+## <!-- 30 -->⚠️ Migration Notes
+
+- Apply `data/sql/migrations/20240601090000_user_status.up.sql` before rolling out new binaries; the migration adds `users.status`/`users.suspended_at` with safe defaults so legacy services keep working until they link the updated library.
+- Keep the previous binary running until the schema change is confirmed, then deploy the new release that reads the columns and emits lifecycle events.
+- If a service lags behind, the new columns default every user to `active` and `suspended_at = NULL`, so rollback is limited to stopping the upgraded binary; no data cleanup is required unless you already performed transitions.
+
+## <!-- 7 -->🔧 Configuration Flags & Hooks
+
+- `Users.UpdateStatus`, `Users.Suspend`, and `Users.Reinstate` wrap the shared `UserStateMachine`; inject custom hooks through `WithUsersStateMachineOptions` and `WithStateMachineActivitySink`.
+- Propagate lifecycle and login events by supplying `auth.WithActivitySink` on authenticators and state machines. The sink is optional; default behavior remains no-op.
+- Extend issued JWTs with tenant context by calling `auth.WithClaimsDecorator`—decorators may only touch `claims.Resources`, `claims.Metadata`, or additional extension fields you own.
+- Transition options such as `auth.WithTransitionReason`, `auth.WithTransitionMetadata`, and `auth.WithBeforeTransitionHook` are safe defaults (no action required) but available for policies that need granular auditing.
+
 # [0.13.0](https://github.com/goliatone/go-auth/compare/v0.12.0...v0.13.0) - (2025-09-20)
 
 ## <!-- 1 -->🐛 Bug Fixes
@@ -495,5 +510,4 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
-
 
