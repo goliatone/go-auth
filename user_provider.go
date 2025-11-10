@@ -64,6 +64,10 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 		return nil, errors.Wrap(err, errors.CategoryInternal, "failed to retrieve user during verification")
 	}
 
+	if err := ensureAuthenticatableUser(user); err != nil {
+		return nil, err
+	}
+
 	if user.LoginAttemptAt != nil {
 		expired, err := IsOutsideThresholdPeriod(*user.LoginAttemptAt, CoolDownPeriod)
 		if err != nil {
@@ -103,6 +107,7 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 		email:    user.Email,
 		username: user.Username,
 		role:     string(user.Role),
+		status:   user.Status,
 	}
 
 	return aid, nil
@@ -111,6 +116,10 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier string) (Identity, error) {
 	user, err := u.store.GetByIdentifier(ctx, identfier)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := ensureAuthenticatableUser(user); err != nil {
 		return nil, err
 	}
 
@@ -123,6 +132,7 @@ func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier st
 		id:       user.ID.String(),
 		username: user.Username,
 		role:     string(user.Role),
+		status:   user.Status,
 	}
 
 	return aid, nil
@@ -134,6 +144,7 @@ type authIdentity struct {
 	username string
 	email    string
 	role     string
+	status   UserStatus
 }
 
 func (a authIdentity) ID() string {
@@ -152,6 +163,13 @@ func (a authIdentity) Role() string {
 	return a.role
 }
 
+func (a authIdentity) Status() UserStatus {
+	if a.status == "" {
+		return UserStatusActive
+	}
+	return a.status
+}
+
 var _ Identity = authIdentity{}
 
 func defaultValidator(u *User) error {
@@ -163,4 +181,17 @@ func defaultValidator(u *User) error {
 			WithTextCode("INVALID_ROLE").
 			WithMetadata(map[string]any{"role": u.Role, "user_id": u.ID.String()})
 	}
+}
+
+func ensureAuthenticatableUser(user *User) error {
+	if user == nil {
+		return ErrIdentityNotFound
+	}
+
+	user.EnsureStatus()
+	if err := statusAuthError(user.Status); err != nil {
+		return err
+	}
+
+	return nil
 }
