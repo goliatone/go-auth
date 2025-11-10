@@ -9,6 +9,8 @@
 //   - UserStateMachine centralizes the transition graph, timestamp handling,
 //     hooks, and persistence. Embed the shared Users repository and invoke
 //     Transition with ActorRef metadata whenever an admin moves an account.
+//     Hook failures route through a configurable error handler so production
+//     services can translate panics into domain errors.
 //
 // Activity sinks:
 //   - ActivitySink is a light-weight audit emitter used by Auther and the state

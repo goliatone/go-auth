@@ -296,6 +296,20 @@ fmt.Println("new status:", updated.Status, "suspended at:", updated.SuspendedAt)
 
 See `examples/extensions/extensions.go` for an end-to-end sample that persists activity rows and decorates claims based on tenant context.
 
+Transition hooks bubble failures through a configurable handler. By default `go-auth` panics with a detailed message (great for development). In production override this behavior with `auth.WithStateMachineHookErrorHandler` to convert hook failures into domain errors or alerts:
+
+```go
+handler := func(ctx context.Context, phase auth.TransitionHookPhase, err error, tc auth.TransitionContext) error {
+    log.Printf("hook stage=%s user=%s error=%v", phase, tc.User.ID, err)
+    return fmt.Errorf("policy hook failed: %w", err)
+}
+
+stateMachine := auth.NewUserStateMachine(
+    repoManager.Users(),
+    auth.WithStateMachineHookErrorHandler(handler),
+)
+```
+
 ### ActivitySink Wiring
 
 `ActivitySink` is a small interface used across lifecycle transitions, login/impersonation flows, and password reset handlers:
