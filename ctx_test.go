@@ -636,6 +636,43 @@ func TestActorContextFromClaims_ClonesMaps(t *testing.T) {
 	assert.Equal(t, "tenant-1", claims.Metadata["tenant_id"])
 }
 
+func TestActorContextFromClaims_TenantOverrideKeys(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-override",
+		},
+		UID:      "user-override",
+		UserRole: "member",
+		Metadata: map[string]any{
+			"default_tenant": "tenant-override",
+			"org":            "org-override",
+		},
+	}
+
+	actor := ActorContextFromClaims(claims)
+	require.NotNil(t, actor)
+	assert.Equal(t, "tenant-override", actor.TenantID)
+	assert.Equal(t, "org-override", actor.OrganizationID)
+}
+
+func TestActorContextFromClaims_ImpersonatedFlag(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-flag",
+		},
+		UID:      "user-flag",
+		UserRole: "member",
+		Metadata: map[string]any{
+			"impersonated": true,
+		},
+	}
+
+	actor := ActorContextFromClaims(claims)
+	require.NotNil(t, actor)
+	assert.True(t, actor.IsImpersonated)
+	assert.Equal(t, "", actor.ImpersonatorID)
+}
+
 func TestActorContextHelpers(t *testing.T) {
 	ctx := context.Background()
 	actor := &ActorContext{
