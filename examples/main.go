@@ -51,6 +51,67 @@ type App struct {
 	logger *glog.BaseLogger
 }
 
+// UsersGuard models the go-users guard adapter, enforcing actor scope before allowing CRUD actions.
+type UsersGuard interface {
+	Authorize(ctx context.Context, actor *auth.ActorContext, action string) error
+}
+
+// ExampleUsersScopeGuard demonstrates how go-users would consume the actor payload injected by the middleware.
+type ExampleUsersScopeGuard struct {
+	logger glog.Logger
+}
+
+func (g ExampleUsersScopeGuard) Authorize(ctx context.Context, actor *auth.ActorContext, action string) error {
+	if actor == nil {
+		return errors.New("missing actor context", errors.CategoryAuth).
+			WithCode(errors.CodeUnauthorized)
+	}
+
+	if actor.TenantID == "" {
+		return errors.New("tenant scope required for admin guard", errors.CategoryAuth).
+			WithCode(errors.CodeForbidden)
+	}
+
+	if actor.IsImpersonated && g.logger != nil {
+		g.logger.Warn("impersonated request", "actor_id", actor.ActorID, "impersonator_id", actor.ImpersonatorID)
+	}
+
+	// Owners/admins can access every action; otherwise fall back to resource roles.
+	if actor.Role == "owner" || actor.Role == "admin" {
+		return nil
+	}
+
+	if role, ok := actor.ResourceRoles["admin:users"]; ok && role != "" {
+		return nil
+	}
+
+	return errors.New("insufficient permissions for "+action, errors.CategoryAuth).
+		WithCode(errors.CodeForbidden).
+		WithMetadata(map[string]any{
+			"actor_id": actor.ActorID,
+			"tenant":   actor.TenantID,
+			"action":   action,
+		})
+}
+
+// GuardMiddleware is the transport glue go-users/go-crud controllers use to run the guard before handlers.
+func GuardMiddleware(guard UsersGuard, action string) router.MiddlewareFunc {
+	return func(next router.HandlerFunc) router.HandlerFunc {
+		return func(ctx router.Context) error {
+			actor, ok := auth.ActorFromRouterContext(ctx)
+			if !ok {
+				return ctx.Status(http.StatusUnauthorized).SendString("missing actor context")
+			}
+
+			if err := guard.Authorize(ctx.Context(), actor, action); err != nil {
+				return ctx.Status(http.StatusForbidden).SendString(err.Error())
+			}
+
+			return next(ctx)
+		}
+	}
+}
+
 func (a *App) Config() *config.BaseConfig {
 	return a.config.Raw()
 }
@@ -138,9 +199,14 @@ func ProtectedRoutes(app *App) {
 	cfg := app.Config().GetAuth()
 
 	protected := app.auther.ProtectedRoute(cfg, app.auther.MakeClientRouteAuthErrorHandler(false))
+	usersGuard := GuardMiddleware(
+		ExampleUsersScopeGuard{logger: app.GetLogger("guard")},
+		"users:list",
+	)
 
 	p.Get("/me", ProfileShow(app), protected)
 	p.Post("/me", ProfileUpdate(app), protected)
+	p.Get("/admin/users", AdminUsersIndex(app), protected, usersGuard)
 }
 
 func viewContextWithGlobals(ctx router.Context, data router.ViewContext) router.ViewContext {
@@ -471,6 +537,15 @@ func ProfileShow(app *App) func(c router.Context) error {
 			"record": NewUserDTO(user),
 			// current_user automatically injected by JWT middleware
 		})
+	}
+}
+
+// AdminUsersIndex demonstrates how go-users controllers can depend on the actor payload provided by the middleware.
+func AdminUsersIndex(app *App) func(c router.Context) error {
+	return func(c router.Context) error {
+		actor, _ := auth.ActorFromRouterContext(c)
+		message := fmt.Sprintf("tenant=%s actor=%s is authorized to list users", actor.TenantID, actor.ActorID)
+		return c.Status(http.StatusOK).SendString(message)
 	}
 }
 
