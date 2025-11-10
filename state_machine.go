@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
@@ -46,6 +47,14 @@ type TransitionContext struct {
 // TransitionHook is executed before or after a transition.
 type TransitionHook func(ctx context.Context, tc TransitionContext) error
 
+// TransitionHookPhase identifies whether a hook ran before or after persistence.
+type TransitionHookPhase string
+
+const (
+	HookPhaseBefore TransitionHookPhase = "before_transition"
+	HookPhaseAfter  TransitionHookPhase = "after_transition"
+)
+
 // TransitionOption customizes state machine behavior.
 type TransitionOption func(*transitionOptions)
 
@@ -54,6 +63,9 @@ type UserStateMachine interface {
 	Transition(ctx context.Context, actor ActorRef, user *User, target UserStatus, opts ...TransitionOption) (*User, error)
 	CurrentStatus(user *User) UserStatus
 }
+
+// HookErrorHandler handles errors surfaced by transition hooks.
+type HookErrorHandler func(ctx context.Context, phase TransitionHookPhase, err error, tc TransitionContext) error
 
 // StateMachineOption customizes state machine construction.
 type StateMachineOption func(*userStateMachine)
@@ -71,6 +83,17 @@ func WithStateMachineClock(clock func() time.Time) StateMachineOption {
 func WithStateMachineActivitySink(sink ActivitySink) StateMachineOption {
 	return func(sm *userStateMachine) {
 		sm.activitySink = normalizeActivitySink(sink)
+	}
+}
+
+// WithStateMachineHookErrorHandler overrides how hook failures are propagated.
+// Provide a handler to convert hook errors into domain-specific responses,
+// otherwise the default handler panics with guidance for developers.
+func WithStateMachineHookErrorHandler(handler HookErrorHandler) StateMachineOption {
+	return func(sm *userStateMachine) {
+		if handler != nil {
+			sm.hookErrorHandler = handler
+		}
 	}
 }
 
@@ -162,6 +185,9 @@ func NewUserStateMachine(users Users, opts ...StateMachineOption) UserStateMachi
 		now:          time.Now,
 		activitySink: noopActivitySink{},
 		logger:       defLogger{},
+		hookErrorHandler: func(ctx context.Context, phase TransitionHookPhase, err error, tc TransitionContext) error {
+			return defaultHookErrorHandler(ctx, phase, err, tc)
+		},
 	}
 
 	for _, opt := range opts {
@@ -174,11 +200,12 @@ func NewUserStateMachine(users Users, opts ...StateMachineOption) UserStateMachi
 }
 
 type userStateMachine struct {
-	users        Users
-	transitions  map[UserStatus]map[UserStatus]struct{}
-	now          func() time.Time
-	activitySink ActivitySink
-	logger       Logger
+	users            Users
+	transitions      map[UserStatus]map[UserStatus]struct{}
+	now              func() time.Time
+	activitySink     ActivitySink
+	logger           Logger
+	hookErrorHandler HookErrorHandler
 }
 
 type transitionOptions struct {
@@ -248,7 +275,7 @@ func (sm *userStateMachine) Transition(ctx context.Context, actor ActorRef, user
 		Meta:  options.cloneMetadata(),
 	}
 
-	if err := sm.runHooks(ctx, options.beforeHooks, ctxData); err != nil {
+	if err := sm.runHooks(ctx, options.beforeHooks, ctxData, HookPhaseBefore); err != nil {
 		return nil, err
 	}
 
@@ -261,7 +288,7 @@ func (sm *userStateMachine) Transition(ctx context.Context, actor ActorRef, user
 
 	sm.applyUpdates(user, updated, target, from, chosenSuspension)
 
-	if err := sm.runHooks(ctx, options.afterHooks, ctxData); err != nil {
+	if err := sm.runHooks(ctx, options.afterHooks, ctxData, HookPhaseAfter); err != nil {
 		return nil, err
 	}
 
@@ -285,13 +312,16 @@ func (sm *userStateMachine) CurrentStatus(user *User) UserStatus {
 	return user.Status
 }
 
-func (sm *userStateMachine) runHooks(ctx context.Context, hooks []TransitionHook, data TransitionContext) error {
+func (sm *userStateMachine) runHooks(ctx context.Context, hooks []TransitionHook, data TransitionContext, phase TransitionHookPhase) error {
 	for _, hook := range hooks {
 		if hook == nil {
 			continue
 		}
 		if err := hook(ctx, data); err != nil {
-			return err
+			if sm.hookErrorHandler == nil {
+				return err
+			}
+			return sm.hookErrorHandler(ctx, phase, err, data)
 		}
 	}
 	return nil
@@ -335,6 +365,18 @@ func (sm *userStateMachine) buildStatusOptions(user *User, from, to UserStatus, 
 	}
 
 	return statusOpts, suspensionTime
+}
+
+func defaultHookErrorHandler(_ context.Context, phase TransitionHookPhase, err error, tc TransitionContext) error {
+	panic(fmt.Sprintf(
+		"go-auth: %s transition hook failed: %v\nUserID: %s from=%s to=%s reason=%s\nProvide auth.WithStateMachineHookErrorHandler to customize error handling in production.",
+		phase,
+		err,
+		tc.User.ID,
+		tc.From,
+		tc.To,
+		tc.Meta.Reason,
+	))
 }
 
 func (sm *userStateMachine) applyUpdates(user, updated *User, target, from UserStatus, suspensionTime *time.Time) {
