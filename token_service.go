@@ -47,6 +47,15 @@ func (ts *TokenServiceImpl) Generate(identity Identity, resourceRoles map[string
 		Resources: resourceRoles,
 	}
 
+	return ts.SignClaims(claims)
+}
+
+// SignClaims signs arbitrary JWT claims using the configured signing key.
+func (ts *TokenServiceImpl) SignClaims(claims *JWTClaims) (string, error) {
+	if claims == nil {
+		return "", errors.New("claims must not be nil", errors.CategoryInternal)
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	signedString, err := token.SignedString(ts.signingKey)
