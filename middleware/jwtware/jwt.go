@@ -38,6 +38,9 @@ type AuthClaims interface {
 	IsAtLeast(minRole string) bool
 }
 
+// ValidationListener is invoked after a token has been validated but before authorization checks.
+type ValidationListener func(ctx router.Context, claims AuthClaims) error
+
 type Config struct {
 	Filter              func(router.Context) bool
 	SuccessHandler      router.HandlerFunc
@@ -64,6 +67,10 @@ type Config struct {
 	// ContextEnricher is an optional function to propagate claims to the standard
 	// Go context. If provided, it will be called after successful token validation.
 	ContextEnricher func(c context.Context, claims AuthClaims) context.Context
+
+	// ValidationListeners are invoked after token validation succeeds. Use them to
+	// emit events, update schema caches, or perform bookkeeping before the request proceeds.
+	ValidationListeners []ValidationListener
 
 	// Template integration fields for automatic user context registration
 	// TemplateUserKey specifies the key for storing user data for templates in router context.
@@ -94,6 +101,10 @@ func New(config ...Config) router.MiddlewareFunc {
 
 			claims, err := cfg.TokenValidator.Validate(a)
 			if err != nil {
+				return cfg.ErrorHandler(ctx, err)
+			}
+
+			if err := cfg.runValidationListeners(ctx, claims); err != nil {
 				return cfg.ErrorHandler(ctx, err)
 			}
 
@@ -300,6 +311,18 @@ func keyfuncOptions(givenKeys map[string]keyfunc.GivenKey) keyfunc.Options {
 
 func (cfg *Config) getExtractors() []JWTExtractor {
 	return GetExtractors(cfg.TokenLookup, cfg.AuthScheme)
+}
+
+func (cfg *Config) runValidationListeners(ctx router.Context, claims AuthClaims) error {
+	for _, listener := range cfg.ValidationListeners {
+		if listener == nil {
+			continue
+		}
+		if err := listener(ctx, claims); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func GetExtractors(tokenLookup string, authSchemes ...string) []JWTExtractor {
