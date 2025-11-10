@@ -26,7 +26,8 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 	UID       string            `json:"uid,omitempty"`
 	UserRole  string            `json:"role,omitempty"`
-	Resources map[string]string `json:"res,omitempty"` // resource -> role mapping
+	Resources map[string]string `json:"res,omitempty"`      // resource -> role mapping
+	Metadata  map[string]any    `json:"metadata,omitempty"` // extension payload
 }
 
 // Verify interface compliance

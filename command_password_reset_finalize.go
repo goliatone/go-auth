@@ -14,7 +14,32 @@ type FinalizePasswordResetMesasge struct {
 }
 
 type FinalizePasswordResetHandler struct {
-	repo RepositoryManager
+	repo     RepositoryManager
+	activity ActivitySink
+	logger   Logger
+}
+
+// NewFinalizePasswordResetHandler creates a handler with sane defaults.
+func NewFinalizePasswordResetHandler(repo RepositoryManager) *FinalizePasswordResetHandler {
+	return &FinalizePasswordResetHandler{
+		repo:     repo,
+		activity: noopActivitySink{},
+		logger:   defLogger{},
+	}
+}
+
+// WithActivitySink sets the sink used to emit password reset events.
+func (h *FinalizePasswordResetHandler) WithActivitySink(sink ActivitySink) *FinalizePasswordResetHandler {
+	h.activity = normalizeActivitySink(sink)
+	return h
+}
+
+// WithLogger overrides the logger used by the handler.
+func (h *FinalizePasswordResetHandler) WithLogger(logger Logger) *FinalizePasswordResetHandler {
+	if logger != nil {
+		h.logger = logger
+	}
+	return h
 }
 
 func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event FinalizePasswordResetMesasge) error {
@@ -99,5 +124,37 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to finalize password reset")
 	}
 
+	h.recordActivity(ctx, reset)
+
 	return nil
+}
+
+func (h *FinalizePasswordResetHandler) recordActivity(ctx context.Context, reset *PasswordReset) {
+	if reset == nil || reset.UserID == nil {
+		return
+	}
+
+	event := ActivityEvent{
+		EventType: ActivityEventPasswordResetSuccess,
+		Actor: ActorRef{
+			ID:   reset.UserID.String(),
+			Type: "user",
+		},
+		UserID: reset.UserID.String(),
+		Metadata: map[string]any{
+			"password_reset_id": reset.ID.String(),
+		},
+		OccurredAt: time.Now(),
+	}
+
+	if err := normalizeActivitySink(h.activity).Record(ctx, event); err != nil {
+		h.getLogger().Warn("activity sink error during password reset: %v", err)
+	}
+}
+
+func (h *FinalizePasswordResetHandler) getLogger() Logger {
+	if h.logger != nil {
+		return h.logger
+	}
+	return defLogger{}
 }

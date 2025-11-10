@@ -21,11 +21,28 @@ const (
 	RoleOwner UserRole = "owner"
 )
 
+// UserStatus represents lifecycle states for a user account
+type UserStatus string
+
+const (
+	// UserStatusPending indicates the account exists but is not yet active
+	UserStatusPending UserStatus = "pending"
+	// UserStatusActive represents a fully active account
+	UserStatusActive UserStatus = "active"
+	// UserStatusSuspended indicates temporary suspension
+	UserStatusSuspended UserStatus = "suspended"
+	// UserStatusDisabled indicates manual disablement with no path back to active except admin intervention
+	UserStatusDisabled UserStatus = "disabled"
+	// UserStatusArchived signals the record should be treated as deleted/read-only
+	UserStatusArchived UserStatus = "archived"
+)
+
 // User is the user model
 type User struct {
 	bun.BaseModel  `bun:"table:users,alias:usr"`
 	ID             uuid.UUID      `bun:"id,pk,nullzero,type:uuid" json:"id,omitempty"`
 	Role           UserRole       `bun:"user_role,notnull" json:"user_role,omitempty"`
+	Status         UserStatus     `bun:"status,notnull,default:'active'" json:"status,omitempty"`
 	FirstName      string         `bun:"first_name,notnull" json:"first_name,omitempty"`
 	LastName       string         `bun:"last_name,notnull" json:"last_name,omitempty"`
 	Username       string         `bun:"username,notnull,unique" json:"username,omitempty"`
@@ -37,6 +54,7 @@ type User struct {
 	LoginAttempts  int            `bun:"login_attempts" json:"login_attempts,omitempty"`
 	LoginAttemptAt *time.Time     `bun:"login_attempt_at" json:"login_attempt_at,omitempty"`
 	LoggedInAt     *time.Time     `bun:"loggedin_at" json:"loggedin_at,omitempty"`
+	SuspendedAt    *time.Time     `bun:"suspended_at,nullzero" json:"suspended_at,omitempty"`
 	Metadata       map[string]any `bun:"metadata" json:"metadata,omitempty"`
 	ResetedAt      *time.Time     `bun:"reseted_at,nullzero" json:"reseted_at,omitempty"`
 	CreatedAt      *time.Time     `bun:"created_at,nullzero,default:current_timestamp" json:"created_at,omitempty"`
@@ -53,6 +71,53 @@ func (u *User) AddMetadata(key string, val any) *User {
 	}
 	u.Metadata[key] = val
 	return u
+}
+
+// EnsureStatus sets a default status when empty to keep DB constraints satisfied.
+func (u *User) EnsureStatus() *User {
+	if u == nil {
+		return u
+	}
+	if u.Status == "" {
+		u.Status = UserStatusActive
+	}
+	return u
+}
+
+// HasStatus reports whether the user is currently in the provided status.
+func (u *User) HasStatus(status UserStatus) bool {
+	if u == nil {
+		return false
+	}
+	if status == "" {
+		return false
+	}
+	return u.Status == status
+}
+
+// IsActive returns true when the user is marked active.
+func (u *User) IsActive() bool {
+	return u.HasStatus(UserStatusActive)
+}
+
+// IsPending returns true when the user is pending activation.
+func (u *User) IsPending() bool {
+	return u.HasStatus(UserStatusPending)
+}
+
+// IsSuspended returns true when the user is suspended.
+func (u *User) IsSuspended() bool {
+	return u.HasStatus(UserStatusSuspended)
+}
+
+// IsDisabled returns true when the user is disabled.
+func (u *User) IsDisabled() bool {
+	return u.HasStatus(UserStatusDisabled)
+}
+
+// IsArchived returns true when the user is archived.
+func (u *User) IsArchived() bool {
+	return u.HasStatus(UserStatusArchived)
 }
 
 // PasswordResetStep step on password reset

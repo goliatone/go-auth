@@ -3,6 +3,9 @@ package auth
 import (
 	"context"
 	"reflect"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type Auther struct {
@@ -14,6 +17,8 @@ type Auther struct {
 	audience        []string
 	logger          Logger
 	tokenService    TokenService
+	activitySink    ActivitySink
+	claimsDecorator ClaimsDecorator
 }
 
 // NewAuthenticator returns a new Authenticator
@@ -36,6 +41,8 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		issuer:          opts.GetIssuer(),
 		logger:          defLogger{},
 		tokenService:    tokenService,
+		activitySink:    noopActivitySink{},
+		claimsDecorator: noopClaimsDecorator{},
 	}
 }
 
@@ -59,60 +66,142 @@ func (s *Auther) WithResourceRoleProvider(provider ResourceRoleProvider) *Auther
 	return s
 }
 
+// WithActivitySink configures an ActivitySink for emitting auth events.
+func (s *Auther) WithActivitySink(sink ActivitySink) *Auther {
+	s.activitySink = normalizeActivitySink(sink)
+	return s
+}
+
+// WithClaimsDecorator configures a ClaimsDecorator for enriching JWTs.
+func (s *Auther) WithClaimsDecorator(decorator ClaimsDecorator) *Auther {
+	s.claimsDecorator = normalizeClaimsDecorator(decorator)
+	return s
+}
+
 // TokenService returns the TokenService instance used by this Authenticator
 func (s *Auther) TokenService() TokenService {
 	return s.tokenService
 }
 
-func (s Auther) Login(ctx context.Context, identifier, password string) (string, error) {
+func (s *Auther) Login(ctx context.Context, identifier, password string) (string, error) {
 	var err error
 	var identity Identity
 
 	if identity, err = s.provider.VerifyIdentity(ctx, identifier, password); err != nil {
 		s.logger.Error("Login verify identity error", "error", err)
+		s.emitAuthEvent(ctx, ActivityEventLoginFailure, ActorRef{Type: "unknown"}, "", map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
 		return "", err
 	}
 
 	if identity == nil || reflect.ValueOf(identity).IsZero() {
 		s.logger.Error("Login identity is nil or zero value")
+		s.emitAuthEvent(ctx, ActivityEventLoginFailure, ActorRef{Type: "unknown"}, "", map[string]any{
+			"identifier": identifier,
+			"error":      ErrIdentityNotFound.Error(),
+		})
 		return "", ErrIdentityNotFound
+	}
+
+	if status, err := s.ensureIdentityActive(identity); err != nil {
+		s.logger.Warn("Login blocked due to user status", "status", status, "error", err)
+		s.emitAuthEvent(ctx, ActivityEventLoginFailure, s.actorFromIdentity(identity), identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+			"status":     status,
+		})
+		return "", err
 	}
 
 	// Fetch resource roles and generate structured token
 	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
 		s.logger.Error("Login failed to fetch resource roles", "error", err)
+		s.emitAuthEvent(ctx, ActivityEventLoginFailure, s.actorFromIdentity(identity), identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
 		return "", err
 	}
 
-	return s.generateJWT(identity, resourceRoles)
+	token, err := s.generateJWT(ctx, identity, resourceRoles)
+	if err != nil {
+		s.emitAuthEvent(ctx, ActivityEventLoginFailure, s.actorFromIdentity(identity), identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
+		return "", err
+	}
+
+	s.emitAuthEvent(ctx, ActivityEventLoginSuccess, s.actorFromIdentity(identity), identity.ID(), map[string]any{
+		"identifier": identifier,
+	})
+
+	return token, nil
 }
 
-func (s Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
+func (s *Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
 	var err error
 	var identity Identity
 
 	if identity, err = s.provider.FindIdentityByIdentifier(ctx, identifier); err != nil {
 		s.logger.Error("Impersonate verify identity error", "error", err)
+		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, "", map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
 		return "", err
 	}
 
 	if identity == nil || reflect.ValueOf(identity).IsZero() {
 		s.logger.Error("Impersonate identity is nil")
+		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, "", map[string]any{
+			"identifier": identifier,
+			"error":      ErrIdentityNotFound.Error(),
+		})
 		return "", ErrIdentityNotFound
+	}
+
+	if status, err := s.ensureIdentityActive(identity); err != nil {
+		s.logger.Warn("Impersonation blocked due to user status", "status", status, "error", err)
+		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+			"status":     status,
+		})
+		return "", err
 	}
 
 	// Fetch resource roles and generate structured token
 	resourceRoles, err := s.roleProvider.FindResourceRoles(ctx, identity)
 	if err != nil {
 		s.logger.Error("Impersonate failed to fetch resource roles", "error", err)
+		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
 		return "", err
 	}
 
-	return s.generateJWT(identity, resourceRoles)
+	token, err := s.generateJWT(ctx, identity, resourceRoles)
+	if err != nil {
+		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, identity.ID(), map[string]any{
+			"identifier": identifier,
+			"error":      err.Error(),
+		})
+		return "", err
+	}
+
+	s.emitAuthEvent(ctx, ActivityEventImpersonationSuccess, ActorRef{Type: "system"}, identity.ID(), map[string]any{
+		"identifier": identifier,
+	})
+
+	return token, nil
 }
 
-func (s Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
+func (s *Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
 	identity, err := s.provider.FindIdentityByIdentifier(ctx, session.GetUserID())
 
 	if err != nil {
@@ -142,7 +231,109 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 }
 
 // generateJWT generates a JWT token using structured claims with resource-specific roles
-func (s Auther) generateJWT(identity Identity, resourceRoles map[string]string) (string, error) {
-	// Delegate to TokenService for token generation
-	return s.tokenService.Generate(identity, resourceRoles)
+func (s *Auther) generateJWT(ctx context.Context, identity Identity, resourceRoles map[string]string) (string, error) {
+	claims := s.newJWTClaims(identity, resourceRoles)
+	snapshot := captureImmutableClaims(claims)
+
+	decorator := normalizeClaimsDecorator(s.claimsDecorator)
+	if err := decorator.Decorate(ctx, identity, claims); err != nil {
+		s.logger.Error("claims decorator failed", "error", err)
+		return "", err
+	}
+
+	if err := snapshot.validate(claims); err != nil {
+		s.logger.Error("claims decorator mutated immutable claims", "error", err)
+		return "", err
+	}
+
+	return s.tokenService.SignClaims(claims)
+}
+
+func (s *Auther) newJWTClaims(identity Identity, resourceRoles map[string]string) *JWTClaims {
+	now := time.Now()
+
+	var aud jwt.ClaimStrings
+	if len(s.audience) > 0 {
+		aud = make(jwt.ClaimStrings, len(s.audience))
+		copy(aud, s.audience)
+	}
+
+	return &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    s.issuer,
+			Subject:   identity.ID(),
+			Audience:  aud,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(s.tokenExpiration) * time.Hour)),
+		},
+		UID:       identity.ID(),
+		UserRole:  identity.Role(),
+		Resources: resourceRoles,
+	}
+}
+
+func (s *Auther) emitAuthEvent(ctx context.Context, eventType ActivityEventType, actor ActorRef, userID string, metadata map[string]any) {
+	sink := normalizeActivitySink(s.activitySink)
+	event := ActivityEvent{
+		EventType: eventType,
+		Actor:     actor,
+		UserID:    userID,
+		Metadata:  metadata,
+	}
+
+	if event.Metadata == nil {
+		event.Metadata = map[string]any{}
+	}
+
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = time.Now()
+	}
+
+	if err := sink.Record(ctx, event); err != nil {
+		s.logger.Warn("activity sink record error: %v", err)
+	}
+}
+
+func (s *Auther) actorFromIdentity(identity Identity) ActorRef {
+	if identity == nil {
+		return ActorRef{Type: "unknown"}
+	}
+
+	return ActorRef{
+		ID:   identity.ID(),
+		Type: "user",
+	}
+}
+
+func (s *Auther) ensureIdentityActive(identity Identity) (UserStatus, error) {
+	status, ok := identityStatus(identity)
+	if !ok {
+		return "", nil
+	}
+
+	if status == "" {
+		status = UserStatusActive
+	}
+
+	if err := statusAuthError(status); err != nil {
+		return status, err
+	}
+
+	return status, nil
+}
+
+type statusAwareIdentity interface {
+	Status() UserStatus
+}
+
+func identityStatus(identity Identity) (UserStatus, bool) {
+	if identity == nil {
+		return "", false
+	}
+
+	if sa, ok := identity.(statusAwareIdentity); ok {
+		return sa.Status(), true
+	}
+
+	return "", false
 }

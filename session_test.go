@@ -93,6 +93,8 @@ func TestSessionFromAuthClaims(t *testing.T) {
 		// Should not have resources for basic claims
 		_, hasResources := data["resources"]
 		assert.False(t, hasResources)
+		_, hasMetadata := data["metadata"]
+		assert.False(t, hasMetadata)
 	})
 
 	t.Run("claims with resource-specific roles", func(t *testing.T) {
@@ -135,6 +137,8 @@ func TestSessionFromAuthClaims(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "owner", resourceMap["project-123"])
 		assert.Equal(t, "admin", resourceMap["document-456"])
+		_, hasMetadata := data["metadata"]
+		assert.False(t, hasMetadata)
 	})
 
 	t.Run("claims with empty resources map", func(t *testing.T) {
@@ -164,6 +168,43 @@ func TestSessionFromAuthClaims(t *testing.T) {
 		// Empty resources map should not be included
 		_, hasResources := data["resources"]
 		assert.False(t, hasResources)
+		_, hasMetadata := data["metadata"]
+		assert.False(t, hasMetadata)
+	})
+
+	t.Run("claims metadata is exposed to session data", func(t *testing.T) {
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   userID,
+				Audience:  []string{"test:audience"},
+				Issuer:    "test-issuer",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expTime),
+			},
+			UID:      userID,
+			UserRole: "member",
+			Metadata: map[string]any{
+				"tenant":   "acme",
+				"features": []string{"beta"},
+			},
+		}
+
+		session, err := testSessionFromAuthClaims(claims)
+		assert.NoError(t, err)
+		assert.NotNil(t, session)
+
+		data := session.GetData()
+		assert.NotNil(t, data)
+
+		metadata, ok := data["metadata"]
+		assert.True(t, ok)
+		metaMap, ok := metadata.(map[string]any)
+		assert.True(t, ok)
+		assert.Equal(t, "acme", metaMap["tenant"])
+
+		features, ok := metaMap["features"].([]string)
+		assert.True(t, ok)
+		assert.ElementsMatch(t, []string{"beta"}, features)
 	})
 
 	t.Run("nil claims should return error", func(t *testing.T) {
@@ -310,8 +351,14 @@ func testSessionFromAuthClaims(claims auth.AuthClaims) (*auth.SessionObject, err
 	data["role"] = claims.Role()
 
 	// Add resource roles if available (for JWTClaims implementation)
-	if jwtClaims, ok := claims.(*auth.JWTClaims); ok && len(jwtClaims.Resources) > 0 {
-		data["resources"] = jwtClaims.Resources
+	if jwtClaims, ok := claims.(*auth.JWTClaims); ok {
+		if len(jwtClaims.Resources) > 0 {
+			data["resources"] = jwtClaims.Resources
+		}
+
+		if len(jwtClaims.Metadata) > 0 {
+			data["metadata"] = jwtClaims.Metadata
+		}
 	}
 
 	// Convert audience from jwt.ClaimStrings to []string

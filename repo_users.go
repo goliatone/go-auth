@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/mail"
+	"strings"
 	"time"
 
-	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/google/uuid"
-	"github.com/nyaruka/phonenumbers"
 	"github.com/uptrace/bun"
 )
 
@@ -24,13 +23,7 @@ AND (
 ) RETURNING *;`
 
 type Users interface {
-	Raw(ctx context.Context, sql string, args ...any) ([]*User, error)
-	RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]*User, error)
-
-	Get(ctx context.Context, criteria ...repository.SelectCriteria) (*User, error)
-	GetByID(ctx context.Context, id string, criteria ...repository.SelectCriteria) (*User, error)
-	GetByIdentifier(ctx context.Context, identifier string) (*User, error)
-	GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string) (*User, error)
+	repository.Repository[*User]
 
 	TrackAttemptedLogin(ctx context.Context, user *User) error
 	TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *User) error
@@ -40,146 +33,139 @@ type Users interface {
 	Register(ctx context.Context, user *User) (*User, error)
 	RegisterTx(ctx context.Context, tx bun.IDB, user *User) (*User, error)
 	GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *User) (*User, error)
-	CreateTx(ctx context.Context, tx bun.IDB, record *User) (*User, error)
-
 	GetOrCreate(ctx context.Context, record *User) (*User, error)
 	GetOrCreateTx(ctx context.Context, tx bun.IDB, record *User) (*User, error)
-
-	Update(ctx context.Context, record *User, criteria ...repository.UpdateCriteria) (*User, error)
-	UpdateTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.UpdateCriteria) (*User, error)
-
+	Create(ctx context.Context, record *User, criteria ...repository.InsertCriteria) (*User, error)
+	CreateTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.InsertCriteria) (*User, error)
 	Upsert(ctx context.Context, record *User, criteria ...repository.UpdateCriteria) (*User, error)
 	UpsertTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.UpdateCriteria) (*User, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error)
+	UpdateStatusTx(ctx context.Context, tx bun.IDB, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error)
+	Suspend(ctx context.Context, actor ActorRef, user *User, opts ...TransitionOption) (*User, error)
+	Reinstate(ctx context.Context, actor ActorRef, user *User, opts ...TransitionOption) (*User, error)
 
 	ResetPassword(ctx context.Context, id uuid.UUID, passwordHash string) error
 	ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error
 }
 
 type users struct {
-	db     *bun.DB
-	driver string
+	repository.Repository[*User]
+	db                  *bun.DB
+	stateMachine        UserStateMachine
+	stateMachineOptions []StateMachineOption
 }
 
-func NewUsersRepository(db *bun.DB) Users {
-	return &users{
-		db:     db,
-		driver: repository.DetectDriver(db),
+var (
+	_ Users                        = (*users)(nil)
+	_ repository.Repository[*User] = (*users)(nil)
+)
+
+type UsersOption func(*users)
+
+func NewUsersRepository(db *bun.DB, opts ...UsersOption) Users {
+	repo := repository.NewRepository[*User](db, repository.ModelHandlers[*User]{
+		NewRecord: func() *User { return &User{} },
+		GetID: func(u *User) uuid.UUID {
+			if u == nil {
+				return uuid.Nil
+			}
+			return u.ID
+		},
+		SetID: func(u *User, id uuid.UUID) {
+			if u != nil {
+				u.ID = id
+			}
+		},
+	})
+
+	repoUsers := &users{
+		Repository: repo,
+		db:         db,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(repoUsers)
+		}
+	}
+
+	return repoUsers
+}
+
+func WithUsersStateMachineOptions(options ...StateMachineOption) UsersOption {
+	return func(u *users) {
+		if len(options) == 0 {
+			return
+		}
+		u.stateMachineOptions = append(u.stateMachineOptions, options...)
+		u.stateMachine = nil
 	}
 }
 
-func (a *users) mapError(err error) error {
-	if err == nil {
-		return nil
+func WithUsersStateMachine(sm UserStateMachine) UsersOption {
+	return func(u *users) {
+		u.stateMachine = sm
 	}
-
-	if errors.IsWrapped(err) {
-		return err
-	}
-
-	return repository.MapDatabaseError(err, a.driver)
-}
-
-func (a *users) Raw(ctx context.Context, sql string, args ...any) ([]*User, error) {
-	return a.RawTx(ctx, a.db, sql, args...)
-}
-
-func (a *users) RawTx(ctx context.Context, tx bun.IDB, sql string, args ...any) ([]*User, error) {
-	records := []*User{}
-
-	if err := tx.NewRaw(sql, args...).Scan(ctx, &records); err != nil {
-		return records, err
-	}
-
-	return records, nil
-}
-
-func (a *users) Get(ctx context.Context, criteria ...repository.SelectCriteria) (*User, error) {
-	record := &User{}
-
-	q := a.db.NewSelect().
-		Model(record)
-
-	for _, c := range criteria {
-		q.Apply(c)
-	}
-
-	if err := q.Limit(1).Scan(ctx); err != nil {
-		// TODO: Propagate error so we can see the original error
-		return nil, repository.NewRecordNotFound().
-			WithMetadata(map[string]any{
-				"criteria": criteria,
-				"error":    err.Error(),
-			})
-	}
-
-	return record, nil
-}
-
-func (a *users) GetByID(ctx context.Context, id string, criteria ...repository.SelectCriteria) (*User, error) {
-	criteria = append([]repository.SelectCriteria{
-		repository.SelectByID(id),
-	}, criteria...)
-
-	return a.Get(ctx, criteria...)
-}
-
-func (a *users) CreateTx(ctx context.Context, tx bun.IDB, record *User) (*User, error) {
-
-	if record.Role == "" {
-		record.Role = RoleGuest
-	}
-
-	if record.ID == uuid.Nil {
-		record.ID = uuid.New()
-	}
-
-	_, err := tx.NewInsert().Model(record).Returning("*").Exec(ctx)
-	return record, err
-}
-
-func (a *users) RegisterTx(ctx context.Context, tx bun.IDB, user *User) (*User, error) {
-	_, err := tx.NewInsert().Model(user).Returning("*").Exec(ctx)
-	return user, err
 }
 
 func (a *users) Register(ctx context.Context, user *User) (*User, error) {
 	return a.RegisterTx(ctx, a.db, user)
 }
 
-func (a *users) GetByIdentifier(ctx context.Context, identifier string) (*User, error) {
-	return a.GetByIdentifierTx(ctx, a.db, identifier)
+func (a *users) RegisterTx(ctx context.Context, tx bun.IDB, user *User) (*User, error) {
+	return a.CreateTx(ctx, tx, user)
 }
 
-func (a *users) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string) (*User, error) {
-	column := "username"
-	if isEmail(identifier) {
-		column = "email"
-	} else if isUUID(identifier) {
-		column = "id"
+func (a *users) GetByIdentifier(ctx context.Context, identifier string, criteria ...repository.SelectCriteria) (*User, error) {
+	return a.GetByIdentifierTx(ctx, a.db, identifier, criteria...)
+}
+
+func (a *users) GetByIdentifierTx(ctx context.Context, tx bun.IDB, identifier string, criteria ...repository.SelectCriteria) (*User, error) {
+	options := resolveUserIdentifier(identifier)
+	if len(options) == 0 {
+		options = []identifierOption{
+			{
+				column: "id",
+				value:  strings.TrimSpace(identifier),
+			},
+		}
 	}
 
-	record := &User{}
-	q := tx.NewSelect().
-		Model(record).
-		Where(fmt.Sprintf("?TableAlias.%s %s ?", column, "="), identifier).
-		Limit(1)
+	for _, opt := range options {
+		record := &User{}
+		q := tx.NewSelect().Model(record)
 
-	var err error
-	found := 0
+		for _, c := range criteria {
+			q.Apply(c)
+		}
 
-	if found, err = q.ScanAndCount(ctx); err != nil {
-		return nil, err
+		err := q.
+			Where(fmt.Sprintf("?TableAlias.%s = ?", opt.column), opt.value).
+			Limit(1).
+			Scan(ctx)
+
+		if err != nil {
+			if repository.IsRecordNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		return record, nil
 	}
 
-	if found == 0 {
-		return nil, repository.NewRecordNotFound().
-			WithMetadata(map[string]any{
-				"column":      column,
-				"identfifier": identifier,
-			})
-	}
+	return nil, repository.NewRecordNotFound().
+		WithMetadata(map[string]any{
+			"identifier": identifier,
+		})
+}
 
-	return record, nil
+func (a *users) Create(ctx context.Context, record *User, criteria ...repository.InsertCriteria) (*User, error) {
+	return a.CreateTx(ctx, a.db, record, criteria...)
+}
+
+func (a *users) CreateTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.InsertCriteria) (*User, error) {
+	prepareUserDefaults(record)
+	return a.Repository.CreateTx(ctx, tx, record, criteria...)
 }
 
 func (a *users) ResetPassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
@@ -187,7 +173,7 @@ func (a *users) ResetPassword(ctx context.Context, id uuid.UUID, passwordHash st
 }
 
 func (a *users) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
-	res, err := a.RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, id.String())
+	res, err := a.Repository.RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, id.String())
 	if err != nil {
 		return err
 	}
@@ -239,38 +225,9 @@ func (a *users) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *Use
 	now := time.Now()
 	record.LoginAttemptAt = &now
 
-	_, err := a.UpdateTx(ctx, tx, record, criteria...)
+	_, err := a.Repository.UpdateTx(ctx, tx, record, criteria...)
 
 	return err
-}
-
-func (a *users) Update(ctx context.Context, record *User, criteria ...repository.UpdateCriteria) (*User, error) {
-	return a.UpdateTx(ctx, a.db, record, criteria...)
-}
-
-func (a *users) UpdateTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.UpdateCriteria) (*User, error) {
-	q := tx.NewUpdate().
-		Model(record)
-
-	for _, c := range criteria {
-		q.Apply(c)
-	}
-
-	res, err := q.
-		OmitZero().
-		WherePK().
-		Returning("*").
-		Exec(ctx)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if err = repository.SQLExpectedCount(res, 1); err != nil {
-		return nil, err
-	}
-
-	return record, nil
 }
 
 func (a *users) Upsert(ctx context.Context, record *User, criteria ...repository.UpdateCriteria) (*User, error) {
@@ -283,19 +240,36 @@ func (a *users) UpsertTx(ctx context.Context, tx bun.IDB, record *User, criteria
 		identifier = record.ID.String()
 	}
 
-	user, err := a.GetByIdentifierTx(ctx, tx, identifier)
+	user, err := a.Repository.GetByIdentifierTx(ctx, tx, identifier)
 	if err == nil {
 		record.ID = user.ID
-		return a.UpdateTx(ctx, tx, record, criteria...)
+		return a.Repository.UpdateTx(ctx, tx, record, criteria...)
 	}
 
-	// If we did not find a record, we will create it
-	// but if it is a different error, then eject.
 	if !repository.IsRecordNotFound(err) {
 		return nil, err
 	}
 
 	return a.RegisterTx(ctx, tx, record)
+}
+
+func (a *users) UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error) {
+	return a.UpdateStatusTx(ctx, a.db, id, status, opts...)
+}
+
+func (a *users) UpdateStatusTx(ctx context.Context, tx bun.IDB, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error) {
+	record := &User{
+		ID:     id,
+		Status: status,
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(record)
+		}
+	}
+
+	return a.Repository.UpdateTx(ctx, tx, record, repository.UpdateByID(id.String()))
 }
 
 func (a *users) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *User) (*User, error) {
@@ -304,13 +278,11 @@ func (a *users) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *User) (
 		identifier = record.ID.String()
 	}
 
-	user, err := a.GetByIdentifierTx(ctx, tx, identifier)
+	user, err := a.Repository.GetByIdentifierTx(ctx, tx, identifier)
 	if err == nil {
 		return user, nil
 	}
 
-	// If we did not find a record, we will create it
-	// but if it is a different error, then eject.
 	if !repository.IsRecordNotFound(err) {
 		return nil, err
 	}
@@ -328,8 +300,7 @@ func (a *users) GetOrCreateTx(ctx context.Context, tx bun.IDB, record *User) (*U
 		identifier = record.ID.String()
 	}
 
-	fmt.Printf("get by identifier: %s", identifier)
-	user, err := a.GetByIdentifierTx(ctx, tx, identifier)
+	user, err := a.Repository.GetByIdentifierTx(ctx, tx, identifier)
 	if err == nil {
 		return user, nil
 	}
@@ -339,6 +310,75 @@ func (a *users) GetOrCreateTx(ctx context.Context, tx bun.IDB, record *User) (*U
 	}
 
 	return a.CreateTx(ctx, tx, record)
+}
+
+func (a *users) Suspend(ctx context.Context, actor ActorRef, user *User, opts ...TransitionOption) (*User, error) {
+	return a.lifecycleMachine().Transition(ctx, actor, user, UserStatusSuspended, opts...)
+}
+
+func (a *users) Reinstate(ctx context.Context, actor ActorRef, user *User, opts ...TransitionOption) (*User, error) {
+	return a.lifecycleMachine().Transition(ctx, actor, user, UserStatusActive, opts...)
+}
+
+// StatusUpdateOption allows callers to mutate the user record before persisting status changes.
+type StatusUpdateOption func(*User)
+
+// WithSuspendedAt sets the SuspendedAt timestamp during a status transition.
+func WithSuspendedAt(at *time.Time) StatusUpdateOption {
+	return func(u *User) {
+		u.SuspendedAt = at
+	}
+}
+
+func prepareUserDefaults(record *User) {
+	if record == nil {
+		return
+	}
+
+	if record.Role == "" {
+		record.Role = RoleGuest
+	}
+
+	record.EnsureStatus()
+
+	if record.ID == uuid.Nil {
+		record.ID = uuid.New()
+	}
+}
+
+type identifierOption struct {
+	column string
+	value  string
+}
+
+func resolveUserIdentifier(identifier string) []identifierOption {
+	trimmed := strings.TrimSpace(identifier)
+	if trimmed == "" {
+		return nil
+	}
+
+	options := make([]identifierOption, 0, 3)
+
+	if isUUID(trimmed) {
+		options = append(options, identifierOption{
+			column: "id",
+			value:  trimmed,
+		})
+	}
+
+	if isEmail(trimmed) {
+		options = append(options, identifierOption{
+			column: "email",
+			value:  trimmed,
+		})
+	}
+
+	options = append(options, identifierOption{
+		column: "username",
+		value:  trimmed,
+	})
+
+	return options
 }
 
 func isEmail(email string) bool {
@@ -351,7 +391,9 @@ func isUUID(identifier string) bool {
 	return err == nil
 }
 
-func isPhone(identifier string) bool {
-	_, err := phonenumbers.Parse(identifier, "")
-	return err == nil
+func (a *users) lifecycleMachine() UserStateMachine {
+	if a.stateMachine == nil {
+		a.stateMachine = NewUserStateMachine(a, a.stateMachineOptions...)
+	}
+	return a.stateMachine
 }

@@ -175,8 +175,14 @@ func sessionFromAuthClaims(claims AuthClaims) (*SessionObject, error) {
 	data["role"] = claims.Role()
 
 	// Add resource roles if available (for JWTClaims implementation)
-	if jwtClaims, ok := claims.(*JWTClaims); ok && len(jwtClaims.Resources) > 0 {
-		data["resources"] = jwtClaims.Resources
+	if jwtClaims, ok := claims.(*JWTClaims); ok {
+		if len(jwtClaims.Resources) > 0 {
+			data["resources"] = jwtClaims.Resources
+		}
+
+		if len(jwtClaims.Metadata) > 0 {
+			data["metadata"] = jwtClaims.Metadata
+		}
 	}
 
 	// Convert audience from jwt.ClaimStrings to []string

@@ -20,6 +20,11 @@ func (m *mockTokenService) Generate(identity Identity, resourceRoles map[string]
 	return args.String(0), args.Error(1)
 }
 
+func (m *mockTokenService) SignClaims(claims *JWTClaims) (string, error) {
+	args := m.Called(claims)
+	return args.String(0), args.Error(1)
+}
+
 func (m *mockTokenService) Validate(tokenString string) (AuthClaims, error) {
 	args := m.Called(tokenString)
 	if args.Get(0) == nil {

@@ -253,6 +253,99 @@ The handler returns JSON:
 
 Responses include `Cache-Control: no-store`, so clients fetch fresh tokens as needed. Call this endpoint whenever a token expires or before issuing state-changing requests in a long-lived SPA session.
 
+## Lifecycle Extensions
+
+### User Status & State Machine
+
+`go-auth` persists lifecycle metadata through two columns on `users`: `status` (`pending`, `active`, `suspended`, `disabled`, `archived`) and `suspended_at` (timestamp set whenever a user enters or exits the suspended state). The default `UserStateMachine` enforces the transition graph (`archived` is terminal, `pending` can only move to `active` or `disabled`, etc.), keeps timestamps in sync, and publishes ActivitySink events.
+
+Use the shared `Users` repository helpers (`UpdateStatus`, `Suspend`, `Reinstate`) or work directly with the state machine when you need options such as `WithTransitionReason`, `WithTransitionMetadata`, or custom hooks:
+
+```go
+auditSink := auth.ActivitySinkFunc(func(ctx context.Context, event auth.ActivityEvent) error {
+    log.Printf(
+        "user %s transitioned %s -> %s (reason=%v)",
+        event.UserID,
+        event.FromStatus,
+        event.ToStatus,
+        event.Metadata["reason"],
+    )
+    return nil
+})
+
+stateMachine := auth.NewUserStateMachine(
+    repoManager.Users(),
+    auth.WithStateMachineActivitySink(auditSink),
+)
+
+actor := auth.ActorRef{ID: "admin-42", Type: "admin"}
+updated, err := stateMachine.Transition(
+    ctx,
+    actor,
+    user,
+    auth.UserStatusSuspended,
+    auth.WithTransitionReason("manual review"),
+    auth.WithTransitionMetadata(map[string]any{"ticket": "SEC-204"}),
+)
+if err != nil {
+    panic(err)
+}
+
+fmt.Println("new status:", updated.Status, "suspended at:", updated.SuspendedAt)
+```
+
+See `examples/extensions/extensions.go` for an end-to-end sample that persists activity rows and decorates claims based on tenant context.
+
+### ActivitySink Wiring
+
+`ActivitySink` is a small interface used across lifecycle transitions, login/impersonation flows, and password reset handlers:
+
+- `ActivityEvent.EventType` distinguishes lifecycle (`user.status.changed`), login, impersonation, and password reset actions.
+- `ActorRef` identifies who triggered the change (admin dashboard, API, system job).
+- `Metadata` is an open map for reasons, ticket numbers, IP addresses, etc.
+- Failures are logged; auth flows continue unless you wrap the sink with your own retry/alerting logic.
+
+Configure sinks wherever lifecycle events occur:
+
+```go
+auditSink := auth.ActivitySinkFunc(func(ctx context.Context, event auth.ActivityEvent) error {
+    log.Printf("activity event=%s user=%s actor=%s", event.EventType, event.UserID, event.Actor.Type)
+    return nil
+})
+
+stateMachine := auth.NewUserStateMachine(users,
+    auth.WithStateMachineActivitySink(auditSink),
+)
+
+auther := auth.NewAuthenticator(provider, cfg).
+    WithActivitySink(auditSink)
+```
+
+The same sink can forward events to a SQL table, queue, or logging pipeline. Refer to `examples/extensions/extensions.go` for a Postgres-based implementation and batching hints.
+
+### ClaimsDecorator Hook
+
+Use `Auther.WithClaimsDecorator` to enrich JWTs with tenant metadata or derived resource roles before they are signed. Decorators receive the pending `JWTClaims` and **may only** mutate extension fields such as `Resources`, `Metadata`, or additional custom payload that your product documents. Core JWT claims (`sub`, `uid`, `iss`, `aud`, `iat`, `exp`) are guarded and any attempt to edit them aborts token generation.
+
+```go
+decorator := auth.ClaimsDecoratorFunc(func(ctx context.Context, identity auth.Identity, claims *auth.JWTClaims) error {
+	if claims.Metadata == nil {
+		claims.Metadata = map[string]any{}
+	}
+	claims.Metadata["tenant_id"] = lookupTenant(identity.ID())
+	if claims.Resources == nil {
+		claims.Resources = map[string]string{}
+	}
+	claims.Resources["team:"+identity.ID()] = "editor"
+	return nil
+})
+
+auther := auth.NewAuthenticator(provider, cfg).
+	WithClaimsDecorator(decorator)
+```
+
+If the decorator returns an error the token flow stops, the failure is logged, and no JWT is issued. Coordinate decorations with your `ActivitySink` so downstream services can reconcile claims with lifecycle transitions. Additional wiring tips and a multi-tenant example live in `examples/extensions/extensions.go`.
+
 ## API Reference
 
 ### TokenService Access
