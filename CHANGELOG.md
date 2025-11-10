@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.15.0](https://github.com/goliatone/go-auth/compare/v0.14.0...v0.15.0) - (2025-11-10)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.0 ([e887f12](https://github.com/goliatone/go-auth/commit/e887f126f804721535b995e36344040c4ba51844))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Validation listener to jwt middleware ([5b6dad1](https://github.com/goliatone/go-auth/commit/5b6dad10650661281e820f1e77eb1d356de37c92))  - (goliatone)
+- State machine updates ([bff5cb7](https://github.com/goliatone/go-auth/commit/bff5cb7d7ae6de6653282349e7fa1da8c5aaef22))  - (goliatone)
+- Validation listener hook ([4816eee](https://github.com/goliatone/go-auth/commit/4816eeec77e4999302d3ba31172e0abdd6e63cb5))  - (goliatone)
+- ActorContext to provide auth info ([4da3fe0](https://github.com/goliatone/go-auth/commit/4da3fe00990f4bb43ad99d5c334490ca49e95bf3))  - (goliatone)
+- ResourceRoles and ClaimsMetadatada ([40af1d8](https://github.com/goliatone/go-auth/commit/40af1d8966a797dec58e03f67085199a9b07abe2))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.14.0 ([be05de4](https://github.com/goliatone/go-auth/commit/be05de43a445031e5afe3de46a5967d0cef1db9b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([e1ff210](https://github.com/goliatone/go-auth/commit/e1ff210131db2e8af00cbbeaa9b1bab2f48db961))  - (goliatone)
+- Update examples ([dcb15d6](https://github.com/goliatone/go-auth/commit/dcb15d62b58669c6260869dfe433b5332406056f))  - (goliatone)
+- Update docs ([5d4dd30](https://github.com/goliatone/go-auth/commit/5d4dd3092acf12e9c1b230abdfa8bd2cce647e5c))  - (goliatone)
+
 # [0.14.0](https://github.com/goliatone/go-auth/compare/v0.13.0...v0.14.0) - (2025-11-10)
 
 ## <!-- 13 -->📦 Bumps
