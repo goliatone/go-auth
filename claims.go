@@ -83,6 +83,16 @@ func (c *JWTClaims) CanDelete(resource string) bool {
 	return UserRole(c.UserRole).CanDelete()
 }
 
+// ResourceRoles exposes resource-specific roles for optional context enrichment.
+func (c *JWTClaims) ResourceRoles() map[string]string {
+	return c.Resources
+}
+
+// ClaimsMetadata exposes metadata extensions for optional context enrichment.
+func (c *JWTClaims) ClaimsMetadata() map[string]any {
+	return c.Metadata
+}
+
 // HasRole checks if the user has a specific role (either global or for any resource)
 func (c *JWTClaims) HasRole(role string) bool {
 	if c.UserRole == role {
