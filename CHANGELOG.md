@@ -1,19 +1,35 @@
 # Changelog
 
-# [Unreleased](https://github.com/goliatone/go-auth/compare/v0.13.0...HEAD) - (TBD)
+# [0.14.0](https://github.com/goliatone/go-auth/compare/v0.13.0...v0.14.0) - (2025-11-10)
 
-## <!-- 30 -->⚠️ Migration Notes
+## <!-- 13 -->📦 Bumps
 
-- Apply `data/sql/migrations/20240601090000_user_status.up.sql` before rolling out new binaries; the migration adds `users.status`/`users.suspended_at` with safe defaults so legacy services keep working until they link the updated library.
-- Keep the previous binary running until the schema change is confirmed, then deploy the new release that reads the columns and emits lifecycle events.
-- If a service lags behind, the new columns default every user to `active` and `suspended_at = NULL`, so rollback is limited to stopping the upgraded binary; no data cleanup is required unless you already performed transitions.
+- Bump version: v0.14.0 ([a81152d](https://github.com/goliatone/go-auth/commit/a81152d00b7804bcaef7da4b9c47657f3776a833))  - (goliatone)
 
-## <!-- 7 -->🔧 Configuration Flags & Hooks
+## <!-- 16 -->➕ Add
 
-- `Users.UpdateStatus`, `Users.Suspend`, and `Users.Reinstate` wrap the shared `UserStateMachine`; inject custom hooks through `WithUsersStateMachineOptions` and `WithStateMachineActivitySink`.
-- Propagate lifecycle and login events by supplying `auth.WithActivitySink` on authenticators and state machines. The sink is optional; default behavior remains no-op.
-- Extend issued JWTs with tenant context by calling `auth.WithClaimsDecorator`—decorators may only touch `claims.Resources`, `claims.Metadata`, or additional extension fields you own.
-- Transition options such as `auth.WithTransitionReason`, `auth.WithTransitionMetadata`, and `auth.WithBeforeTransitionHook` are safe defaults (no action required) but available for policies that need granular auditing.
+- Sing claims expose ([c58732c](https://github.com/goliatone/go-auth/commit/c58732cec65573e369009183e3a5f27165dcdae2))  - (goliatone)
+- Support custom roles ([28d5c08](https://github.com/goliatone/go-auth/commit/28d5c085f60d41fc9f03eec9644c7e689097a2ee))  - (goliatone)
+- Livecycle support ([491b915](https://github.com/goliatone/go-auth/commit/491b915c1c50001e29706950ac2138656bd088c8))  - (goliatone)
+- User status ([9543074](https://github.com/goliatone/go-auth/commit/9543074be4b4a650376b5dcb088d1c5dd2a372d7))  - (goliatone)
+- Activity sink for auth ([a71eadf](https://github.com/goliatone/go-auth/commit/a71eadfb3b9d936a9b74957901911c442509191e))  - (goliatone)
+- New errors for transitions and status ([08d1ad1](https://github.com/goliatone/go-auth/commit/08d1ad12d84379b42158e336178ee5c9eec28ac8))  - (goliatone)
+- Extended claims to customize roles ([fc9e07b](https://github.com/goliatone/go-auth/commit/fc9e07bc103ac0c932309139f28e67cc9ab6787e))  - (goliatone)
+- Activity tracker and state machine ([3aaf3c6](https://github.com/goliatone/go-auth/commit/3aaf3c67d1f4a0b7864f27f400e652774b4580e8))  - (goliatone)
+- Migrations for new features ([84b003f](https://github.com/goliatone/go-auth/commit/84b003f3583bc213f9feba1e8106c23284366b5c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.13.0 ([97a4756](https://github.com/goliatone/go-auth/commit/97a4756d2e2021d9a4d5976f30619847d3695e38))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#8](https://github.com/goliatone/go-auth/pull/8): lifecycle management ([e85835b](https://github.com/goliatone/go-auth/commit/e85835bc0f1a430b251a09ae75af93d84333a271))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([52ff90d](https://github.com/goliatone/go-auth/commit/52ff90de54314055136b90f9b893cf05ceec7099))  - (goliatone)
+- Update tests ([1fdbf34](https://github.com/goliatone/go-auth/commit/1fdbf34128d12334c27f691a9f95fbc307ad24db))  - (goliatone)
 
 # [0.13.0](https://github.com/goliatone/go-auth/compare/v0.12.0...v0.13.0) - (2025-09-20)
 
@@ -510,4 +526,5 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
+
 
