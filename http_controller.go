@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -18,21 +19,13 @@ func mergeTemplateData(ctx router.Context, data router.ViewContext) router.ViewC
 	if data == nil {
 		data = router.ViewContext{}
 	}
+
+	if helpers, ok := ctx.Locals(csfmw.DefaultTemplateHelpersKey).(map[string]any); !ok || helpers == nil {
+		ctx.LocalsMerge(csfmw.DefaultTemplateHelpersKey, TemplateHelpersWithRouter(ctx, TemplateUserKey))
+	}
+
 	merged := router.ViewContext{}
-
-	if helpers, ok := ctx.Locals(csfmw.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
-		for key, value := range helpers {
-			merged[key] = value
-		}
-	} else {
-		for key, value := range TemplateHelpersWithRouter(ctx, TemplateUserKey) {
-			merged[key] = value
-		}
-	}
-
-	for key, value := range data {
-		merged[key] = value
-	}
+	maps.Copy(merged, data)
 
 	return merged
 }
@@ -127,6 +120,7 @@ type AuthController struct {
 	ErrorHandler     router.ErrorHandler
 	RegisterRedirect string
 	UseHashID        bool
+	activity         ActivitySink
 }
 
 type AuthControllerOption func(*AuthController) *AuthController
@@ -173,11 +167,19 @@ func WithAuthControllerUseHashID(v bool) AuthControllerOption {
 	}
 }
 
+func WithAuthControllerActivitySink(sink ActivitySink) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.activity = normalizeActivitySink(sink)
+		return ac
+	}
+}
+
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
 		Logger:           defLogger{},
 		ErrorHandler:     defaultErrHandler,
 		RegisterRedirect: "/",
+		activity:         noopActivitySink{},
 		Routes: &AuthControllerRoutes{
 			Login:         "/login",
 			Logout:        "/logout",
@@ -412,9 +414,9 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := a.Auther.Login(ctx, signIn); err != nil {
-	flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
-		"system_message": "Registration successful! Please log in.",
-	}))
+		flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+			"system_message": "Registration successful! Please log in.",
+		}))
 		return ctx.Redirect(a.Routes.Login)
 	}
 
@@ -574,13 +576,13 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 		currentStage = ResetUnknown
 	}
 
-return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
-	"errors": errors,
-	"reset": map[string]string{
-		sessionKey: sessionID,
-		stageKey:   currentStage,
-	},
-}))
+	return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+		"errors": errors,
+		"reset": map[string]string{
+			sessionKey: sessionID,
+			stageKey:   currentStage,
+		},
+	}))
 }
 
 // PasswordResetVerifyPayload holds values for password reset
@@ -634,7 +636,9 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 		Password: payload.Password,
 	}
 
-	finalizePwdReset := FinalizePasswordResetHandler{repo: a.Repo}
+	finalizePwdReset := NewFinalizePasswordResetHandler(a.Repo).
+		WithActivitySink(a.activity).
+		WithLogger(a.Logger)
 	if err := finalizePwdReset.Execute(ctx.Context(), input); err != nil {
 		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
