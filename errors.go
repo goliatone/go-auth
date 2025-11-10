@@ -16,6 +16,11 @@ const (
 	TextCodeEmptyPassword      = "EMPTY_PASSWORD_NOT_ALLOWED"
 	TextCodeTokenExpired       = "TOKEN_EXPIRED"
 	TextCodeTokenMalformed     = "TOKEN_MALFORMED"
+	TextCodeImmutableClaim     = "IMMUTABLE_CLAIM_MUTATION"
+	TextCodeAccountSuspended   = "ACCOUNT_SUSPENDED"
+	TextCodeAccountDisabled    = "ACCOUNT_DISABLED"
+	TextCodeAccountArchived    = "ACCOUNT_ARCHIVED"
+	TextCodeAccountPending     = "ACCOUNT_PENDING"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -68,6 +73,31 @@ var ErrTokenMalformed = errors.New("token is malformed", errors.CategoryAuth).
 	WithTextCode(TextCodeTokenMalformed).
 	WithCode(errors.CodeBadRequest)
 
+// ErrImmutableClaimMutation is returned when a decorator tampers with protected claims.
+var ErrImmutableClaimMutation = errors.New("claims decorator attempted to mutate immutable claim", errors.CategoryValidation).
+	WithTextCode(TextCodeImmutableClaim).
+	WithCode(errors.CodeBadRequest)
+
+// ErrUserSuspended is returned when an account is suspended.
+var ErrUserSuspended = errors.New("user account is suspended", errors.CategoryAuth).
+	WithTextCode(TextCodeAccountSuspended).
+	WithCode(errors.CodeForbidden)
+
+// ErrUserDisabled is returned when an account is disabled.
+var ErrUserDisabled = errors.New("user account is disabled", errors.CategoryAuth).
+	WithTextCode(TextCodeAccountDisabled).
+	WithCode(errors.CodeForbidden)
+
+// ErrUserArchived is returned when an account is archived.
+var ErrUserArchived = errors.New("user account is archived", errors.CategoryAuth).
+	WithTextCode(TextCodeAccountArchived).
+	WithCode(errors.CodeForbidden)
+
+// ErrUserPending is returned when an account is pending activation.
+var ErrUserPending = errors.New("user account is pending activation", errors.CategoryAuth).
+	WithTextCode(TextCodeAccountPending).
+	WithCode(errors.CodeForbidden)
+
 func IsTokenExpiredError(err error) bool {
 	if err == nil {
 		return false
@@ -93,4 +123,19 @@ func IsMalformedError(err error) bool {
 
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
+}
+
+func statusAuthError(status UserStatus) error {
+	switch status {
+	case UserStatusSuspended:
+		return ErrUserSuspended
+	case UserStatusDisabled:
+		return ErrUserDisabled
+	case UserStatusArchived:
+		return ErrUserArchived
+	case UserStatusPending:
+		return ErrUserPending
+	default:
+		return nil
+	}
 }
