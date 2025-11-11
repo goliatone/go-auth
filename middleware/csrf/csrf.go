@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/goliatone/go-router"
@@ -24,6 +25,30 @@ var (
 	ErrTokenExpired     = errors.New("CSRF token expired")
 	ErrSecureKeyMissing = errors.New("CSRF secure key required for stateless mode")
 )
+
+// TemplateHelperFactory allows template engines to lazily evaluate CSRF helpers per request.
+// When configured, CSRFTemplateHelpers will invoke the factory for each helper name and
+// fallback value, enabling callers to return closures instead of static strings.
+type TemplateHelperFactory func(name string, fallback string) any
+
+var (
+	templateHelperFactory   TemplateHelperFactory
+	templateHelperFactoryMu sync.RWMutex
+)
+
+// SetTemplateHelperFactory registers the factory used to create CSRF template helpers.
+// Passing nil resets the behavior to the default static placeholder strings.
+func SetTemplateHelperFactory(factory TemplateHelperFactory) {
+	templateHelperFactoryMu.Lock()
+	defer templateHelperFactoryMu.Unlock()
+	templateHelperFactory = factory
+}
+
+func getTemplateHelperFactory() TemplateHelperFactory {
+	templateHelperFactoryMu.RLock()
+	defer templateHelperFactoryMu.RUnlock()
+	return templateHelperFactory
+}
 
 // DefaultTokenLength is the default length for CSRF tokens
 const DefaultTokenLength = 32
@@ -445,12 +470,26 @@ func initializeSecureKey(current []byte, storage Storage) []byte {
 
 // CSRFTemplateHelpers returns template helper functions for CSRF protection
 func CSRFTemplateHelpers() map[string]any {
-	return map[string]any{
+	base := map[string]string{
 		"csrf_token":       "",
 		"csrf_field":       `<input type="hidden" name="` + DefaultFormFieldName + `" value="">`,
 		"csrf_meta":        `<meta name="csrf-token" content="">`,
 		"csrf_header_name": DefaultHeaderName,
 	}
+
+	result := make(map[string]any, len(base))
+	if factory := getTemplateHelperFactory(); factory != nil {
+		for key, value := range base {
+			result[key] = factory(key, value)
+		}
+		return result
+	}
+
+	for key, value := range base {
+		result[key] = value
+	}
+
+	return result
 }
 
 // CSRFTemplateHelpersWithRouter returns template helpers with access to router context
