@@ -1,5 +1,26 @@
 # Changelog
 
+# [0.16.0](https://github.com/goliatone/go-auth/compare/v0.15.0...v0.16.0) - (2025-11-11)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.16.0 ([9ae5c95](https://github.com/goliatone/go-auth/commit/9ae5c9502f562cd859cce11161d9d6f7a8933a7f))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Middleware support template factory ([53fdd48](https://github.com/goliatone/go-auth/commit/53fdd48019b47e128adcd91fe4a8fe0c4195222e))  - (goliatone)
+- MergeTemplateData func ([48ae81c](https://github.com/goliatone/go-auth/commit/48ae81cad55825a36c6c70c4b3db45a214c60d39))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.0 ([ee9374a](https://github.com/goliatone/go-auth/commit/ee9374a645b2b802a850ee4900078edc905d6462))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([43a9f86](https://github.com/goliatone/go-auth/commit/43a9f8616760bfdbb92326b4abc1e38661e47faa))  - (goliatone)
+- Update examples ([c8521d9](https://github.com/goliatone/go-auth/commit/c8521d91d5738f36f899bac32a507d8f7f11814e))  - (goliatone)
+- Update docs ([9f222d1](https://github.com/goliatone/go-auth/commit/9f222d199f7c89b11d83b9f95eca8a97663b4a34))  - (goliatone)
+
 # [0.15.0](https://github.com/goliatone/go-auth/compare/v0.14.0...v0.15.0) - (2025-11-10)
 
 ## <!-- 13 -->📦 Bumps
