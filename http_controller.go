@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"html/template"
 	"maps"
 	"net/http"
 
@@ -15,19 +16,43 @@ import (
 	"github.com/goliatone/go-router/flash"
 )
 
-func mergeTemplateData(ctx router.Context, data router.ViewContext) router.ViewContext {
+// MergeTemplateData ensures every render includes the latest template helpers
+// (current user, CSRF helpers, etc.) merged with the provided view context.
+// It evaluates helper closures that return strings or template.HTML so request-
+// scoped helpers are always materialized before hitting the renderer.
+func MergeTemplateData(ctx router.Context, data router.ViewContext) router.ViewContext {
 	if data == nil {
 		data = router.ViewContext{}
 	}
 
-	if helpers, ok := ctx.Locals(csfmw.DefaultTemplateHelpersKey).(map[string]any); !ok || helpers == nil {
-		ctx.LocalsMerge(csfmw.DefaultTemplateHelpersKey, TemplateHelpersWithRouter(ctx, TemplateUserKey))
+	merged := router.ViewContext{}
+
+	helpers := getOrInitTemplateHelpers(ctx)
+	for key, value := range helpers {
+		switch v := value.(type) {
+		case func() string:
+			merged[key] = v()
+		case func() template.HTML:
+			merged[key] = v()
+		default:
+			merged[key] = value
+		}
 	}
 
-	merged := router.ViewContext{}
 	maps.Copy(merged, data)
 
 	return merged
+}
+
+func getOrInitTemplateHelpers(ctx router.Context) map[string]any {
+	if helpers, ok := ctx.Locals(csfmw.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
+		return helpers
+	}
+
+	helpers := TemplateHelpersWithRouter(ctx, TemplateUserKey)
+	ctx.LocalsMerge(csfmw.DefaultTemplateHelpersKey, helpers)
+
+	return helpers
 }
 
 type Middleware interface {
@@ -223,12 +248,12 @@ func (a *AuthController) handleControllerError(ctx router.Context, e error, view
 		statusCode = http.StatusBadRequest
 	}
 
-	flashCtx := flash.WithError(ctx, mergeTemplateData(ctx, router.ViewContext{
+	flashCtx := flash.WithError(ctx, MergeTemplateData(ctx, router.ViewContext{
 		"error_message":  err.Message,
 		"system_message": fmt.Sprintf("Error: %s", err.TextCode),
 	}))
 
-	viewCtx := mergeTemplateData(ctx, router.ViewContext{
+	viewCtx := MergeTemplateData(ctx, router.ViewContext{
 		"record": payload,
 	})
 
@@ -247,7 +272,7 @@ func (a *AuthController) handleControllerError(ctx router.Context, e error, view
 }
 
 func (a *AuthController) LoginShow(ctx router.Context) error {
-	return ctx.Render(a.Views.Login, mergeTemplateData(ctx, router.ViewContext{
+	return ctx.Render(a.Views.Login, MergeTemplateData(ctx, router.ViewContext{
 		"errors": nil,
 		"record": nil,
 	}))
@@ -325,7 +350,7 @@ func (a *AuthController) LoginPost(ctx router.Context) error {
 
 		a.Logger.Error("Login failed", "error", richErr)
 
-		return ctx.Status(http.StatusUnauthorized).Render(a.Views.Login, mergeTemplateData(ctx, router.ViewContext{
+		return ctx.Status(http.StatusUnauthorized).Render(a.Views.Login, MergeTemplateData(ctx, router.ViewContext{
 			"payload": payload,
 			"errors": map[string]string{
 				"authentication": richErr.Message,
@@ -344,7 +369,7 @@ func (a *AuthController) LogOut(ctx router.Context) error {
 }
 
 func (a *AuthController) RegistrationShow(ctx router.Context) error {
-	return ctx.Render(a.Views.Register, mergeTemplateData(ctx, router.ViewContext{
+	return ctx.Render(a.Views.Register, MergeTemplateData(ctx, router.ViewContext{
 		"errors": map[string]string{},
 		"record": RegisterUserMessage{},
 	}))
@@ -414,7 +439,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 	}
 
 	if err := a.Auther.Login(ctx, signIn); err != nil {
-		flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+		flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
 			"system_message": "Registration successful! Please log in.",
 		}))
 		return ctx.Redirect(a.Routes.Login)
@@ -425,7 +450,7 @@ func (a *AuthController) RegistrationCreate(ctx router.Context) error {
 		redirect = "/"
 	}
 
-	return flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+	return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
 		"system_message": "Successful user registration",
 	})).Redirect(redirect, http.StatusSeeOther)
 }
@@ -437,7 +462,7 @@ const (
 )
 
 func (a *AuthController) PasswordResetGet(ctx router.Context) error {
-	return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+	return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 		"errors": nil,
 		"reset": map[string]string{
 			stageKey: ResetInit,
@@ -504,14 +529,14 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 
 	if res.Success && res.Stage == AccountVerification {
 		if res.Reset == nil {
-			return flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+			return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
 				"system_message": "If an account with that email exists, a password reset link has been sent.",
 			})).Redirect(a.Routes.Login)
 		}
 
 		sessionID := res.Reset.ID.String()
 		if sessionID == "" {
-			return flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+			return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
 				"system_message": "If an account with that email exists, a password reset link has been sent.",
 			})).Redirect(a.Routes.Login)
 		}
@@ -521,7 +546,7 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 			email = req.Email
 		}
 
-		return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+		return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 			"reset": map[string]string{
 				stageKey:   AccountVerification,
 				sessionKey: sessionID,
@@ -531,7 +556,7 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 	}
 
 	// this is unlikely if command works OK, just a safe fallback
-	return flash.WithSuccess(ctx, mergeTemplateData(ctx, router.ViewContext{
+	return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
 		"system_message": "If an account with that email exists, a password reset link has been sent.",
 	})).Redirect(a.Routes.Login)
 }
@@ -555,7 +580,7 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 	if err := accountVerify.Execute(ctx.Context(), input); err != nil {
 		a.Logger.Error("verification error", err)
 		errors["verification"] = err.Error()
-		return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+		return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 			"errors": errors,
 			"reset": map[string]string{
 				stageKey:   ChangingPassword,
@@ -576,7 +601,7 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 		currentStage = ResetUnknown
 	}
 
-	return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+	return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 		"errors": errors,
 		"reset": map[string]string{
 			sessionKey: sessionID,
@@ -643,7 +668,7 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
-	return ctx.Render(a.Views.PasswordReset, mergeTemplateData(ctx, router.ViewContext{
+	return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 		"reset": router.ViewContext{
 			stageKey:   ChangeFinalized,
 			sessionKey: sessionID,
