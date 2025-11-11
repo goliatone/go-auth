@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.18.0](https://github.com/goliatone/go-auth/compare/v0.17.0...v0.18.0) - (2025-11-11)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Merge order of tempalte funcs ([e30fcaa](https://github.com/goliatone/go-auth/commit/e30fcaa7cd95f872183399492245fdc8d3c317f1))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.18.0 ([4204e6d](https://github.com/goliatone/go-auth/commit/4204e6d24c85758dcd34b2ca2fcb29ec23cf81f5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.17.0 ([6224bae](https://github.com/goliatone/go-auth/commit/6224baef8c56349227d0aedf3135b07d4e4cb137))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([76762f6](https://github.com/goliatone/go-auth/commit/76762f632db92de238be3962fc001a49ce2229d6))  - (goliatone)
+
 # [0.17.0](https://github.com/goliatone/go-auth/compare/v0.16.0...v0.17.0) - (2025-11-11)
 
 ## <!-- 13 -->📦 Bumps
