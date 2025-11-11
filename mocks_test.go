@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-repository-bun"
@@ -430,7 +431,9 @@ func (m *MockActivitySink) Record(ctx context.Context, event auth.ActivityEvent)
 // ////////////////////////////////////////////////////////////////////
 type MockPasswordResets struct {
 	mock.Mock
-	count int
+	count         int
+	scopeDefaults repository.ScopeDefaults
+	scopes        map[string]repository.ScopeDefinition
 }
 
 func (m *MockPasswordResets) Raw(ctx context.Context, sql string, args ...any) ([]*auth.PasswordReset, error) {
@@ -627,6 +630,26 @@ func (m *MockPasswordResets) ForceDelete(ctx context.Context, record *auth.Passw
 func (m *MockPasswordResets) ForceDeleteTx(ctx context.Context, tx bun.IDB, record *auth.PasswordReset) error {
 	mockArgs := m.Called(ctx, tx, record)
 	return mockArgs.Error(0)
+}
+
+func (m *MockPasswordResets) RegisterScope(name string, scope repository.ScopeDefinition) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return
+	}
+	if m.scopes == nil {
+		m.scopes = make(map[string]repository.ScopeDefinition)
+	}
+	m.scopes[name] = scope
+}
+
+func (m *MockPasswordResets) SetScopeDefaults(defaults repository.ScopeDefaults) error {
+	m.scopeDefaults = defaults
+	return nil
+}
+
+func (m *MockPasswordResets) GetScopeDefaults() repository.ScopeDefaults {
+	return m.scopeDefaults
 }
 
 func (m *MockPasswordResets) Handlers() repository.ModelHandlers[*auth.PasswordReset] {

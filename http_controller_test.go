@@ -23,9 +23,12 @@ func TestMergeTemplateDataInjectsCSRFHelpers(t *testing.T) {
 	})
 
 	require.Equal(t, "login", viewCtx["title"])
-	require.Equal(t, token, viewCtx["csrf_token"])
 
-	field, ok := viewCtx["csrf_field"].(string)
+	helpers, ok := ctx.LocalsMock[csfmw.DefaultTemplateHelpersKey].(map[string]any)
+	require.True(t, ok, "helpers should be stored in locals")
+	require.Equal(t, token, helpers["csrf_token"])
+
+	field, ok := helpers["csrf_field"].(string)
 	require.True(t, ok, "csrf_field should be a string input")
 	require.Contains(t, field, `value="`+token+`"`)
 	require.Contains(t, field, `name="_token"`)
@@ -42,11 +45,13 @@ func TestLoginShowAddsCSRFHelpersToView(t *testing.T) {
 	ctx.On("LocalsMerge", csfmw.DefaultTemplateHelpersKey, mock.Anything).Return(map[string]any{})
 
 	ctx.On("Render", ctrl.Views.Login, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		viewCtx, ok := args.Get(1).(router.ViewContext)
+		_, ok := args.Get(1).(router.ViewContext)
 		require.True(t, ok, "expected router.ViewContext")
 
-		require.Equal(t, token, viewCtx["csrf_token"])
-		field := viewCtx["csrf_field"].(string)
+		helpers, ok := ctx.LocalsMock[csfmw.DefaultTemplateHelpersKey].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, token, helpers["csrf_token"])
+		field := helpers["csrf_field"].(string)
 		require.Contains(t, field, token)
 	})
 
@@ -66,11 +71,13 @@ func TestRegistrationShowAddsCSRFHelpersToView(t *testing.T) {
 	ctx.On("LocalsMerge", csfmw.DefaultTemplateHelpersKey, mock.Anything).Return(map[string]any{})
 
 	ctx.On("Render", ctrl.Views.Register, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
-		viewCtx, ok := args.Get(1).(router.ViewContext)
+		_, ok := args.Get(1).(router.ViewContext)
 		require.True(t, ok, "expected router.ViewContext")
 
-		require.Equal(t, token, viewCtx["csrf_token"])
-		field := viewCtx["csrf_field"].(string)
+		helpers, ok := ctx.LocalsMock[csfmw.DefaultTemplateHelpersKey].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, token, helpers["csrf_token"])
+		field := helpers["csrf_field"].(string)
 		require.Contains(t, field, token)
 	})
 
