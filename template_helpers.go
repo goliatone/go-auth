@@ -1,13 +1,20 @@
 package auth
 
 import (
+	"fmt"
 	"maps"
+
+	"github.com/flosch/pongo2/v6"
 
 	"github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-router"
 )
 
 var TemplateUserKey = "current_user"
+
+func init() {
+	csrf.SetTemplateHelperFactory(csrfTemplateHelperFactory)
+}
 
 // TemplateHelpers returns a map of helper functions and data that can be used
 // with go-template's WithGlobalData option for authentication-related template functionality.
@@ -51,6 +58,33 @@ func TemplateHelpers() map[string]any {
 	maps.Copy(helpers, csrf.CSRFTemplateHelpers())
 
 	return helpers
+}
+
+func csrfTemplateHelperFactory(name string, fallback string) any {
+	return func(execCtx *pongo2.ExecutionContext) string {
+		return resolveTemplateHelperValue(execCtx, name, fallback)
+	}
+}
+
+func resolveTemplateHelperValue(execCtx *pongo2.ExecutionContext, key, fallback string) string {
+	if execCtx == nil {
+		return fallback
+	}
+
+	if helpers, ok := execCtx.Public[csrf.DefaultTemplateHelpersKey].(map[string]any); ok && helpers != nil {
+		if value, exists := helpers[key]; exists {
+			switch typed := value.(type) {
+			case string:
+				return typed
+			case fmt.Stringer:
+				return typed.String()
+			default:
+				return fmt.Sprint(typed)
+			}
+		}
+	}
+
+	return fallback
 }
 
 // TemplateHelpersWithUser returns template helpers with a specific user set as current_user.
