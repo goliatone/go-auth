@@ -11,9 +11,9 @@ require (
 	github.com/goliatone/go-config v0.3.1
 	github.com/goliatone/go-errors v0.9.0
 	github.com/goliatone/go-logger v0.3.0
-	github.com/goliatone/go-persistence-bun v0.3.0
+	github.com/goliatone/go-persistence-bun v0.6.0
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-router v0.14.0
+	github.com/goliatone/go-router v0.23.0
 	github.com/google/uuid v1.6.0
 	github.com/uptrace/bun v1.2.14
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.14
@@ -48,7 +48,7 @@ require (
 	github.com/gofiber/utils v1.1.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/goliatone/go-masker v0.1.0 // indirect
-	github.com/goliatone/go-repository-bun v0.5.2 // indirect
+	github.com/goliatone/go-repository-bun v0.9.0 // indirect
 	github.com/goliatone/hashid v0.1.1 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
@@ -73,7 +73,6 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
-	github.com/nyaruka/phonenumbers v1.5.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
@@ -108,7 +107,6 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
-	google.golang.org/protobuf v1.36.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.61.9 // indirect

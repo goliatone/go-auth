@@ -184,7 +184,7 @@ func main() {
 
 	ProtectedRoutes(app)
 
-	app.srv.Serve(":8978")
+	app.srv.Serve(":8572")
 
 	WaitExitSignal()
 
@@ -274,6 +274,22 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	app.SetHTTPServer(srv)
 
 	return nil
+}
+
+type userTrackerAdapter struct {
+	users auth.Users
+}
+
+func (a userTrackerAdapter) GetByIdentifier(ctx context.Context, identifier string) (*auth.User, error) {
+	return a.users.GetByIdentifier(ctx, identifier)
+}
+
+func (a userTrackerAdapter) TrackAttemptedLogin(ctx context.Context, user *auth.User) error {
+	return a.users.TrackAttemptedLogin(ctx, user)
+}
+
+func (a userTrackerAdapter) TrackSucccessfulLogin(ctx context.Context, user *auth.User) error {
+	return a.users.TrackSucccessfulLogin(ctx, user)
 }
 
 func WithPersistence(ctx context.Context, app *App) error {
@@ -382,7 +398,7 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 		return err
 	}
 
-	userProvider := auth.NewUserProvider(repo.Users())
+	userProvider := auth.NewUserProvider(userTrackerAdapter{users: repo.Users()})
 	userProvider.WithLogger(app.GetLogger("auth:prv"))
 
 	// Step 1: Create a standard authenticator (backward compatible)
@@ -541,10 +557,10 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 		}
 
 		if err := payload.Validate(); err != nil {
-			return flash.WithError(c, viewContextWithGlobals(c, router.ViewContext{
+			return flash.WithError(c, auth.MergeTemplateData(c, router.ViewContext{
 				"error_message":  err.Message,
 				"system_message": "Error validating payload",
-			})).Render("profile", viewContextWithGlobals(c, router.ViewContext{
+			})).Render("profile", auth.MergeTemplateData(c, router.ViewContext{
 				"record":     payload,
 				"validation": err.ValidationMap(),
 			}))
