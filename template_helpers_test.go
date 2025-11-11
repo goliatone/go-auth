@@ -4,6 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flosch/pongo2/v6"
+
+	csfmw "github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-router"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -37,6 +40,40 @@ func TestTemplateHelpers(t *testing.T) {
 	assert.Equal(t, string(RoleMember), roles["member"])
 	assert.Equal(t, string(RoleAdmin), roles["admin"])
 	assert.Equal(t, string(RoleOwner), roles["owner"])
+}
+
+func TestTemplateHelpersCSRFLazyFunction(t *testing.T) {
+	helpers := TemplateHelpers()
+
+	fn, ok := helpers["csrf_field"].(func(*pongo2.ExecutionContext) string)
+	require.True(t, ok, "csrf_field should be exposed as lazy function")
+
+	token := "lazy-token"
+	execCtx := &pongo2.ExecutionContext{
+		Public: pongo2.Context{
+			csfmw.DefaultTemplateHelpersKey: map[string]any{
+				"csrf_field": `<input type="hidden" name="_token" value="` + token + `">`,
+			},
+		},
+	}
+
+	resolved := fn(execCtx)
+	require.NotEmpty(t, resolved)
+	assert.Contains(t, resolved, token)
+}
+
+func TestTemplateHelpersCSRFFallback(t *testing.T) {
+	helpers := TemplateHelpers()
+
+	fn, ok := helpers["csrf_meta"].(func(*pongo2.ExecutionContext) string)
+	require.True(t, ok, "csrf_meta should be exposed as lazy function")
+
+	execCtx := &pongo2.ExecutionContext{
+		Public: pongo2.Context{},
+	}
+
+	expected := `<meta name="csrf-token" content="">`
+	assert.Equal(t, expected, fn(execCtx))
 }
 
 func TestTemplateHelpersWithUser(t *testing.T) {

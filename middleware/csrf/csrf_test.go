@@ -108,3 +108,19 @@ func TestShortSecureKeyPanics(t *testing.T) {
 		handler(newMockContextWithBase("GET"))
 	})
 }
+
+func TestCSRFTemplateHelperFactory(t *testing.T) {
+	t.Cleanup(func() {
+		SetTemplateHelperFactory(nil)
+	})
+
+	SetTemplateHelperFactory(func(name, fallback string) any {
+		return name + ":" + fallback
+	})
+
+	helpers := CSRFTemplateHelpers()
+	require.Equal(t, "csrf_token:", helpers["csrf_token"])
+	require.Equal(t, "csrf_field:<input type=\"hidden\" name=\""+DefaultFormFieldName+"\" value=\"\">", helpers["csrf_field"])
+	require.Equal(t, "csrf_meta:<meta name=\"csrf-token\" content=\"\">", helpers["csrf_meta"])
+	require.Equal(t, "csrf_header_name:"+DefaultHeaderName, helpers["csrf_header_name"])
+}
