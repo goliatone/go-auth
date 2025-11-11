@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -19,7 +18,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
-	"github.com/goliatone/go-auth/middleware/csrf"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
 	gconfig "github.com/goliatone/go-config/config"
@@ -36,8 +34,11 @@ import (
 	"github.com/uptrace/bun/driver/sqliteshim"
 )
 
-// go embed ./public
+//go:embed public
 var assetsFS embed.FS
+
+//go:embed data/fixtures/*.yml
+var fixturesFS embed.FS
 
 type App struct {
 	config *gconfig.Container[*config.BaseConfig]
@@ -246,12 +247,12 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 
 	srv.Router().WithLogger(app.GetLogger("router"))
 
-	key := sha256.Sum256([]byte(app.Config().GetAuth().GetSigningKey()))
-	srv.Router().Use(csrf.New(csrf.Config{
-		SecureKey: key[:],
-	}))
+	// key := sha256.Sum256([]byte(app.Config().GetAuth().GetSigningKey()))
+	// srv.Router().Use(csrf.New(csrf.Config{
+	// 	SecureKey: key[:],
+	// }))
 
-	csrf.RegisterRoutes(srv.Router())
+	// csrf.RegisterRoutes(srv.Router())
 
 	srv.Router().Use(mflash.New(mflash.ConfigDefault))
 
@@ -312,9 +313,26 @@ func WithPersistence(ctx context.Context, app *App) error {
 	}
 
 	client.SetLogger(app.GetLogger("persistence"))
-	client.RegisterSQLMigrations(auth.GetMigrationsFS())
+	migrationsFS, err := fs.Sub(auth.GetMigrationsFS(), "data/sql/migrations")
+	if err != nil {
+		return err
+	}
+	client.RegisterDialectMigrations(
+		migrationsFS,
+		persistence.WithDialectSourceLabel("data/sql/migrations"),
+		persistence.WithValidationTargets("postgres", "sqlite"),
+	)
+	if err := client.ValidateDialects(context.Background()); err != nil {
+		return err
+	}
 
-	if err := client.Migrate(context.Background()); err != nil {
+	if err := client.Migrate(ctx); err != nil {
+		return err
+	}
+
+	client.RegisterFixtures(fixturesFS).AddOptions(persistence.WithTrucateTables())
+
+	if err := client.Seed(ctx); err != nil {
 		return err
 	}
 
