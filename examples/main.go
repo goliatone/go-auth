@@ -6,10 +6,8 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"html/template"
 	"io/fs"
 	"log"
-	"maps"
 	"net/http"
 	"os"
 	"os/signal"
@@ -209,33 +207,8 @@ func ProtectedRoutes(app *App) {
 	p.Get("/admin/users", AdminUsersIndex(app), protected, usersGuard)
 }
 
-func viewContextWithGlobals(ctx router.Context, data router.ViewContext) router.ViewContext {
-	if data == nil {
-		data = router.ViewContext{}
-	}
-	merged := router.ViewContext{}
-
-	if helpers, ok := ctx.Locals(csrf.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
-		for key, value := range helpers {
-			switch v := value.(type) {
-			case func() string:
-				merged[key] = v()
-			case func() template.HTML:
-				merged[key] = v()
-			default:
-				merged[key] = value
-			}
-		}
-	} else {
-		maps.Copy(merged, auth.TemplateHelpersWithRouter(ctx, auth.TemplateUserKey))
-	}
-
-	maps.Copy(merged, data)
-	return merged
-}
-
 func renderWithGlobals(ctx router.Context, name string, data router.ViewContext) error {
-	return ctx.Render(name, viewContextWithGlobals(ctx, data))
+	return ctx.Render(name, auth.MergeTemplateData(ctx, data))
 }
 
 func WithHTTPServer(ctx context.Context, app *App) error {
