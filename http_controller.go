@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"html/template"
 	"maps"
 	"net/http"
 
@@ -25,34 +24,21 @@ func MergeTemplateData(ctx router.Context, data router.ViewContext) router.ViewC
 		data = router.ViewContext{}
 	}
 
+	ensureTemplateHelpers(ctx)
+
 	merged := router.ViewContext{}
-
-	helpers := getOrInitTemplateHelpers(ctx)
-	for key, value := range helpers {
-		switch v := value.(type) {
-		case func() string:
-			merged[key] = v()
-		case func() template.HTML:
-			merged[key] = v()
-		default:
-			merged[key] = value
-		}
-	}
-
 	maps.Copy(merged, data)
 
 	return merged
 }
 
-func getOrInitTemplateHelpers(ctx router.Context) map[string]any {
+func ensureTemplateHelpers(ctx router.Context) {
 	if helpers, ok := ctx.Locals(csfmw.DefaultTemplateHelpersKey).(map[string]any); ok && helpers != nil {
-		return helpers
+		return
 	}
 
 	helpers := TemplateHelpersWithRouter(ctx, TemplateUserKey)
 	ctx.LocalsMerge(csfmw.DefaultTemplateHelpersKey, helpers)
-
-	return helpers
 }
 
 type Middleware interface {
