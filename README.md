@@ -196,16 +196,16 @@ app.Use(csrf.New(csrf.Config{
 
 ```go
 // Inside your handler
-helpers := auth.TemplateHelpersWithRouter(ctx, auth.TemplateUserKey)
+viewCtx := auth.MergeTemplateData(ctx, router.ViewContext{
+    "title": "Secure form",
+})
 
-// `helpers` now contains:
-// - csrf_token(): returns the actual token string
-// - csrf_field():  `<input type="hidden" name="_token" ...>` (respects custom name)
-// - csrf_meta():   `<meta name="csrf-token" ...>`
-// - csrf_header_name(): header to use for AJAX requests
-
-return ctx.Render("form", helpers)
+// MergeTemplateData copies the latest request scoped helpers so csrf_field,
+// csrf_meta, etc. always render the token minted by the middleware.
+return ctx.Render("form", viewCtx)
 ```
+
+> `csrf_field`, `csrf_token`, and `csrf_meta` are now lazily evaluated helpers. When you register `auth.TemplateHelpers()` globally, the template engine resolves the current request’s CSRF token automatically—no need to clone helper maps on every render (though `MergeTemplateData` remains useful when you want a concrete snapshot).
 
 ```html
 <form method="post">
