@@ -1,7 +1,7 @@
 {% extends "layouts/auth.html" %}
 
 {% block content %}
-<div class="mt-20 w-96 mx-auto">
+<div class="mt-20 w-full max-w-screen-lg mx-auto px-4 sm:px-6 lg:px-8">
     <!-- Authentication Status Section -->
     <div class="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         {% if is_authenticated(current_user) %}
@@ -256,19 +256,19 @@
         </div>
 
         <!-- Template helpers demonstration -->
-        <!-- WebSocket Demo Section -->
+        <!-- Protected Demo Section -->
         <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 class="font-semibold text-blue-800">🚀 Real-Time Features</h4>
+            <h4 class="font-semibold text-blue-800">🔐 Protected Feature Playground</h4>
             <p class="text-sm text-blue-700 mt-1">
-              Test WebSocket authentication and real-time communication:
+              Open the protected demo page to try new widgets, dashboards, or real-time experiments:
             </p>
             <div class="mt-2">
-              <a href="/websocket-demo" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded text-sm transition-colors">
-                Launch WebSocket Demo
+              <a href="/protected-page" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded text-sm transition-colors">
+                View Protected Demo
               </a>
             </div>
             <p class="text-xs text-blue-600 mt-2">
-              Features: Real-time chat, role-based permissions, user presence, admin commands
+              Features: Auth-only scaffolding, actor context preview, perfect spot to wire WebSocket or SSE examples.
             </p>
         </div>
 
@@ -282,7 +282,7 @@
               <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">Admin Dashboard</a> |
               <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">User Management</a> |
               <a href="#" class="text-yellow-800 hover:text-yellow-900 underline text-sm">System Settings</a> |
-              <a href="/websocket-demo" class="text-yellow-800 hover:text-yellow-900 underline text-sm">WebSocket Demo</a>
+              <a href="/protected-page" class="text-yellow-800 hover:text-yellow-900 underline text-sm">Protected Demo</a>
             </div>
           </div>
         {% endif %}
