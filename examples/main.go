@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -205,6 +207,7 @@ func ProtectedRoutes(app *App) {
 
 	p.Get("/me", ProfileShow(app), protected)
 	p.Post("/me", ProfileUpdate(app), protected)
+	p.Get("/protected-page", ProtectedPage(app), protected)
 	p.Get("/admin/users", AdminUsersIndex(app), protected, usersGuard)
 }
 
@@ -214,13 +217,33 @@ func renderWithGlobals(ctx router.Context, name string, data router.ViewContext)
 
 func WithHTTPServer(ctx context.Context, app *App) error {
 	vcfg := app.Config().GetViews()
+	viewLogger := app.GetLogger("views")
 
-	vcfg.SetAssetsFS(
-		cfs.NewCompositeFS(
-			assetsFS,
-			os.DirFS(vcfg.GetAssetsDir()),
-		),
+	assetDir := strings.Trim(strings.TrimSpace(vcfg.GetAssetsDir()), "/")
+	if assetDir == "" {
+		assetDir = "."
+	}
+
+	embeddedAssets := fs.FS(assetsFS)
+	if assetDir != "." {
+		if scoped, err := fs.Sub(assetsFS, assetDir); err == nil {
+			embeddedAssets = scoped
+		} else if viewLogger != nil {
+			viewLogger.Warn("failed to scope embedded assets", "dir", assetDir, "err", err)
+		}
+	}
+
+	diskAssetPath := assetDir
+	if abs, err := filepath.Abs(diskAssetPath); err == nil {
+		diskAssetPath = abs
+	}
+
+	assetFS := cfs.NewCompositeFS(
+		embeddedAssets,
+		os.DirFS(diskAssetPath),
 	)
+
+	vcfg.SetAssetsFS(assetFS)
 
 	comp := cfs.NewCompositeFS(
 		os.DirFS(vcfg.GetDirFS()),
@@ -230,7 +253,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	// Add authentication template helpers globally
 	vcfg.SetTemplateFunctions(auth.TemplateHelpers())
 
-	engine, err := router.InitializeViewEngine(vcfg, app.GetLogger("views"))
+	engine, err := router.InitializeViewEngine(vcfg, viewLogger)
 	if err != nil {
 		return err
 	}
@@ -266,11 +289,14 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	srv.Router().Get("/", func(ctx router.Context) error {
 		return renderWithGlobals(ctx, "test", router.ViewContext{
 			"title":   "Home Renderer",
-			"message": `<p>This is your Home Page</p><a href="/me">Profile</a> | <a href="/websocket-demo">WebSocket Demo</a>`,
+			"message": `<p>This is your Home Page</p><a href="/me">Profile</a> | <a href="/protected-page">Protected Demo</a>`,
 		})
 	})
 
-	srv.Router().Static("/", "./public")
+	srv.Router().Static("/", ".", router.Static{
+		FS:   assetFS,
+		Root: ".",
+	})
 
 	app.SetHTTPServer(srv)
 
@@ -543,6 +569,16 @@ func ProfileShow(app *App) func(c router.Context) error {
 			"errors": nil,
 			"record": NewUserDTO(user),
 			// current_user automatically injected by JWT middleware
+		})
+	}
+}
+
+// ProtectedPage renders a placeholder for sandboxing feature experiments
+func ProtectedPage(app *App) func(c router.Context) error {
+	return func(c router.Context) error {
+		actor, _ := auth.ActorFromRouterContext(c)
+		return renderWithGlobals(c, "protected_page", router.ViewContext{
+			"actor": actor,
 		})
 	}
 }
