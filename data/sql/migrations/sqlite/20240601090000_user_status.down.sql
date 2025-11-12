@@ -1,0 +1,2 @@
+-- SQLite does not support dropping columns via ALTER TABLE.
+-- No-op downgrade.
