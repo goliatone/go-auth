@@ -1,0 +1,24 @@
+- model: User
+  rows:
+    - id: "11111111-1111-1111-1111-111111111111"
+      first_name: Admin
+      last_name: Example
+      username: admin
+      email: admin@example.com
+      user_role: owner
+      status: active
+      # password: "adminpass"
+      password_hash: "$2a$14$Ol0.tilD7nketJ6z0/nr1e2keLVP37xfWa9LBbBJ07nanXuQD7/Ui"
+      is_email_verified: true
+      metadata: {}
+    - id: "22222222-2222-2222-2222-222222222222"
+      first_name: Megan
+      last_name: Member
+      username: member
+      email: member@example.com
+      user_role: member
+      status: active
+      # password: "userpass"
+      password_hash: "$2a$14$EMopklODpwzTkcPKX8rbFurIyrE0owCkdpss8qZ94bUbVSDGcRi.C"
+      is_email_verified: true
+      metadata: {}
