@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.19.0](https://github.com/goliatone/go-auth/compare/v0.18.0...v0.19.0) - (2025-11-12)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Update skip zero values ([e59c899](https://github.com/goliatone/go-auth/commit/e59c899b18ed4055604a0f8e05259877d04ee9ac))  - (goliatone)
+- MigrationsFS should load whole directory ([470862e](https://github.com/goliatone/go-auth/commit/470862ecf32b5d5fd772b46189e2ff3c6192fb1f))  - (goliatone)
+- Example use fixtures, dialects, and fs assets ([e675a47](https://github.com/goliatone/go-auth/commit/e675a47d78042332e59a42ae0a425eab64e71bfd))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.19.0 ([a68a3db](https://github.com/goliatone/go-auth/commit/a68a3dba314703932889d10858c73690725592ed))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Fixture for example ([d6b119e](https://github.com/goliatone/go-auth/commit/d6b119ee3010aa94087ecf137a7c239e80586ed1))  - (goliatone)
+- Protected page and other info for example ([84133fe](https://github.com/goliatone/go-auth/commit/84133fe88da7741da609658f4e00b1001060697c))  - (goliatone)
+- Sqlite migrations ([bb64f5c](https://github.com/goliatone/go-auth/commit/bb64f5cec516bde5116beaed42a261776efbdcde))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.18.0 ([049513b](https://github.com/goliatone/go-auth/commit/049513b2c8a64f79f5c79e16dcc71fe4f42fb2f0))  - (goliatone)
+
 # [0.18.0](https://github.com/goliatone/go-auth/compare/v0.17.0...v0.18.0) - (2025-11-11)
 
 ## <!-- 1 -->🐛 Bug Fixes
