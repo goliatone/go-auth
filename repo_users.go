@@ -217,6 +217,7 @@ func (a *users) TrackAttemptedLogin(ctx context.Context, user *User) error {
 func (a *users) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *User) error {
 	criteria := []repository.UpdateCriteria{
 		repository.UpdateByID(user.ID.String()),
+		repository.UpdateSkipZeroValues(),
 	}
 
 	record := &User{}
