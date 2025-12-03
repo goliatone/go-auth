@@ -9,6 +9,7 @@ import (
 	"github.com/goliatone/go-router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/goliatone/go-auth/middleware/jwtware"
 )
@@ -131,6 +132,42 @@ func TestJWTWare_ValidToken(t *testing.T) {
 	assert.NotNil(t, storedClaims, "Claims should be stored in context")
 	assert.Equal(t, "user-123", storedClaims.Subject())
 	assert.Equal(t, "admin", storedClaims.Role())
+}
+
+func TestJWTFromHeader_UsesHTTPRequestHeader(t *testing.T) {
+	extractors := jwtware.GetExtractors("header:"+router.HeaderAuthorization, "Bearer")
+	require.Len(t, extractors, 1)
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM[router.HeaderAuthorization] = "Bearer header-token"
+
+	token, err := extractors[0](ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, "header-token", token)
+}
+
+func TestJWTFromHeader_MissingHeaderReturnsError(t *testing.T) {
+	extractors := jwtware.GetExtractors("header:"+router.HeaderAuthorization, "Bearer")
+	require.Len(t, extractors, 1)
+
+	ctx := router.NewMockContext()
+
+	token, err := extractors[0](ctx)
+	assert.Empty(t, token)
+	assert.Equal(t, jwtware.ErrJWTMissingOrMalformed, err)
+}
+
+func TestJWTFromHeader_IgnoresContextStoreToken(t *testing.T) {
+	extractors := jwtware.GetExtractors("header:"+router.HeaderAuthorization, "Bearer")
+	require.Len(t, extractors, 1)
+
+	ctx := router.NewMockContext()
+	// Simulate a token stored in the context store but missing from the real header.
+	ctx.Locals(router.HeaderAuthorization, "Bearer stored-token")
+
+	token, err := extractors[0](ctx)
+	assert.Empty(t, token)
+	assert.Equal(t, jwtware.ErrJWTMissingOrMalformed, err)
 }
 
 func TestJWTWare_MissingToken(t *testing.T) {
