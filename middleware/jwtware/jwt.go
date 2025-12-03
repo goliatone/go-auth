@@ -361,17 +361,22 @@ func GetExtractors(tokenLookup string, authSchemes ...string) []JWTExtractor {
 type JWTExtractor func(c router.Context) (string, error)
 
 // jwtFromHeader returns a function that extracts token from the request header.
+// Note: The HTTP header is treated as the single source of truth; we do not
+// read from or rely on the context store here to avoid divergence between
+// stored values and the real request headers.
 func jwtFromHeader(header string, authScheme string) func(c router.Context) (string, error) {
 	return func(c router.Context) (string, error) {
-		a := c.GetString(header, "")
-		l := len(authScheme)
-		if l == 0 {
-			fmt.Println("[WARNING] Missing auth scheme in config definition")
+		raw := strings.TrimSpace(c.Header(header))
+		if raw == "" {
 			return "", ErrJWTMissingOrMalformed
 		}
 		authScheme = strings.TrimSpace(authScheme)
-		if len(a) > l+1 && strings.EqualFold(a[:l], authScheme) {
-			return strings.TrimSpace(a[l:]), nil
+		if authScheme == "" {
+			fmt.Println("[WARNING] Missing auth scheme in config definition")
+			return "", ErrJWTMissingOrMalformed
+		}
+		if len(raw) >= len(authScheme)+1 && strings.EqualFold(raw[:len(authScheme)], authScheme) {
+			return strings.TrimSpace(raw[len(authScheme):]), nil
 		}
 		return "", ErrJWTMissingOrMalformed
 	}
