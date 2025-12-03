@@ -100,17 +100,13 @@ func TestJWTWare_ValidToken(t *testing.T) {
 			JWTAlg: "HS256",
 		},
 		TokenValidator: validator,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Test with valid token
 	ctx := router.NewMockContext()
@@ -184,9 +180,7 @@ func TestJWTWare_MissingToken(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Test with missing token
 	ctx := router.NewMockContext()
@@ -215,9 +209,7 @@ func TestJWTWare_MalformedToken(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Test with malformed token
 	ctx := router.NewMockContext()
@@ -247,9 +239,7 @@ func TestJWTWare_ExpiredToken(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer expired-token-12345"
@@ -275,14 +265,10 @@ func TestJWTWare_TokenLookupVariations(t *testing.T) {
 			JWTAlg: "HS256",
 		},
 		TokenValidator: validator,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Test with Authorization header token
 	ctx := router.NewMockContext()
@@ -311,14 +297,10 @@ func TestJWTWare_FilterFunction(t *testing.T) {
 			// Skip middleware for /public paths
 			return strings.HasPrefix(ctx.Path(), "/public")
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Test filtered path (should skip auth)
 	ctx := router.NewMockContext()
@@ -344,14 +326,10 @@ func TestJWTWare_CustomContextKey(t *testing.T) {
 		},
 		TokenValidator: validator,
 		ContextKey:     "custom_user",
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
@@ -376,7 +354,7 @@ func TestJWTWare_RequiredTokenValidator(t *testing.T) {
 			},
 			// No TokenValidator provided
 		}
-		_ = jwtware.New(cfg)(func(ctx router.Context) error { return nil })
+		_ = jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 	}, "Should panic when TokenValidator is not provided")
 }
 
@@ -398,17 +376,13 @@ func TestJWTWare_RequiredRole_Success(t *testing.T) {
 		},
 		TokenValidator: validator,
 		RequiredRole:   "admin", // Require exact admin role
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -442,9 +416,7 @@ func TestJWTWare_RequiredRole_AccessDenied(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-member-token"
@@ -471,17 +443,13 @@ func TestJWTWare_MinimumRole_Success(t *testing.T) {
 		},
 		TokenValidator: validator,
 		MinimumRole:    "member", // Admin is at least member level
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -515,9 +483,7 @@ func TestJWTWare_MinimumRole_AccessDenied(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -550,17 +516,13 @@ func TestJWTWare_CustomRoleChecker_Success(t *testing.T) {
 			}
 			return claims.HasRole(requiredRole)
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-manager-token"
@@ -597,9 +559,7 @@ func TestJWTWare_CustomRoleChecker_AccessDenied(t *testing.T) {
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -630,17 +590,13 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_AccessDenied(t *testing.T) {
 			// This should fail since no role is provided to check against
 			return false
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -679,9 +635,7 @@ func TestJWTWare_CustomRoleChecker_OnlyCheck_WithMinimumRole_AccessDenied(t *tes
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -712,17 +666,13 @@ func TestJWTWare_CustomRoleChecker_WithMinimumRole(t *testing.T) {
 			// Custom logic for minimum role checking
 			return claims.IsAtLeast(role)
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -750,17 +700,13 @@ func TestJWTWare_NoRBACConfiguration_AllowsAccess(t *testing.T) {
 		},
 		TokenValidator: validator,
 		// No RBAC configuration (RequiredRole, MinimumRole, or RoleChecker)
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-guest-token"
@@ -793,17 +739,13 @@ func TestJWTWare_MultipleRoleRequirements(t *testing.T) {
 			// Additional custom validation
 			return claims.Role() == "admin" && claims.IsAtLeast("member")
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-admin-token"
@@ -844,17 +786,13 @@ func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
 		},
 		TokenValidator:  validator,
 		ContextEnricher: contextEnricher,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler:  func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context with initial standard context
 	ctx := router.NewMockContext()
@@ -902,17 +840,13 @@ func TestJWTWare_ContextEnricher_NotCalled_When_Nil(t *testing.T) {
 		},
 		TokenValidator: validator,
 		// ContextEnricher is nil (not provided)
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -955,17 +889,13 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 		},
 		TokenValidator:  validator,
 		ContextEnricher: contextEnricher,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler:  func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1016,17 +946,13 @@ func TestJWTWare_TemplateUser_WithUserProvider_MapOutput_UsesLocalsMerge(t *test
 		},
 		TokenValidator: validator,
 		UserProvider:   userProvider,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1085,17 +1011,13 @@ func TestJWTWare_TemplateUser_WithUserProvider_NonMapOutput_UsesLocals(t *testin
 		},
 		TokenValidator: validator,
 		UserProvider:   userProvider,
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1137,17 +1059,13 @@ func TestJWTWare_TemplateUser_DefaultKey_IsCurrentUser(t *testing.T) {
 		},
 		TokenValidator: validator,
 		// No TemplateUserKey specified, should default to "current_user"
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	// Create mock context
 	ctx := router.NewMockContext()
@@ -1194,17 +1112,13 @@ func TestJWTWare_ValidationListenersCalled(t *testing.T) {
 				return nil
 			},
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
@@ -1238,17 +1152,13 @@ func TestJWTWare_ValidationListenerError(t *testing.T) {
 				return listenerErr
 			},
 		},
-		SuccessHandler: func(ctx router.Context) error {
-			return ctx.Next()
-		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
 		ErrorHandler: func(ctx router.Context, err error) error {
 			return err
 		},
 	}
 
-	handler := jwtware.New(cfg)(func(ctx router.Context) error {
-		return nil
-	})
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
 
 	ctx := router.NewMockContext()
 	ctx.HeadersM["Authorization"] = "Bearer valid-token"
