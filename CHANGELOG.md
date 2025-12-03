@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.21.0](https://github.com/goliatone/go-auth/compare/v0.20.0...v0.21.0) - (2025-12-03)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- JWT middleware success handler call next ([a80f6b9](https://github.com/goliatone/go-auth/commit/a80f6b9c9672736faa9becfe049bd9fc59976047))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.21.0 ([4762cd4](https://github.com/goliatone/go-auth/commit/4762cd45dd8cdb14403a2e4632b68eef47d3d026))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.20.0 ([f916a93](https://github.com/goliatone/go-auth/commit/f916a93956d6d15af440ede0e890d101f66cc4fd))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([f3f1ace](https://github.com/goliatone/go-auth/commit/f3f1ace2d321f946ff01502fc81f77aa4f9bce14))  - (goliatone)
+- Update tests ([325e9b4](https://github.com/goliatone/go-auth/commit/325e9b460d775596303bf68522582d4a0a850157))  - (goliatone)
+
 # [0.20.0](https://github.com/goliatone/go-auth/compare/v0.19.0...v0.20.0) - (2025-12-03)
 
 ## <!-- 1 -->🐛 Bug Fixes
