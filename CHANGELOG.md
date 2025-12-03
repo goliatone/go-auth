@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.20.0](https://github.com/goliatone/go-auth/compare/v0.19.0...v0.20.0) - (2025-12-03)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Jwt header extraction ([6f7295a](https://github.com/goliatone/go-auth/commit/6f7295a6b317b9fc23950da110f42bdc4d75176d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.20.0 ([6088156](https://github.com/goliatone/go-auth/commit/6088156e7b4bed8c12194f9b7c6f2e730d502d77))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.19.0 ([186f631](https://github.com/goliatone/go-auth/commit/186f6311bbc059b2b602bf900df442e3cf0dbc64))  - (goliatone)
+
 # [0.19.0](https://github.com/goliatone/go-auth/compare/v0.18.0...v0.19.0) - (2025-11-12)
 
 ## <!-- 1 -->🐛 Bug Fixes
