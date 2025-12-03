@@ -42,8 +42,10 @@ type AuthClaims interface {
 type ValidationListener func(ctx router.Context, claims AuthClaims) error
 
 type Config struct {
-	Filter              func(router.Context) bool
-	SuccessHandler      router.HandlerFunc
+	Filter func(router.Context) bool
+	// SuccessHandler is invoked after successful auth; it must decide whether
+	// to call the wrapped handler (next) or short-circuit.
+	SuccessHandler      func(ctx router.Context, next router.HandlerFunc) error
 	ErrorHandler        router.ErrorHandler
 	SigningKey          SigningKey
 	SigningKeys         map[string]SigningKey
@@ -147,7 +149,7 @@ func New(config ...Config) router.MiddlewareFunc {
 				ctx.SetContext(stdCtxWithClaims)
 			}
 
-			return cfg.SuccessHandler(ctx)
+			return cfg.SuccessHandler(ctx, hf)
 		}
 	}
 }
@@ -208,8 +210,8 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 	}
 
 	if cfg.SuccessHandler == nil {
-		cfg.SuccessHandler = func(ctx router.Context) error {
-			return ctx.Next()
+		cfg.SuccessHandler = func(ctx router.Context, next router.HandlerFunc) error {
+			return next(ctx)
 		}
 	}
 
