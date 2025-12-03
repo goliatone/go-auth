@@ -119,6 +119,23 @@ protected := httpAuth.ProtectedRoute(config, errorHandler)
 router.Get("/profile", profileHandler, protected)
 ```
 
+**Success handler contract (jwt middleware)**  
+The JWT middleware now invokes a `SuccessHandler` with the signature `func(ctx router.Context, next router.HandlerFunc) error`. The default simply calls `next(ctx)`. If you override it, you are responsible for deciding whether to call `next` (run the protected handler) or short-circuit (e.g., redirect). Example:
+
+```go
+protected := httpAuth.ProtectedRoute(config, errorHandler)
+
+// Custom success hook that adds logging, then runs the handler
+wrapped := func(ctx router.Context) error {
+    return protected(func(c router.Context) error {
+        log.Println("auth ok for", c.Path())
+        return profileHandler(c) // or c.Next() if chaining
+    })(ctx)
+}
+
+router.Get("/profile", profileHandler, wrapped)
+```
+
 ### Session with Resource Permissions
 
 ```go
