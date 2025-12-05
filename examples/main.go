@@ -36,8 +36,11 @@ import (
 	"github.com/uptrace/bun/driver/sqliteshim"
 )
 
-//go:embed public
-var assetsFS embed.FS
+// We embed assets and templates together so the view engine can auto-root them
+// once; disk FS is layered on top only to allow local overrides during dev.
+//
+//go:embed public views
+var embeddedFS embed.FS
 
 //go:embed data/fixtures/*.yml
 var fixturesFS embed.FS
@@ -224,31 +227,61 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 		assetDir = "."
 	}
 
-	embeddedAssets := fs.FS(assetsFS)
-	if assetDir != "." {
-		if scoped, err := fs.Sub(assetsFS, assetDir); err == nil {
-			embeddedAssets = scoped
-		} else if viewLogger != nil {
-			viewLogger.Warn("failed to scope embedded assets", "dir", assetDir, "err", err)
+	// Helper to root an fs.FS if the path exists; falls back to the original FS otherwise.
+	subOrRoot := func(fsys fs.FS, dir string) fs.FS {
+		// Clean the path so fs.Stat sees a valid, relative dir (fs.ValidPath forbids "./").
+		dir = filepath.ToSlash(filepath.Clean(strings.TrimSpace(dir)))
+		dir = strings.TrimPrefix(dir, "./")
+		dir = strings.Trim(dir, "/")
+		if dir == "" || dir == "." {
+			return fsys
 		}
+		if _, err := fs.Stat(fsys, dir); err == nil {
+			if sub, err := fs.Sub(fsys, dir); err == nil {
+				return sub
+			}
+		}
+		return fsys
 	}
 
-	diskAssetPath := assetDir
-	if abs, err := filepath.Abs(diskAssetPath); err == nil {
-		diskAssetPath = abs
-	}
-
-	assetFS := cfs.NewCompositeFS(
-		embeddedAssets,
-		os.DirFS(diskAssetPath),
-	)
-
+	// Layer embedded assets with an optional disk override. We root the embedded FS
+	// to the configured assetDir up front and then tell the view engine the assets
+	// are already rooted (AssetsDir="."), so it won't attempt another fs.Sub on
+	// CompositeFS (which doesn't implement Sub for embed.FS).
+	embeddedAssets := subOrRoot(fs.FS(embeddedFS), assetDir)
+	diskAssets := os.DirFS(filepath.Join("examples", assetDir))
+	assetFS := cfs.NewCompositeFS(embeddedAssets, diskAssets)
+	vcfg.AssetsDir = "."
 	vcfg.SetAssetsFS(assetFS)
 
-	comp := cfs.NewCompositeFS(
-		os.DirFS(vcfg.GetDirFS()),
-	)
-	vcfg.SetTemplatesFS([]fs.FS{comp})
+	// Templates: let the view initializer perform exactly one sub by providing an
+	// unscoped composite and setting DirFS to the clean template root.
+	templateDir := filepath.ToSlash(filepath.Clean(strings.TrimSpace(vcfg.GetDirFS())))
+	templateDir = strings.TrimPrefix(templateDir, "./")
+	templateDir = strings.Trim(templateDir, "/")
+	if templateDir == "" {
+		templateDir = "views"
+	}
+
+	// Scope embedded templates to templateDir; fail fast if missing to avoid silent prefix drift.
+	embeddedTemplates, err := fs.Sub(embeddedFS, templateDir)
+	if err != nil {
+		return fmt.Errorf("unable to scope embedded templates to %q: %w", templateDir, err)
+	}
+
+	// For disk overrides, prefer examples/<templateDir> when running from repo root;
+	// fall back to <templateDir> if running from inside the examples dir.
+	diskPath := filepath.Join("examples", templateDir)
+	if _, err := os.Stat(templateDir); err == nil {
+		diskPath = templateDir
+	}
+	diskTemplates := os.DirFS(diskPath)
+
+	// Disk overrides embedded, so it comes first.
+	var templatesFS fs.FS = cfs.NewCompositeFS(diskTemplates, embeddedTemplates)
+	// We already scoped the FSs, so expose them at root to the view engine.
+	vcfg.DirFS = "."
+	vcfg.SetTemplatesFS([]fs.FS{templatesFS})
 
 	// Add authentication template helpers globally
 	vcfg.SetTemplateFunctions(auth.TemplateHelpers())
