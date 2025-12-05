@@ -60,6 +60,8 @@ github.com/goliatone/go-repository-bun v0.9.0 h1:G0lxM2yWphFo3jsvvcyF5nnf3rB/5+3
 github.com/goliatone/go-repository-bun v0.9.0/go.mod h1:ZG2ZKOpbHhgi81rUtVgdtNCCApu49ihPhHpce4qjaOI=
 github.com/goliatone/go-router v0.23.0 h1:ydgVhqcDjUveDlULmVCQCzo+ECVTsam1OKerzBaKl0g=
 github.com/goliatone/go-router v0.23.0/go.mod h1:85wCKmRHdnZSChgDl1QCRP385mh9CoSCrks7AQe7EPQ=
+github.com/goliatone/go-router v0.27.0 h1:AAEzIMIm41d0iwdOtD8kJAbnmZl7R7RxH41NtANX0O0=
+github.com/goliatone/go-router v0.27.0/go.mod h1:85wCKmRHdnZSChgDl1QCRP385mh9CoSCrks7AQe7EPQ=
 github.com/goliatone/hashid v0.1.1 h1:VfZZf7s0uM+JZ3ZBkqaEM1mL/CJfiTmFOzZ1QuXY3EM=
 github.com/goliatone/hashid v0.1.1/go.mod h1:K9jzegsVvT8S+Nn5wL1AuGVKcz2jcwYMxwe4g1UGz4E=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=
