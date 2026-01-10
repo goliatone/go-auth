@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"net/http"
 	"time"
 
@@ -28,22 +27,6 @@ func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims
 	return tsa.tokenService.Validate(tokenString)
 }
 
-// contextEnricherAdapter adapts jwtware.AuthClaims to auth.AuthClaims for WithClaimsContext
-func contextEnricherAdapter(c context.Context, claims jwtware.AuthClaims) context.Context {
-	authClaims, ok := claims.(AuthClaims)
-	if !ok {
-		return c
-	}
-
-	ctxWithClaims := WithClaimsContext(c, authClaims)
-
-	if actor := ActorContextFromClaims(authClaims); actor != nil {
-		return WithActorContext(ctxWithClaims, actor)
-	}
-
-	return ctxWithClaims
-}
-
 type RouteAuthenticator struct {
 	auth                   Authenticator
 	cfg                    Config
@@ -53,7 +36,7 @@ type RouteAuthenticator struct {
 	logger                 Logger
 	AuthErrorHandler       func(c router.Context, err error) error // TODO: make functions
 	ErrorHandler           func(c router.Context, err error) error // TODO: make functions
-	validationListeners    []jwtware.ValidationListener
+	validationListeners    []ValidationListener
 }
 
 func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator, error) {
@@ -87,7 +70,7 @@ func (a *RouteAuthenticator) WithLogger(l Logger) *RouteAuthenticator {
 }
 
 // WithValidationListeners registers callbacks invoked immediately after token validation.
-func (a *RouteAuthenticator) WithValidationListeners(listeners ...jwtware.ValidationListener) *RouteAuthenticator {
+func (a *RouteAuthenticator) WithValidationListeners(listeners ...ValidationListener) *RouteAuthenticator {
 	if len(listeners) == 0 {
 		return a
 	}
@@ -113,11 +96,11 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 		AuthScheme:      cfg.GetAuthScheme(),
 		ContextKey:      cfg.GetContextKey(),
 		TokenLookup:     cfg.GetTokenLookup(),
-		ContextEnricher: contextEnricherAdapter,
+		ContextEnricher: ContextEnricherAdapter,
 	}
 
 	if len(a.validationListeners) > 0 {
-		jwtConfig.ValidationListeners = append([]jwtware.ValidationListener(nil), a.validationListeners...)
+		RegisterValidationListeners(&jwtConfig, a.validationListeners...)
 	}
 
 	// If the Auther has a TokenService, use it for enhanced validation
