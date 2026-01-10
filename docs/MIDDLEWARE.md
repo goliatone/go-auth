@@ -25,6 +25,16 @@ actor, ok := auth.ActorFromRouterContext(routerCtx) // go-router context
 
 Claims that already contain tenant/organization metadata are picked up automatically because the enricher reads the union of supported keys. Downstream services can keep decorating claims through `ClaimsDecorator`, and `ActorContext` remains consistent. Guard adapters can also rely on `ActorContextFromClaims` in tests to generate fixtures that match runtime behavior.
 
+If you build `jwtware.Config` directly (instead of using `RouteAuthenticator`), reuse the same adapter:
+
+```go
+jwtMiddleware := jwtware.New(jwtware.Config{
+    TokenValidator: tokenService,
+    ContextKey: "user",
+    ContextEnricher: auth.ContextEnricherAdapter,
+})
+```
+
 ## Token Validation Listeners
 
 Set `jwtware.Config.ValidationListeners` (or use `RouteAuthenticator.WithValidationListeners`) to register callbacks that fire immediately after token validation succeeds and before authorization checks run. Listeners receive the active `router.Context` plus the validated `AuthClaims`, enabling side effects such as:
@@ -58,6 +68,13 @@ httpAuth.WithValidationListeners(actorAudit)
 ```
 
 Services that construct `jwtware.Config` directly can provide the listener slice on the config struct. Because listeners execute before request-scoped guards, they are the right hook for broadcasting validated actor data to schema watchers, cache layers, or audit sinks.
+
+If you want a tiny helper for wiring listeners without mutating slices yourself, use:
+
+```go
+cfg := jwtware.Config{TokenValidator: tokenService}
+auth.RegisterValidationListeners(&cfg, actorAudit)
+```
 
 ## Putting It Together
 
