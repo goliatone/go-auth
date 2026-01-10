@@ -713,7 +713,7 @@ func TestContextEnricherAdapterStoresActorContext(t *testing.T) {
 		},
 	}
 
-	ctx := contextEnricherAdapter(context.Background(), jwtware.AuthClaims(claims))
+	ctx := ContextEnricherAdapter(context.Background(), jwtware.AuthClaims(claims))
 
 	storedClaims, ok := GetClaims(ctx)
 	require.True(t, ok)
@@ -723,4 +723,26 @@ func TestContextEnricherAdapterStoresActorContext(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "user-ctx", actor.ActorID)
 	assert.Equal(t, "tenant-ctx", actor.TenantID)
+}
+
+func TestContextEnricherAdapter_ImpersonationAndTenantOverride(t *testing.T) {
+	claims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject: "subject-impersonation",
+		},
+		UID:      "user-impersonation",
+		UserRole: "admin",
+		Metadata: map[string]any{
+			"default_tenant_id": "tenant-override",
+			"impersonator_id":   "actor-impersonator",
+		},
+	}
+
+	ctx := ContextEnricherAdapter(context.Background(), jwtware.AuthClaims(claims))
+
+	actor, ok := ActorFromContext(ctx)
+	require.True(t, ok)
+	assert.Equal(t, "tenant-override", actor.TenantID)
+	assert.Equal(t, "actor-impersonator", actor.ImpersonatorID)
+	assert.True(t, actor.IsImpersonated)
 }

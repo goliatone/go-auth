@@ -1169,3 +1169,54 @@ func TestJWTWare_ValidationListenerError(t *testing.T) {
 	assert.Equal(t, listenerErr, err, "listener error should propagate")
 	assert.False(t, ctx.NextCalled, "Next() should not run when listener fails")
 }
+
+func TestJWTWare_ValidationListenersCalledOncePerRequest(t *testing.T) {
+	claims := NewMockAuthClaims("user-777", "user-777", "admin")
+	validator := NewMockTokenValidator().WithValidateFunc(func(tokenString string) (jwtware.AuthClaims, error) {
+		return claims, nil
+	})
+
+	listenerCalls := 0
+
+	cfg := jwtware.Config{
+		SigningKey: jwtware.SigningKey{
+			Key:    []byte("test-key"),
+			JWTAlg: "HS256",
+		},
+		TokenValidator: validator,
+		ValidationListeners: []jwtware.ValidationListener{
+			func(ctx router.Context, received jwtware.AuthClaims) error {
+				listenerCalls++
+				return nil
+			},
+		},
+		SuccessHandler: func(ctx router.Context, next router.HandlerFunc) error { return next(ctx) },
+		ErrorHandler: func(ctx router.Context, err error) error {
+			return err
+		},
+	}
+
+	handler := jwtware.New(cfg)(func(ctx router.Context) error { return ctx.Next() })
+
+	ctx := router.NewMockContext()
+	ctx.HeadersM["Authorization"] = "Bearer valid-token"
+	ctx.On("GetString", "Authorization", "").Return("Bearer valid-token")
+	ctx.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	ctx.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err := handler(ctx)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, listenerCalls, "listener should be called once per request")
+
+	ctxAgain := router.NewMockContext()
+	ctxAgain.HeadersM["Authorization"] = "Bearer valid-token"
+	ctxAgain.On("GetString", "Authorization", "").Return("Bearer valid-token")
+	ctxAgain.On("Locals", "user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+	ctxAgain.On("Locals", "current_user", mock.AnythingOfType("*jwtware_test.MockAuthClaims")).Return(nil)
+
+	err = handler(ctxAgain)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 2, listenerCalls, "listener should fire once for each validated request")
+}
