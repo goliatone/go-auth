@@ -19,6 +19,7 @@ import (
 	"github.com/go-ozzo/ozzo-validation/v4/is"
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
+	"github.com/goliatone/go-auth/middleware/jwtware"
 	"github.com/goliatone/go-auth-examples/config"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
@@ -505,6 +506,21 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 	}
 
 	httpAuth.WithLogger(app.GetLogger("auth:http"))
+	httpAuth.WithValidationListeners(func(ctx router.Context, claims jwtware.AuthClaims) error {
+		authClaims, ok := claims.(auth.AuthClaims)
+		if !ok {
+			return nil
+		}
+
+		actor := auth.ActorContextFromClaims(authClaims)
+		if actor != nil {
+			app.GetLogger("auth:listener").Info("validated token",
+				"actor_id", actor.ActorID,
+				"tenant_id", actor.TenantID,
+			)
+		}
+		return nil
+	})
 
 	app.SetHTTPAuth(httpAuth)
 
