@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.23.0](https://github.com/goliatone/go-auth/compare/v0.22.0...v0.23.0) - (2026-01-10)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.23.0 ([4271949](https://github.com/goliatone/go-auth/commit/4271949a591afbe8cdff493b701088365e0281a3))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Validation listerner ([6214ba3](https://github.com/goliatone/go-auth/commit/6214ba3a3465c51104ca401560d4eba1a4711097))  - (goliatone)
+- Middleware helpers ([e66c3c4](https://github.com/goliatone/go-auth/commit/e66c3c4d2fce6b18fc2fbb8e8593e80fe774d0df))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.22.0 ([1eb08f7](https://github.com/goliatone/go-auth/commit/1eb08f7ed5a1b471655b3235c80928172cd2d2dd))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([9e5d87c](https://github.com/goliatone/go-auth/commit/9e5d87c3f19b57b8694e461065bd7933a9dad7a1))  - (goliatone)
+
 # [0.22.0](https://github.com/goliatone/go-auth/compare/v0.21.0...v0.22.0) - (2025-12-05)
 
 ## <!-- 1 -->🐛 Bug Fixes
