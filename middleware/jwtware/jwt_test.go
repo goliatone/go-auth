@@ -159,7 +159,7 @@ func TestJWTFromHeader_IgnoresContextStoreToken(t *testing.T) {
 
 	ctx := router.NewMockContext()
 	// Simulate a token stored in the context store but missing from the real header.
-	ctx.Locals(router.HeaderAuthorization, "Bearer stored-token")
+	ctx.LocalsMock[router.HeaderAuthorization] = "Bearer stored-token"
 
 	token, err := extractors[0](ctx)
 	assert.Empty(t, token)
