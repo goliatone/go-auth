@@ -9,8 +9,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/goliatone/go-errors v0.9.0
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.9.0
-	github.com/goliatone/go-router v0.27.0
+	github.com/goliatone/go-repository-bun v0.11.0
+	github.com/goliatone/go-router v0.41.0
 	github.com/goliatone/hashid v0.1.1
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
