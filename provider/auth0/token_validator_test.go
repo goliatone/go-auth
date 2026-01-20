@@ -147,6 +147,78 @@ func TestTokenValidator_ValidateMalformedToken(t *testing.T) {
 	}
 }
 
+func TestTokenValidator_ValidateWrongAudience(t *testing.T) {
+	privateKey, jwksJSON, kid := newTestJWKS(t)
+	server := newJWKSServer(jwksJSON)
+	t.Cleanup(server.Close)
+
+	issuer := server.URL + "/"
+	audience := "https://api.test"
+
+	validator, err := NewTokenValidator(Config{
+		Issuer:   issuer,
+		Audience: []string{audience},
+	})
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	claims := jwt.MapClaims{
+		"iss": issuer,
+		"sub": "auth0|user-123",
+		"aud": []string{"https://wrong.audience"},
+		"iat": now.Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	tokenString := signToken(t, privateKey, kid, claims)
+
+	_, err = validator.Validate(tokenString)
+	require.Error(t, err)
+	assert.True(t, auth.IsMalformedError(err))
+
+	var richErr *goerrors.Error
+	if assert.ErrorAs(t, err, &richErr) {
+		assert.Equal(t, auth.TextCodeTokenMalformed, richErr.TextCode)
+		assert.Equal(t, "auth0", richErr.Metadata["provider"])
+	}
+}
+
+func TestTokenValidator_ValidateWrongIssuer(t *testing.T) {
+	privateKey, jwksJSON, kid := newTestJWKS(t)
+	server := newJWKSServer(jwksJSON)
+	t.Cleanup(server.Close)
+
+	issuer := server.URL + "/"
+	audience := "https://api.test"
+
+	validator, err := NewTokenValidator(Config{
+		Issuer:   issuer,
+		Audience: []string{audience},
+	})
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	claims := jwt.MapClaims{
+		"iss": "https://issuer.invalid/",
+		"sub": "auth0|user-123",
+		"aud": []string{audience},
+		"iat": now.Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	tokenString := signToken(t, privateKey, kid, claims)
+
+	_, err = validator.Validate(tokenString)
+	require.Error(t, err)
+	assert.True(t, auth.IsMalformedError(err))
+
+	var richErr *goerrors.Error
+	if assert.ErrorAs(t, err, &richErr) {
+		assert.Equal(t, auth.TextCodeTokenMalformed, richErr.TextCode)
+		assert.Equal(t, "auth0", richErr.Metadata["provider"])
+	}
+}
+
 func newTestJWKS(t *testing.T) (*rsa.PrivateKey, []byte, string) {
 	t.Helper()
 
