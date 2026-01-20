@@ -565,28 +565,40 @@ The library generates structured JWT claims:
 
 ## Database Schema
 
-The library requires two database tables:
+The library requires two database tables. Note: migrations use `TEXT` IDs in
+Postgres/SQLite, while Go models cast to `uuid.UUID`. This is intentional for
+now; IDs are stored as text and parsed/validated in the app. We may move to
+native UUID columns in a future migration.
 
 ### Users Table
 
 ```sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
-    user_role VARCHAR NOT NULL,
-    first_name VARCHAR NOT NULL,
-    last_name VARCHAR NOT NULL,
-    username VARCHAR UNIQUE NOT NULL,
-    email VARCHAR UNIQUE NOT NULL,
-    phone_number VARCHAR,
-    password_hash VARCHAR,
+    id TEXT NOT NULL PRIMARY KEY,
+    user_role TEXT NOT NULL DEFAULT 'guest' CHECK (
+        user_role IN ('guest', 'member', 'admin', 'owner')
+    ),
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    username TEXT NOT NULL,
+    profile_picture TEXT,
+    email TEXT NOT NULL UNIQUE,
+    phone_number TEXT,
+    password_hash TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     is_email_verified BOOLEAN DEFAULT FALSE,
     login_attempts INTEGER DEFAULT 0,
     login_attempt_at TIMESTAMP,
     loggedin_at TIMESTAMP,
-    metadata JSONB,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (
+        status IN ('pending', 'active', 'suspended', 'disabled', 'archived')
+    ),
+    suspended_at TIMESTAMP,
+    external_id TEXT,
+    external_id_provider TEXT,
     reseted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
     deleted_at TIMESTAMP
 );
 ```
@@ -595,13 +607,15 @@ CREATE TABLE users (
 
 ```sql
 CREATE TABLE password_reset (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
-    status VARCHAR NOT NULL,
-    email VARCHAR NOT NULL,
+    id TEXT NOT NULL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    email TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        status IN ('unknown', 'requested', 'expired', 'changed')
+    ),
     reseted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
     deleted_at TIMESTAMP
 );
 ```

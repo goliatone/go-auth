@@ -7,8 +7,8 @@ fi
 
 export LGR_NO_TIMESTAMP=true
 
-VERSION_FILE="./.version"
 GIT_MAIN="main"
+VERSION_FILE="./.version"
 
 # If we have a .taskenv file load it as source
 if [ -f .taskenv ]; then
