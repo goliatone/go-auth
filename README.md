@@ -13,6 +13,7 @@ A Go authentication library providing JWT based authentication, password managem
 - HTTP middleware for route protection
 - Built in authentication controllers for web applications
 - Database persistence layer using Bun ORM
+- OAuth2 social login (GitHub, Google) with account linking
 - Customizable identity providers and role providers
 
 ## Installation
@@ -135,6 +136,72 @@ wrapped := func(ctx router.Context) error {
 
 router.Get("/profile", profileHandler, wrapped)
 ```
+
+### Social Login (OAuth2)
+
+```go
+import (
+    "encoding/base64"
+
+    "github.com/goliatone/go-auth/social"
+    "github.com/goliatone/go-auth/social/providers/github"
+    "github.com/goliatone/go-auth/social/providers/google"
+    repo "github.com/goliatone/go-auth/repository"
+)
+
+stateEncKey, _ := base64.StdEncoding.DecodeString(cfg.Social.StateEncryptionKey)
+stateHMACKey, _ := base64.StdEncoding.DecodeString(cfg.Social.StateHMACKey)
+
+socialRepo := repo.NewSocialAccountRepository(bunDB)
+
+socialAuth := social.NewSocialAuthenticator(
+    socialRepo,
+    repoManager.Users(),
+    authenticator.TokenService(),
+    social.SocialAuthConfig{
+        DefaultRedirectURL:   "/",
+        StateEncryptionKey:   stateEncKey,
+        StateHMACKey:         stateHMACKey,
+        AllowSignup:          true,
+        AllowLinking:         true,
+        RequireEmailVerified: true,
+    },
+    social.WithProvider(github.New(github.Config{
+        ClientID:     cfg.Social.GitHubClientID,
+        ClientSecret: cfg.Social.GitHubClientSecret,
+        CallbackURL:  cfg.BaseURL + "/auth/social/github/callback",
+    })),
+    social.WithProvider(google.New(google.Config{
+        ClientID:     cfg.Social.GoogleClientID,
+        ClientSecret: cfg.Social.GoogleClientSecret,
+        CallbackURL:  cfg.BaseURL + "/auth/social/google/callback",
+    })),
+)
+
+socialController := social.NewHTTPController(socialAuth, social.HTTPConfig{
+    PathPrefix:        "/auth/social",
+    SessionContextKey: cfg.Auth.GetContextKey(),
+    CookieName:        cfg.Auth.GetContextKey(),
+    SuccessRedirect:   "/dashboard",
+    ErrorRedirect:     "/login?error=auth_failed",
+    CookieSecure:      true,
+    CookieHTTPOnly:    true,
+    CookieSameSite:    "Lax",
+})
+socialController.RegisterRoutes(router.Group("/auth/social"))
+```
+
+Routes registered by the controller:
+
+- `GET /auth/social/providers`
+- `GET /auth/social/:provider`
+- `GET /auth/social/:provider/callback`
+- `POST /auth/social/:provider/link`
+- `DELETE /auth/social/:provider`
+- `GET /auth/social/accounts`
+
+See `docs/SOCIAL_LOGIN.md` for linking policies, migration guidance, and security notes.
+Example wiring lives in `examples/extensions/social_login.go`.
 
 ### Session with Resource Permissions
 
@@ -504,6 +571,36 @@ CREATE TABLE password_reset (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP
 );
+```
+
+### Social Accounts Table
+
+Social login adds a `social_accounts` table for linked provider identities.
+Migrations ship in `data/sql/migrations` and `data/sql/migrations/sqlite`.
+
+```sql
+CREATE TABLE social_accounts (
+    id TEXT NOT NULL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    email TEXT,
+    name TEXT,
+    username TEXT,
+    avatar_url TEXT,
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expires_at TIMESTAMP NULL,
+    profile_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_social_accounts_provider_id UNIQUE (provider, provider_user_id),
+    CONSTRAINT uq_social_accounts_user_provider UNIQUE (user_id, provider)
+);
+
+CREATE INDEX idx_social_accounts_user_id ON social_accounts(user_id);
+CREATE INDEX idx_social_accounts_provider ON social_accounts(provider, provider_user_id);
 ```
 
 ## Configuration
