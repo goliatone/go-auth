@@ -3,6 +3,7 @@ module github.com/goliatone/go-auth
 go 1.23.4
 
 require (
+	github.com/auth0/go-jwt-middleware/v2 v2.1.0
 	github.com/MicahParks/keyfunc/v2 v2.1.0
 	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
