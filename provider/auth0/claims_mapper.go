@@ -3,8 +3,10 @@ package auth0
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/auth0/go-jwt-middleware/v2/validator"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/goliatone/go-auth"
 )
 
@@ -81,7 +83,7 @@ func (m *Auth0ClaimsMapper) Map(ctx context.Context, externalClaims any) (*auth.
 	}
 
 	claims := &auth.JWTClaims{
-		RegisteredClaims: validated.RegisteredClaims,
+		RegisteredClaims: toJWTRegisteredClaims(validated.RegisteredClaims),
 		UID:              validated.RegisteredClaims.Subject,
 		UserRole:         role,
 		Resources:        resourceRoles,
@@ -338,14 +340,6 @@ func stringSliceFromAny(val any) []string {
 			}
 		}
 		return out
-	case []interface{}:
-		out := make([]string, 0, len(typed))
-		for _, entry := range typed {
-			if str, ok := entry.(string); ok {
-				out = append(out, str)
-			}
-		}
-		return out
 	case string:
 		if typed == "" {
 			return nil
@@ -371,16 +365,29 @@ func mapStringStringFromAny(val any) map[string]string {
 			}
 		}
 		return out
-	case map[string]interface{}:
-		out := make(map[string]string, len(typed))
-		for key, value := range typed {
-			if str, ok := value.(string); ok {
-				out[key] = str
-			}
-		}
-		return out
 	}
 	return nil
+}
+
+func toJWTRegisteredClaims(claims validator.RegisteredClaims) jwt.RegisteredClaims {
+	registered := jwt.RegisteredClaims{
+		Issuer:   claims.Issuer,
+		Subject:  claims.Subject,
+		Audience: jwt.ClaimStrings(claims.Audience),
+		ID:       claims.ID,
+	}
+
+	if claims.Expiry != 0 {
+		registered.ExpiresAt = jwt.NewNumericDate(time.Unix(claims.Expiry, 0))
+	}
+	if claims.NotBefore != 0 {
+		registered.NotBefore = jwt.NewNumericDate(time.Unix(claims.NotBefore, 0))
+	}
+	if claims.IssuedAt != 0 {
+		registered.IssuedAt = jwt.NewNumericDate(time.Unix(claims.IssuedAt, 0))
+	}
+
+	return registered
 }
 
 func uniqueKeys(values ...string) []string {
