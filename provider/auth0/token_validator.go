@@ -11,6 +11,7 @@ import (
 	"github.com/auth0/go-jwt-middleware/v2/validator"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/goliatone/go-auth"
+	josejwt "gopkg.in/square/go-jose.v2/jwt"
 )
 
 // TokenValidator validates Auth0-issued JWTs using JWKS.
@@ -98,7 +99,7 @@ func normalizeValidationError(err error) error {
 	}
 
 	clone := auth.ErrTokenMalformed.Clone()
-	if stderrors.Is(err, jwt.ErrTokenExpired) {
+	if stderrors.Is(err, jwt.ErrTokenExpired) || stderrors.Is(err, josejwt.ErrExpired) {
 		clone = auth.ErrTokenExpired.Clone()
 	}
 
