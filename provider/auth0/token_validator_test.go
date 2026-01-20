@@ -174,8 +174,16 @@ func newTestJWKS(t *testing.T) (*rsa.PrivateKey, []byte, string) {
 }
 
 func newJWKSServer(jwks []byte) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			payload := map[string]any{
+				"jwks_uri": server.URL + "/.well-known/jwks.json",
+			}
+			_ = json.NewEncoder(w).Encode(payload)
 		case "/.well-known/jwks.json", "/":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -184,6 +192,7 @@ func newJWKSServer(jwks []byte) *httptest.Server {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
+	return server
 }
 
 func signToken(t *testing.T, key *rsa.PrivateKey, kid string, claims jwt.Claims) string {
