@@ -1,5 +1,50 @@
 # Changelog
 
+# [0.24.0](https://github.com/goliatone/go-auth/compare/v0.23.0...v0.24.0) - (2026-01-20)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Add mapFromMEtadataPointer for tests ([2e431e3](https://github.com/goliatone/go-auth/commit/2e431e3757fab23d830e6cd61bf2356e2d3605fd))  - (goliatone)
+- Map hadnling issues ([742c6f5](https://github.com/goliatone/go-auth/commit/742c6f51dcefdb404b58dde96029c45dc6a72782))  - (goliatone)
+- Test for social linking ([10b0859](https://github.com/goliatone/go-auth/commit/10b0859eade102f4c03d988c8be2fce8ca01b2e6))  - (goliatone)
+- Update test to use mock data ([5b089f8](https://github.com/goliatone/go-auth/commit/5b089f8699ba1fc16e4f7ae1e31efc968770c31f))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.24.0 ([24bc260](https://github.com/goliatone/go-auth/commit/24bc260b18ccc12e46532c08295655611199dad6))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Migrations for auth identifiers ([5a169e3](https://github.com/goliatone/go-auth/commit/5a169e3fa16a8fbd03039fb8a8b26903cab1facc))  - (goliatone)
+- Udpated migrations for users ([b04ddce](https://github.com/goliatone/go-auth/commit/b04ddcec1ba66048d9bb9aee5462635a97338f08))  - (goliatone)
+- Auth0 idp and sync ([e0958cc](https://github.com/goliatone/go-auth/commit/e0958cc0efe28238a6b9a21e56b831ffab640519))  - (goliatone)
+- Migrations to add identifiers and auth0 id ([6fdc7dd](https://github.com/goliatone/go-auth/commit/6fdc7dd4f0b83288f62bdeb9a27aef07aafc407f))  - (goliatone)
+- Better error handling ([fe581f6](https://github.com/goliatone/go-auth/commit/fe581f6a08f76a8f1033dfc690e9f5490933bf13))  - (goliatone)
+- Claims mapper for auth0 ([b050dae](https://github.com/goliatone/go-auth/commit/b050dae2759b8e1de5b536302c456c3a4654d27a))  - (goliatone)
+- Auth0 provider ([7775c01](https://github.com/goliatone/go-auth/commit/7775c01b847791788876393724f2f9a903b7e226))  - (goliatone)
+- Social http controller ([bbceacb](https://github.com/goliatone/go-auth/commit/bbceacbaeb0aea161ce85ab57ab60abf607e49a9))  - (goliatone)
+- Multi token validator ([74f92a2](https://github.com/goliatone/go-auth/commit/74f92a20ca0e31f891d0e6051d330675cdd0c3fb))  - (goliatone)
+- Social accounts repo ([61bce5c](https://github.com/goliatone/go-auth/commit/61bce5c4913e8eff1ae236bbb3581c818cb527a0))  - (goliatone)
+- Migrations for social accounts ([e6ab6ba](https://github.com/goliatone/go-auth/commit/e6ab6bab86e9948f92ac9b535cb1b4c1c98181dc))  - (goliatone)
+- Token validator ([9c19ed6](https://github.com/goliatone/go-auth/commit/9c19ed63c60df04a0f86791d56a38439038941be))  - (goliatone)
+- Activity event types ([2eac787](https://github.com/goliatone/go-auth/commit/2eac787bc48860109b44d5f3d1f0f210a2a25f8a))  - (goliatone)
+- Uuid helpers ([4e4fca6](https://github.com/goliatone/go-auth/commit/4e4fca6c5c2c045d2749e56d69637bd9b53da55d))  - (goliatone)
+- Token validator interfaces ([cd3d641](https://github.com/goliatone/go-auth/commit/cd3d6419a9c19b94172f8ea19672e47e293a2076))  - (goliatone)
+- Identify adapter ([eebc7e5](https://github.com/goliatone/go-auth/commit/eebc7e519e23c88d685593caee3e45af4de5cff4))  - (goliatone)
+- Social integration ([0adec83](https://github.com/goliatone/go-auth/commit/0adec8337282532f42fbc2595de23cc759ab8dc2))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.23.0 ([b7aab2e](https://github.com/goliatone/go-auth/commit/b7aab2e5303ca9d963ddf181a83297413aa901a3))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([b38c9af](https://github.com/goliatone/go-auth/commit/b38c9af49ff9d9256626eccb1ac2e0969f16b7b2))  - (goliatone)
+- Update examples ([99058bd](https://github.com/goliatone/go-auth/commit/99058bdde08733cb7d8cdb743a1675399e81e60a))  - (goliatone)
+- Update tasks ([5a9354d](https://github.com/goliatone/go-auth/commit/5a9354dab848f0179f20f2412c8f75001eb83c23))  - (goliatone)
+- Update tests ([0addcc7](https://github.com/goliatone/go-auth/commit/0addcc7cbf1377f30fca2fbf21c1c01d4049ea37))  - (goliatone)
+- Update deps ([5216659](https://github.com/goliatone/go-auth/commit/5216659bf5168c4156b5767599213d94d41d80ba))  - (goliatone)
+
 # [0.23.0](https://github.com/goliatone/go-auth/compare/v0.22.0...v0.23.0) - (2026-01-10)
 
 ## <!-- 13 -->📦 Bumps
