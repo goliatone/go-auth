@@ -9,12 +9,13 @@ import (
 type ActivityEventType string
 
 const (
-	ActivityEventUserStatusChanged     ActivityEventType = "user.status.changed"
-	ActivityEventLoginSuccess          ActivityEventType = "auth.login.success"
-	ActivityEventLoginFailure          ActivityEventType = "auth.login.failure"
-	ActivityEventImpersonationSuccess  ActivityEventType = "auth.impersonation.success"
-	ActivityEventImpersonationFailure  ActivityEventType = "auth.impersonation.failure"
-	ActivityEventPasswordResetSuccess  ActivityEventType = "auth.password.reset"
+	ActivityEventUserStatusChanged    ActivityEventType = "user.status.changed"
+	ActivityEventLoginSuccess         ActivityEventType = "auth.login.success"
+	ActivityEventLoginFailure         ActivityEventType = "auth.login.failure"
+	ActivityEventSocialLogin          ActivityEventType = "auth.social.login"
+	ActivityEventImpersonationSuccess ActivityEventType = "auth.impersonation.success"
+	ActivityEventImpersonationFailure ActivityEventType = "auth.impersonation.failure"
+	ActivityEventPasswordResetSuccess ActivityEventType = "auth.password.reset"
 )
 
 // ActivityEvent captures audit-friendly information about an action.
