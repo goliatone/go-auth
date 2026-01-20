@@ -12,22 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type stubAccountRepo struct {
+type stubLinkingAccountRepo struct {
 	byProviderID map[string]*SocialAccount
 }
 
-func (s *stubAccountRepo) FindByProviderID(ctx context.Context, provider, providerUserID string) (*SocialAccount, error) {
+func (s *stubLinkingAccountRepo) FindByProviderID(ctx context.Context, provider, providerUserID string) (*SocialAccount, error) {
 	if account, ok := s.byProviderID[accountKey(provider, providerUserID)]; ok {
 		return account, nil
 	}
 	return nil, sql.ErrNoRows
 }
 
-func (s *stubAccountRepo) FindByUserID(ctx context.Context, userID string) ([]*SocialAccount, error) {
+func (s *stubLinkingAccountRepo) FindByUserID(ctx context.Context, userID string) ([]*SocialAccount, error) {
 	return nil, nil
 }
 
-func (s *stubAccountRepo) Upsert(ctx context.Context, account *SocialAccount) error {
+func (s *stubLinkingAccountRepo) Upsert(ctx context.Context, account *SocialAccount) error {
 	if s.byProviderID == nil {
 		s.byProviderID = map[string]*SocialAccount{}
 	}
@@ -35,11 +35,11 @@ func (s *stubAccountRepo) Upsert(ctx context.Context, account *SocialAccount) er
 	return nil
 }
 
-func (s *stubAccountRepo) Delete(ctx context.Context, id string) error {
+func (s *stubLinkingAccountRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *stubAccountRepo) DeleteByUserAndProvider(ctx context.Context, userID, provider string) error {
+func (s *stubLinkingAccountRepo) DeleteByUserAndProvider(ctx context.Context, userID, provider string) error {
 	return nil
 }
 
@@ -83,7 +83,7 @@ func (s *stubUsers) Create(ctx context.Context, record *auth.User, criteria ...r
 
 func TestDefaultLinkingStrategy_ExistingAccount(t *testing.T) {
 	user := &auth.User{ID: uuid.New(), Email: "existing@example.com"}
-	accountRepo := &stubAccountRepo{
+	accountRepo := &stubLinkingAccountRepo{
 		byProviderID: map[string]*SocialAccount{
 			accountKey("github", "123"): {
 				UserID:         user.ID.String(),
