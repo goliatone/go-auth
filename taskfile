@@ -8,6 +8,7 @@ fi
 export LGR_NO_TIMESTAMP=true
 
 VERSION_FILE="./.version"
+GIT_MAIN="main"
 
 # If we have a .taskenv file load it as source
 if [ -f .taskenv ]; then
@@ -342,6 +343,13 @@ function release {
     local tag
     local level
     local message
+    local current_branch
+
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    if [[ "${current_branch}" != "${GIT_MAIN}" ]]; then
+        log E "Release must run on ${GIT_MAIN}; current branch is ${current_branch}"
+        exit 1
+    fi
 
     # Fetch all changes from origin
     git fetch --all
