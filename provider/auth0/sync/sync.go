@@ -127,11 +127,11 @@ func DefaultUserMapper(ctx context.Context, user *management.User) (*auth.User, 
 	}
 
 	role := auth.RoleMember
-	if mapped := roleFromMetadata(user.AppMetadata); mapped != "" {
+	if mapped := roleFromMetadata(mapFromMetadataPointer(user.AppMetadata)); mapped != "" {
 		if parsed, ok := auth.ParseRole(mapped); ok {
 			role = parsed
 		}
-	} else if mapped := roleFromMetadata(user.UserMetadata); mapped != "" {
+	} else if mapped := roleFromMetadata(mapFromMetadataPointer(user.UserMetadata)); mapped != "" {
 		if parsed, ok := auth.ParseRole(mapped); ok {
 			role = parsed
 		}
@@ -141,11 +141,11 @@ func DefaultUserMapper(ctx context.Context, user *management.User) (*auth.User, 
 		"auth0_id":       user.GetID(),
 		"auth0_provider": auth0.IdentifierProviderAuth0,
 	}
-	if user.AppMetadata != nil {
-		metadata["auth0_app_metadata"] = copyMap(user.AppMetadata)
+	if appMetadata := mapFromMetadataPointer(user.AppMetadata); appMetadata != nil {
+		metadata["auth0_app_metadata"] = copyMap(appMetadata)
 	}
-	if user.UserMetadata != nil {
-		metadata["auth0_user_metadata"] = copyMap(user.UserMetadata)
+	if userMetadata := mapFromMetadataPointer(user.UserMetadata); userMetadata != nil {
+		metadata["auth0_user_metadata"] = copyMap(userMetadata)
 	}
 
 	return &auth.User{
@@ -205,6 +205,19 @@ func roleFromMetadata(metadata map[string]any) string {
 		}
 	}
 	return ""
+}
+
+func mapFromMetadataPointer(metadata *map[string]any) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+
+	out := make(map[string]any, len(*metadata))
+	for key, value := range *metadata {
+		out[key] = value
+	}
+
+	return out
 }
 
 func copyMap(source map[string]any) map[string]any {
