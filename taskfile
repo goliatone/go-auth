@@ -97,6 +97,77 @@ function dev:cover {
     go test -coverprofile=coverage.out ./... && go tool cover -func coverage.out
 }
 
+
+function go:mod:update {
+    local modules
+    local extra=()
+    local mod
+    local root
+    local latest
+    local root_latest
+    local resolved
+    local current_mod
+
+    if ! command -v rg >/dev/null 2>&1; then
+        lgr ERR "rg is required to list goliatone modules"
+        return 1
+    fi
+
+    # Get current module name to exclude from updates (avoid self-update and submodules)
+    current_mod=$(go list -m)
+
+    modules=$(rg -o 'github.com/goliatone/[^[:space:]]+' go.mod | sort -u | grep -v "^${current_mod}")
+    if [ -z "$modules" ]; then
+        lgr ERR "no goliatone modules found in go.mod"
+        return 1
+    fi
+
+    lgr I "updating goliatone modules to latest..."
+    for mod in $modules; do
+        latest=""
+        resolved=0
+        if latest=$(go list -m -u -f '{{if .Update}}{{.Update.Version}}{{else}}{{.Version}}{{end}}' "$mod" 2>/dev/null); then
+            resolved=1
+        fi
+
+        if [ "$resolved" -eq 1 ] && [ -n "$latest" ]; then
+            lgr I "go get ${mod}@${latest}"
+            go get "${mod}@${latest}" || return 1
+            continue
+        fi
+
+        lgr WARN "failed to resolve latest for ${mod}, trying ${mod}@latest"
+        if go get -u "${mod}@latest"; then
+            continue
+        fi
+
+        root=$(echo "$mod" | awk -F/ '{print $1"/"$2"/"$3}')
+        if [ "$root" != "$mod" ]; then
+            root_latest=""
+            if root_latest=$(go list -m -u -f '{{if .Update}}{{.Update.Version}}{{else}}{{.Version}}{{end}}' "$root" 2>/dev/null); then
+                lgr WARN "failed to update ${mod}, retrying ${root}@${root_latest}"
+                go get "${root}@${root_latest}" || return 1
+            else
+                lgr WARN "failed to resolve ${root}, retrying ${root}@latest"
+                go get -u "${root}@latest" || return 1
+            fi
+        else
+            return 1
+        fi
+    done
+
+    if [ "$#" -gt 0 ]; then
+        for mod in "$@"; do
+            extra+=("${mod}@latest")
+        done
+        lgr I "updating extra modules: ${extra[*]}"
+        go get -u "${extra[@]}" || return 1
+    fi
+
+    go mod tidy
+}
+
+
 ##
 ## ########################################
 ##           Version Management

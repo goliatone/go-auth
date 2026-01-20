@@ -10,21 +10,24 @@ import (
 	"github.com/goliatone/go-router"
 )
 
-// TokenServiceAdapter adapts TokenService to jwtware.TokenValidator interface
+// TokenServiceAdapter adapts TokenValidator to jwtware.TokenValidator interface
 type TokenServiceAdapter struct {
-	tokenService TokenService
+	tokenValidator TokenValidator
 }
 
 // NewTokenServiceAdapter creates a new TokenServiceAdapter
-func NewTokenServiceAdapter(tokenService TokenService) *TokenServiceAdapter {
+func NewTokenServiceAdapter(tokenValidator TokenValidator) *TokenServiceAdapter {
 	return &TokenServiceAdapter{
-		tokenService: tokenService,
+		tokenValidator: tokenValidator,
 	}
 }
 
 // Validate implements the jwtware.TokenValidator interface
 func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims, error) {
-	return tsa.tokenService.Validate(tokenString)
+	if tsa.tokenValidator == nil {
+		return nil, ErrUnableToDecodeSession
+	}
+	return tsa.tokenValidator.Validate(tokenString)
 }
 
 type RouteAuthenticator struct {
@@ -103,9 +106,15 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 		RegisterValidationListeners(&jwtConfig, a.validationListeners...)
 	}
 
-	// If the Auther has a TokenService, use it for enhanced validation
-	if auther, ok := a.auth.(*Auther); ok && auther.tokenService != nil {
-		jwtConfig.TokenValidator = &TokenServiceAdapter{tokenService: auther.tokenService}
+	// If the Auther has a TokenValidator, use it for enhanced validation
+	if auther, ok := a.auth.(*Auther); ok {
+		validator := auther.tokenValidator
+		if validator == nil {
+			validator = auther.tokenService
+		}
+		if validator != nil {
+			jwtConfig.TokenValidator = NewTokenServiceAdapter(validator)
+		}
 	}
 
 	return jwtware.New(jwtConfig)

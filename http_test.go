@@ -286,9 +286,11 @@ func TestRouteAuthenticator_MakeClientRouteAuthErrorHandler(t *testing.T) {
 		mockCtx := router.NewMockContext()
 
 		var authErrorCalled bool
+		var authErr error
 		origHandler := httpAuth.AuthErrorHandler
 		httpAuth.AuthErrorHandler = func(c router.Context, err error) error {
 			authErrorCalled = true
+			authErr = err
 			return c.Redirect("/login", http.StatusSeeOther)
 		}
 		defer func() { httpAuth.AuthErrorHandler = origHandler }()
@@ -300,8 +302,45 @@ func TestRouteAuthenticator_MakeClientRouteAuthErrorHandler(t *testing.T) {
 		err := handler(mockCtx, jwtware.ErrJWTMissingOrMalformed)
 		require.NoError(t, err)
 		assert.True(t, authErrorCalled, "Auth error handler should be called for required routes")
+		assert.True(t, auth.IsMalformedError(authErr))
 
 		mockCtx.AssertExpectations(t)
+	})
+
+	t.Run("Required Auth - Expired Token", func(t *testing.T) {
+		mockCtx := router.NewMockContext()
+
+		var authErr error
+		origHandler := httpAuth.AuthErrorHandler
+		httpAuth.AuthErrorHandler = func(c router.Context, err error) error {
+			authErr = err
+			return nil
+		}
+		defer func() { httpAuth.AuthErrorHandler = origHandler }()
+
+		handler := httpAuth.MakeClientRouteAuthErrorHandler(false)
+
+		err := handler(mockCtx, auth.ErrTokenExpired)
+		require.NoError(t, err)
+		assert.True(t, auth.IsTokenExpiredError(authErr))
+	})
+
+	t.Run("Required Auth - Token Malformed", func(t *testing.T) {
+		mockCtx := router.NewMockContext()
+
+		var authErr error
+		origHandler := httpAuth.AuthErrorHandler
+		httpAuth.AuthErrorHandler = func(c router.Context, err error) error {
+			authErr = err
+			return nil
+		}
+		defer func() { httpAuth.AuthErrorHandler = origHandler }()
+
+		handler := httpAuth.MakeClientRouteAuthErrorHandler(false)
+
+		err := handler(mockCtx, auth.ErrTokenMalformed)
+		require.NoError(t, err)
+		assert.True(t, auth.IsMalformedError(authErr))
 	})
 
 	mockConfig.AssertExpectations(t)

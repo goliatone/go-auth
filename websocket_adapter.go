@@ -7,21 +7,24 @@ import (
 )
 
 // WSTokenValidator implements go-router's WSTokenValidator interface
-// using the go-auth TokenService for seamless WebSocket authentication
+// using the go-auth TokenValidator for seamless WebSocket authentication
 type WSTokenValidator struct {
-	tokenService TokenService
+	tokenValidator TokenValidator
 }
 
-// NewWSTokenValidator creates a new WebSocket token validator using the provided TokenService
-func NewWSTokenValidator(tokenService TokenService) *WSTokenValidator {
+// NewWSTokenValidator creates a new WebSocket token validator using the provided TokenValidator
+func NewWSTokenValidator(tokenValidator TokenValidator) *WSTokenValidator {
 	return &WSTokenValidator{
-		tokenService: tokenService,
+		tokenValidator: tokenValidator,
 	}
 }
 
 // Validate validates a token string and returns WebSocket-compatible auth claims
 func (w *WSTokenValidator) Validate(tokenString string) (router.WSAuthClaims, error) {
-	claims, err := w.tokenService.Validate(tokenString)
+	if w.tokenValidator == nil {
+		return nil, ErrUnableToDecodeSession
+	}
+	claims, err := w.tokenValidator.Validate(tokenString)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +85,9 @@ func (w *WSAuthClaimsAdapter) IsAtLeast(minRole string) bool {
 // using the go-auth TokenService. This is a convenience function for go-auth users.
 func (a *Auther) NewWSAuthMiddleware(config ...router.WSAuthConfig) router.WebSocketMiddleware {
 	validator := NewWSTokenValidator(a.tokenService)
+	if a.tokenValidator != nil {
+		validator = NewWSTokenValidator(a.tokenValidator)
+	}
 
 	// Use provided config or create default
 	var cfg router.WSAuthConfig

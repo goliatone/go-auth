@@ -76,6 +76,40 @@ cfg := jwtware.Config{TokenValidator: tokenService}
 auth.RegisterValidationListeners(&cfg, actorAudit)
 ```
 
+## Composite Token Validation (Auth0 + Social)
+
+If your app accepts both Auth0-issued JWTs and go-auth tokens (including social
+login), use `NewMultiTokenValidator` to try multiple validators in order. The
+composite only falls through on `ErrTokenMalformed` and returns the first
+successful claims.
+
+```go
+auth0Validator, _ := auth0.NewTokenValidator(auth0.Config{
+    Domain:   cfg.Auth0.Domain,
+    Audience: cfg.Auth0.Audience,
+})
+
+auther := auth.NewAuthenticator(localProvider, cfg.Auth)
+socialAuth := social.NewSocialAuthenticator(
+    socialRepo,
+    userRepo,
+    auther.TokenService(),
+    socialConfig,
+    social.WithProvider(githubProvider),
+    social.WithProvider(googleProvider),
+)
+
+composite := auth.NewMultiTokenValidator(auth0Validator, auther.TokenService())
+auther = auther.WithTokenValidator(composite)
+
+httpAuth, _ := auth.NewHTTPAuthenticator(auther, cfg.Auth)
+socialController := social.NewHTTPController(socialAuth, httpConfig)
+socialController.RegisterRoutes(router.Group(\"/auth/social\"))
+```
+
+Make sure the Auth0 validator normalizes non-Auth0 tokens to `ErrTokenMalformed`
+so the composite can fall back to the go-auth validator.
+
 ## Putting It Together
 
 Typical workflow for go-users/go-admin transports:

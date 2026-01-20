@@ -39,27 +39,29 @@ const (
 
 // User is the user model
 type User struct {
-	bun.BaseModel  `bun:"table:users,alias:usr"`
-	ID             uuid.UUID      `bun:"id,pk,nullzero,type:uuid" json:"id,omitempty"`
-	Role           UserRole       `bun:"user_role,notnull" json:"user_role,omitempty"`
-	Status         UserStatus     `bun:"status,notnull,default:'active'" json:"status,omitempty"`
-	FirstName      string         `bun:"first_name,notnull" json:"first_name,omitempty"`
-	LastName       string         `bun:"last_name,notnull" json:"last_name,omitempty"`
-	Username       string         `bun:"username,notnull,unique" json:"username,omitempty"`
-	ProfilePicture string         `bun:"profile_picture" json:"profile_picture,omitempty"`
-	Email          string         `bun:"email,notnull,unique" json:"email,omitempty"`
-	Phone          string         `bun:"phone_number" json:"phone_number,omitempty"`
-	PasswordHash   string         `bun:"password_hash" json:"password_hash,omitempty"`
-	EmailValidated bool           `bun:"is_email_verified" json:"is_email_verified,omitempty"`
-	LoginAttempts  int            `bun:"login_attempts" json:"login_attempts,omitempty"`
-	LoginAttemptAt *time.Time     `bun:"login_attempt_at" json:"login_attempt_at,omitempty"`
-	LoggedInAt     *time.Time     `bun:"loggedin_at" json:"loggedin_at,omitempty"`
-	SuspendedAt    *time.Time     `bun:"suspended_at,nullzero" json:"suspended_at,omitempty"`
-	Metadata       map[string]any `bun:"metadata" json:"metadata,omitempty"`
-	ResetedAt      *time.Time     `bun:"reseted_at,nullzero" json:"reseted_at,omitempty"`
-	CreatedAt      *time.Time     `bun:"created_at,nullzero,default:current_timestamp" json:"created_at,omitempty"`
-	UpdatedAt      *time.Time     `bun:"updated_at,nullzero,default:current_timestamp" json:"updated_at,omitempty"`
-	DeletedAt      *time.Time     `bun:"deleted_at,soft_delete,nullzero" json:"deleted_at,omitempty"`
+	bun.BaseModel      `bun:"table:users,alias:usr"`
+	ID                 uuid.UUID      `bun:"id,pk,nullzero,type:uuid" json:"id,omitempty"`
+	Role               UserRole       `bun:"user_role,notnull" json:"user_role,omitempty"`
+	Status             UserStatus     `bun:"status,notnull,default:'active'" json:"status,omitempty"`
+	FirstName          string         `bun:"first_name,notnull" json:"first_name,omitempty"`
+	LastName           string         `bun:"last_name,notnull" json:"last_name,omitempty"`
+	Username           string         `bun:"username,notnull,unique" json:"username,omitempty"`
+	ProfilePicture     string         `bun:"profile_picture" json:"profile_picture,omitempty"`
+	Email              string         `bun:"email,notnull,unique" json:"email,omitempty"`
+	ExternalID         string         `bun:"external_id" json:"external_id,omitempty"`
+	ExternalIDProvider string         `bun:"external_id_provider" json:"external_id_provider,omitempty"`
+	Phone              string         `bun:"phone_number" json:"phone_number,omitempty"`
+	PasswordHash       string         `bun:"password_hash" json:"password_hash,omitempty"`
+	EmailValidated     bool           `bun:"is_email_verified" json:"is_email_verified,omitempty"`
+	LoginAttempts      int            `bun:"login_attempts" json:"login_attempts,omitempty"`
+	LoginAttemptAt     *time.Time     `bun:"login_attempt_at" json:"login_attempt_at,omitempty"`
+	LoggedInAt         *time.Time     `bun:"loggedin_at" json:"loggedin_at,omitempty"`
+	SuspendedAt        *time.Time     `bun:"suspended_at,nullzero" json:"suspended_at,omitempty"`
+	Metadata           map[string]any `bun:"metadata" json:"metadata,omitempty"`
+	ResetedAt          *time.Time     `bun:"reseted_at,nullzero" json:"reseted_at,omitempty"`
+	CreatedAt          *time.Time     `bun:"created_at,nullzero,default:current_timestamp" json:"created_at,omitempty"`
+	UpdatedAt          *time.Time     `bun:"updated_at,nullzero,default:current_timestamp" json:"updated_at,omitempty"`
+	DeletedAt          *time.Time     `bun:"deleted_at,soft_delete,nullzero" json:"deleted_at,omitempty"`
 }
 
 // AddMetadata will append information to a metadata attribute
