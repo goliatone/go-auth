@@ -203,6 +203,39 @@ Routes registered by the controller:
 See `docs/SOCIAL_LOGIN.md` for linking policies, migration guidance, and security notes.
 Example wiring lives in `examples/extensions/social_login.go`.
 
+### Auth0 Integration (Optional)
+
+Auth0 support is opt-in and uses `provider/auth0` for JWT validation and claims
+mapping. For Auth0 + local tokens, use `NewMultiTokenValidator` to accept both.
+
+```go
+import "github.com/goliatone/go-auth/provider/auth0"
+
+auth0Validator, err := auth0.NewTokenValidator(auth0.Config{
+    Domain:   "your-tenant.auth0.com",
+    Audience: []string{"https://api.yourapp.com"},
+})
+if err != nil {
+    return err
+}
+
+authenticator := auth.NewAuthenticator(userProvider, cfg.Auth)
+
+// Accept Auth0 tokens only.
+authenticator = authenticator.WithTokenValidator(auth0Validator)
+
+// Or accept Auth0 + local go-auth tokens.
+composite := auth.NewMultiTokenValidator(auth0Validator, authenticator.TokenService())
+authenticator = authenticator.WithTokenValidator(composite)
+```
+
+For sync (local mirroring), use `provider/auth0/sync` with an IdentifierStore.
+See `docs/AUTH0.md` and `examples/auth0/` for full examples.
+
+Auth0 validation errors normalize to `ErrTokenExpired` / `ErrTokenMalformed`
+with `provider=auth0` metadata. Use `HasUserUUID(session)` before calling
+`Session.GetUserUUID` because Auth0 `sub` values are not UUIDs.
+
 ### Session with Resource Permissions
 
 ```go
@@ -602,6 +635,17 @@ CREATE TABLE social_accounts (
 CREATE INDEX idx_social_accounts_user_id ON social_accounts(user_id);
 CREATE INDEX idx_social_accounts_provider ON social_accounts(provider, provider_user_id);
 ```
+
+### Auth0 Identifiers Table (Optional Sync Track)
+
+Auth0 sync adds a `user_identifiers` mapping table and optional external ID
+columns on `users`. Migrations ship in `data/sql/migrations` and
+`data/sql/migrations/sqlite`:
+
+- `0001_auth0_identifiers.up.sql`
+- `0001_auth0_identifiers.down.sql`
+
+See `docs/AUTH0.md` for schema details and sync wiring.
 
 ## Configuration
 
