@@ -122,14 +122,14 @@ func (p *IdentityProvider) mapAuth0User(u *management.User) *Auth0Identity {
 
 	metadata := map[string]any{}
 	if u.AppMetadata != nil {
-		for k, v := range u.AppMetadata {
+		for k, v := range *u.AppMetadata {
 			metadata[k] = v
 		}
 	}
 
 	role := roleFromMetadata(metadata)
 	if role == "" && u.UserMetadata != nil {
-		role = roleFromMetadata(u.UserMetadata)
+		role = roleFromMetadata(*u.UserMetadata)
 	}
 
 	return &Auth0Identity{
