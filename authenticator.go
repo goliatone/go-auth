@@ -17,6 +17,7 @@ type Auther struct {
 	audience        []string
 	logger          Logger
 	tokenService    TokenService
+	tokenValidator  TokenValidator
 	activitySink    ActivitySink
 	claimsDecorator ClaimsDecorator
 }
@@ -75,6 +76,12 @@ func (s *Auther) WithActivitySink(sink ActivitySink) *Auther {
 // WithClaimsDecorator configures a ClaimsDecorator for enriching JWTs.
 func (s *Auther) WithClaimsDecorator(decorator ClaimsDecorator) *Auther {
 	s.claimsDecorator = normalizeClaimsDecorator(decorator)
+	return s
+}
+
+// WithTokenValidator sets a custom token validator for externally issued tokens.
+func (s *Auther) WithTokenValidator(validator TokenValidator) *Auther {
+	s.tokenValidator = validator
 	return s
 }
 
@@ -213,8 +220,12 @@ func (s *Auther) IdentityFromSession(ctx context.Context, session Session) (Iden
 }
 
 func (s Auther) SessionFromToken(raw string) (Session, error) {
-	// Use TokenService to validate the token and get AuthClaims
-	claims, err := s.tokenService.Validate(raw)
+	validator := s.tokenValidator
+	if validator == nil {
+		validator = s.tokenService
+	}
+
+	claims, err := validator.Validate(raw)
 	if err != nil {
 		s.logger.Error("SessionFromToken validation failed", "error", err)
 		return nil, err
