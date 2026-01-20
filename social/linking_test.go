@@ -120,7 +120,7 @@ func TestDefaultLinkingStrategy_ExistingAccount(t *testing.T) {
 }
 
 func TestDefaultLinkingStrategy_CreatesNewUser(t *testing.T) {
-	accountRepo := &stubAccountRepo{}
+	accountRepo := &stubLinkingAccountRepo{}
 	userRepo := &stubUsers{}
 
 	strategy := &DefaultLinkingStrategy{
@@ -155,7 +155,7 @@ func TestDefaultLinkingStrategy_CreatesNewUser(t *testing.T) {
 
 func TestDefaultLinkingStrategy_BlockedExistingEmail(t *testing.T) {
 	user := &auth.User{ID: uuid.New(), Email: "exists@example.com"}
-	accountRepo := &stubAccountRepo{}
+	accountRepo := &stubLinkingAccountRepo{}
 	userRepo := &stubUsers{
 		byIdentifier: map[string]*auth.User{
 			user.Email: user,
