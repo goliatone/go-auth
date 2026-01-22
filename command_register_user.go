@@ -6,6 +6,7 @@ import (
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
+	"github.com/goliatone/go-featuregate/gate"
 	"github.com/goliatone/hashid/pkg/hashid"
 	"github.com/uptrace/bun"
 )
@@ -25,7 +26,19 @@ func (e RegisterUserMessage) Type() string { return "user.register" }
 
 // Test handlers
 type RegisterUserHandler struct {
-	repo RepositoryManager
+	repo        RepositoryManager
+	featureGate gate.FeatureGate
+}
+
+func NewRegisterUserHandler(repo RepositoryManager) *RegisterUserHandler {
+	return &RegisterUserHandler{
+		repo: repo,
+	}
+}
+
+func (h *RegisterUserHandler) WithFeatureGate(featureGate gate.FeatureGate) *RegisterUserHandler {
+	h.featureGate = featureGate
+	return h
 }
 
 func (h *RegisterUserHandler) Execute(ctx context.Context, event RegisterUserMessage) error {
@@ -37,6 +50,9 @@ func (h *RegisterUserHandler) Execute(ctx context.Context, event RegisterUserMes
 			"context cancelled during user registration",
 		)
 	default:
+		if err := requireFeatureGate(ctx, h.featureGate, gate.FeatureUsersSignup, ErrSignupDisabled); err != nil {
+			return err
+		}
 		return h.execute(ctx, event)
 	}
 }
