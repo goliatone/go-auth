@@ -338,8 +338,10 @@ function version:check {
 ##
 ## Arguments:
 ## @arg 1 {string} tag
+## @flag --tidy Run go mod tidy (use after tag is published)
 function adapters:featuregate:sync {
     local tag=${1}
+    shift
 
     if [ -z "$tag" ]; then
         exit 1
@@ -350,7 +352,20 @@ function adapters:featuregate:sync {
     fi
 
     (cd adapters/featuregate && go mod edit -require=github.com/goliatone/go-auth@v${tag})
-    (cd adapters/featuregate && go mod tidy)
+
+    local run_tidy=0
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --tidy)
+                run_tidy=1
+            ;;
+        esac
+        shift
+    done
+
+    if [ "$run_tidy" -eq 1 ]; then
+        (cd adapters/featuregate && go mod tidy)
+    fi
 }
 
 
