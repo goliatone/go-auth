@@ -10,6 +10,7 @@ import (
 
 	csfmw "github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-errors"
+	"github.com/goliatone/go-featuregate/gate"
 	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
@@ -131,6 +132,7 @@ type AuthController struct {
 	ErrorHandler     router.ErrorHandler
 	RegisterRedirect string
 	UseHashID        bool
+	featureGate      gate.FeatureGate
 	activity         ActivitySink
 }
 
@@ -181,6 +183,13 @@ func WithAuthControllerUseHashID(v bool) AuthControllerOption {
 func WithAuthControllerActivitySink(sink ActivitySink) AuthControllerOption {
 	return func(ac *AuthController) *AuthController {
 		ac.activity = normalizeActivitySink(sink)
+		return ac
+	}
+}
+
+func WithFeatureGate(featureGate gate.FeatureGate) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.featureGate = featureGate
 		return ac
 	}
 }
@@ -253,8 +262,26 @@ func (a *AuthController) handleControllerError(ctx router.Context, e error, view
 
 		return flashCtx.Status(statusCode).Render(view, viewCtx)
 	default:
-		return a.ErrorHandler(ctx, err)
+		return a.ErrorHandler(flashCtx, err)
 	}
+}
+
+func (a *AuthController) requireFeature(ctx router.Context, key string, disabledErr error, view string, payload any) error {
+	err := requireFeatureGate(ctx.Context(), a.featureGate, key, disabledErr)
+	if err != nil {
+		return a.handleControllerError(ctx, err, view, payload)
+	}
+
+	return nil
+}
+
+func (a *AuthController) requirePasswordReset(ctx router.Context, allowFinalize bool, view string, payload any) error {
+	err := requirePasswordResetGate(ctx.Context(), a.featureGate, allowFinalize)
+	if err != nil {
+		return a.handleControllerError(ctx, err, view, payload)
+	}
+
+	return nil
 }
 
 func (a *AuthController) LoginShow(ctx router.Context) error {
@@ -355,6 +382,10 @@ func (a *AuthController) LogOut(ctx router.Context) error {
 }
 
 func (a *AuthController) RegistrationShow(ctx router.Context) error {
+	if err := a.requireFeature(ctx, gate.FeatureUsersSignup, ErrSignupDisabled, a.Views.Register, RegisterUserMessage{}); err != nil {
+		return err
+	}
+
 	return ctx.Render(a.Views.Register, MergeTemplateData(ctx, router.ViewContext{
 		"errors": map[string]string{},
 		"record": RegisterUserMessage{},
@@ -392,6 +423,10 @@ func (r RegistrationCreatePayload) Validate() *errors.Error {
 }
 
 func (a *AuthController) RegistrationCreate(ctx router.Context) error {
+	if err := a.requireFeature(ctx, gate.FeatureUsersSignup, ErrSignupDisabled, a.Views.Register, nil); err != nil {
+		return err
+	}
+
 	payload := new(RegistrationCreatePayload)
 
 	if err := ctx.Bind(payload); err != nil {
@@ -448,6 +483,10 @@ const (
 )
 
 func (a *AuthController) PasswordResetGet(ctx router.Context) error {
+	if err := a.requirePasswordReset(ctx, false, a.Views.PasswordReset, nil); err != nil {
+		return err
+	}
+
 	return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 		"errors": nil,
 		"reset": map[string]string{
@@ -484,6 +523,10 @@ func (r PasswordResetRequestPayload) Validate() *errors.Error {
 }
 
 func (a *AuthController) PasswordResetPost(ctx router.Context) error {
+	if err := a.requirePasswordReset(ctx, false, a.Views.PasswordReset, nil); err != nil {
+		return err
+	}
+
 	payload := new(PasswordResetRequestPayload)
 
 	if err := ctx.Bind(payload); err != nil {
@@ -548,6 +591,9 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 }
 
 func (a *AuthController) PasswordResetForm(ctx router.Context) error {
+	if err := a.requirePasswordReset(ctx, true, a.Views.PasswordReset, nil); err != nil {
+		return err
+	}
 
 	sessionID := ctx.Param("uuid", "")
 
@@ -630,6 +676,10 @@ func (r PasswordResetVerifyPayload) Validate() *errors.Error {
 }
 
 func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
+	if err := a.requirePasswordReset(ctx, true, a.Views.PasswordReset, nil); err != nil {
+		return err
+	}
+
 	sessionID := ctx.Param("uuid")
 	payload := new(PasswordResetVerifyPayload)
 
@@ -674,7 +724,23 @@ func ValidateStringEquals(str string) validation.RuleFunc {
 }
 
 func defaultErrHandler(c router.Context, err error) error {
-	return c.Render("errors/500", router.ViewContext{
-		"message": err.Error(),
-	})
+	var richErr *errors.Error
+	if !errors.As(err, &richErr) {
+		richErr = errors.Wrap(err, errors.CategoryInternal, "An unexpected server error occurred.").
+			WithCode(errors.CodeInternal)
+	}
+
+	statusCode := richErr.Code
+	if statusCode == 0 {
+		statusCode = http.StatusInternalServerError
+	}
+
+	viewCtx := router.ViewContext{
+		"message": richErr.Message,
+	}
+	if richErr.TextCode != "" {
+		viewCtx["system_message"] = fmt.Sprintf("Error: %s", richErr.TextCode)
+	}
+
+	return c.Status(statusCode).Render("errors/500", viewCtx)
 }
