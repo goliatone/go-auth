@@ -6,6 +6,7 @@ import (
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
+	"github.com/goliatone/go-featuregate/gate"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/uptrace/bun"
 )
@@ -26,7 +27,19 @@ type InitializePasswordResetResponse struct {
 }
 
 type InitializePasswordResetHandler struct {
-	repo RepositoryManager
+	repo        RepositoryManager
+	featureGate gate.FeatureGate
+}
+
+func NewInitializePasswordResetHandler(repo RepositoryManager) *InitializePasswordResetHandler {
+	return &InitializePasswordResetHandler{
+		repo: repo,
+	}
+}
+
+func (h *InitializePasswordResetHandler) WithFeatureGate(featureGate gate.FeatureGate) *InitializePasswordResetHandler {
+	h.featureGate = featureGate
+	return h
 }
 
 func (h *InitializePasswordResetHandler) Execute(ctx context.Context, event InitializePasswordResetMessage) error {
@@ -38,6 +51,9 @@ func (h *InitializePasswordResetHandler) Execute(ctx context.Context, event Init
 			"context cancelled during password reset initialization",
 		)
 	default:
+		if err := requireFeatureGate(ctx, h.featureGate, gate.FeatureUsersPasswordReset, ErrPasswordResetDisabled); err != nil {
+			return err
+		}
 		return h.execute(ctx, event)
 	}
 }
