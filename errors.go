@@ -7,20 +7,22 @@ import (
 )
 
 const (
-	TextCodeInvalidCreds       = "INVALID_CREDENTIALS"
-	TextCodeTooManyAttempts    = "TOO_MANY_ATTEMPTS"
-	TextCodeSessionNotFound    = "SESSION_NOT_FOUND"
-	TextCodeSessionDecodeError = "SESSION_DECODE_ERROR"
-	TextCodeClaimsMappingError = "CLAIMS_MAPPING_ERROR"
-	TextCodeDataParseError     = "DATA_PARSE_ERROR"
-	TextCodeEmptyPassword      = "EMPTY_PASSWORD_NOT_ALLOWED"
-	TextCodeTokenExpired       = "TOKEN_EXPIRED"
-	TextCodeTokenMalformed     = "TOKEN_MALFORMED"
-	TextCodeImmutableClaim     = "IMMUTABLE_CLAIM_MUTATION"
-	TextCodeAccountSuspended   = "ACCOUNT_SUSPENDED"
-	TextCodeAccountDisabled    = "ACCOUNT_DISABLED"
-	TextCodeAccountArchived    = "ACCOUNT_ARCHIVED"
-	TextCodeAccountPending     = "ACCOUNT_PENDING"
+	TextCodeInvalidCreds          = "INVALID_CREDENTIALS"
+	TextCodeTooManyAttempts       = "TOO_MANY_ATTEMPTS"
+	TextCodeSessionNotFound       = "SESSION_NOT_FOUND"
+	TextCodeSessionDecodeError    = "SESSION_DECODE_ERROR"
+	TextCodeClaimsMappingError    = "CLAIMS_MAPPING_ERROR"
+	TextCodeDataParseError        = "DATA_PARSE_ERROR"
+	TextCodeEmptyPassword         = "EMPTY_PASSWORD_NOT_ALLOWED"
+	TextCodeTokenExpired          = "TOKEN_EXPIRED"
+	TextCodeTokenMalformed        = "TOKEN_MALFORMED"
+	TextCodeImmutableClaim        = "IMMUTABLE_CLAIM_MUTATION"
+	TextCodeAccountSuspended      = "ACCOUNT_SUSPENDED"
+	TextCodeAccountDisabled       = "ACCOUNT_DISABLED"
+	TextCodeAccountArchived       = "ACCOUNT_ARCHIVED"
+	TextCodeAccountPending        = "ACCOUNT_PENDING"
+	TextCodeSignupDisabled        = "SIGNUP_DISABLED"
+	TextCodePasswordResetDisabled = "PASSWORD_RESET_DISABLED"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -96,6 +98,16 @@ var ErrUserArchived = errors.New("user account is archived", errors.CategoryAuth
 // ErrUserPending is returned when an account is pending activation.
 var ErrUserPending = errors.New("user account is pending activation", errors.CategoryAuth).
 	WithTextCode(TextCodeAccountPending).
+	WithCode(errors.CodeForbidden)
+
+// ErrSignupDisabled is returned when registrations are turned off by feature gates.
+var ErrSignupDisabled = errors.New("signups are currently disabled", errors.CategoryAuthz).
+	WithTextCode(TextCodeSignupDisabled).
+	WithCode(errors.CodeForbidden)
+
+// ErrPasswordResetDisabled is returned when password reset flows are disabled.
+var ErrPasswordResetDisabled = errors.New("password reset is currently disabled", errors.CategoryAuthz).
+	WithTextCode(TextCodePasswordResetDisabled).
 	WithCode(errors.CodeForbidden)
 
 func IsTokenExpiredError(err error) bool {
