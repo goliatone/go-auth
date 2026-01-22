@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.27.3](https://github.com/goliatone/go-auth/compare/v0.27.2...v0.27.3) - (2026-01-22)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.27.3 ([76da389](https://github.com/goliatone/go-auth/commit/76da3890b89493d5bc257d2e13a178212d3cd318))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.27.2 ([972d32a](https://github.com/goliatone/go-auth/commit/972d32ababa391a8b2d8242cfe0ced4c611b16ef))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tasks ([e07901a](https://github.com/goliatone/go-auth/commit/e07901a196bd8912cb5cb3e4021f2e809c3247f9))  - (goliatone)
+
 # [0.27.2](https://github.com/goliatone/go-auth/compare/v0.27.1...v0.27.2) - (2026-01-22)
 
 ## <!-- 13 -->📦 Bumps
