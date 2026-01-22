@@ -392,19 +392,17 @@ function release {
         exit 1
     fi
 
-    if [ -n "$(git status --porcelain)" ]; then
-        echo "error: cannot pull with rebase: You have unstaged changes."
-        echo "error: please commit or stash them."
-        exit 1
-    fi
-
     # Fetch all changes from origin
     git fetch --all
     # Make sure we have the latest version file
     git checkout origin/main -- ".version"
 
     # Pull tags to make sure we have
-    git pull --tags -f
+    if ! git pull --tags -f; then
+        echo "error: git pull failed."
+        echo "error: please resolve conflicts or stash local changes."
+        exit 1
+    fi
 
     level=${1:-"patch"}
 
