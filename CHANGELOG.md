@@ -1,5 +1,34 @@
 # Changelog
 
+# [0.26.0](https://github.com/goliatone/go-auth/compare/v0.25.0...v0.26.0) - (2026-01-22)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.26.0 ([cab7f01](https://github.com/goliatone/go-auth/commit/cab7f015b8d73737c186826a8f78b111508998a0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Feature gate ([fdacbdf](https://github.com/goliatone/go-auth/commit/fdacbdfcc64df2602e20f1b956202e09bad4595e))  - (goliatone)
+- Feature gatting http controller ([896a9cf](https://github.com/goliatone/go-auth/commit/896a9cf5984c5f1aeacf39abfc88d97c65aa1ed4))  - (goliatone)
+- Errors related to feature gates ([7bde702](https://github.com/goliatone/go-auth/commit/7bde70258e000e0dfb2b36451664c28df6fe77dc))  - (goliatone)
+- Feature gate helpers ([dd91cdb](https://github.com/goliatone/go-auth/commit/dd91cdbd4a734da7dbf0917b8d9b8877525cc8ca))  - (goliatone)
+- Social gate ([fd390d7](https://github.com/goliatone/go-auth/commit/fd390d754f5fc14dfcae0ce8f76acc36e529d669))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Implement feature gate in commands ([9597ebc](https://github.com/goliatone/go-auth/commit/9597ebcc94b4a3f7afcf06717044c1b37e1e7d61))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.25.0 ([68768d7](https://github.com/goliatone/go-auth/commit/68768d70a23a3ef705b3e7e0533cdb0372b92e10))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([1e11925](https://github.com/goliatone/go-auth/commit/1e119251db607400d48e182d72b1eafa1233bd31))  - (goliatone)
+- Udpate deps ([92a1567](https://github.com/goliatone/go-auth/commit/92a156709bf4e60397e53a0a6128153fc8a67826))  - (goliatone)
+- Update readme ([5b530a7](https://github.com/goliatone/go-auth/commit/5b530a7df669605f3f16464bffc92567daa0b8d5))  - (goliatone)
+- Update tasks ([3db2abc](https://github.com/goliatone/go-auth/commit/3db2abc943ccb5cbbd11e7a8cfd29ac723eec054))  - (goliatone)
+
 # [0.25.0](https://github.com/goliatone/go-auth/compare/v0.24.0...v0.25.0) - (2026-01-20)
 
 ## <!-- 13 -->📦 Bumps
