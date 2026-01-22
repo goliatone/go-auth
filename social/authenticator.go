@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/goliatone/go-auth"
+	goerrors "github.com/goliatone/go-errors"
+	"github.com/goliatone/go-featuregate/gate"
+	"github.com/goliatone/go-featuregate/gate/guard"
 )
 
 // SocialAuthenticator orchestrates social login flows.
@@ -20,6 +23,7 @@ type SocialAuthenticator struct {
 	tokenService    auth.TokenService
 	activitySink    auth.ActivitySink
 	config          SocialAuthConfig
+	featureGate     gate.FeatureGate
 }
 
 // SocialAuthConfig configures the social authenticator.
@@ -131,6 +135,13 @@ func WithActivitySink(sink auth.ActivitySink) SocialAuthOption {
 	}
 }
 
+// WithFeatureGate sets the feature gate used to authorize social auth flows.
+func WithFeatureGate(featureGate gate.FeatureGate) SocialAuthOption {
+	return func(sa *SocialAuthenticator) {
+		sa.featureGate = featureGate
+	}
+}
+
 // BeginAuth starts the OAuth flow for a provider.
 func (sa *SocialAuthenticator) BeginAuth(
 	ctx context.Context,
@@ -153,6 +164,15 @@ func (sa *SocialAuthenticator) BeginAuth(
 	for _, opt := range opts {
 		if opt != nil {
 			opt(cfg)
+		}
+	}
+
+	if cfg.action == ActionSignup {
+		if err := guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
+			guard.WithDisabledError(ErrSignupNotAllowed),
+			guard.WithErrorMapper(normalizeFeatureGateError),
+		); err != nil {
+			return nil, err
 		}
 	}
 
@@ -217,6 +237,15 @@ func (sa *SocialAuthenticator) CompleteAuth(
 	provider, ok := sa.providers[providerName]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerName)
+	}
+
+	if state.Action == ActionSignup {
+		if err := guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
+			guard.WithDisabledError(ErrSignupNotAllowed),
+			guard.WithErrorMapper(normalizeFeatureGateError),
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	token, err := provider.Exchange(ctx, code, WithCodeVerifier(state.CodeVerifier))
@@ -386,6 +415,20 @@ func ForLinkingUser(userID string) BeginAuthOption {
 		c.linkUserID = userID
 		c.action = ActionLink
 	}
+}
+
+func normalizeFeatureGateError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var richErr *goerrors.Error
+	if goerrors.As(err, &richErr) {
+		return err
+	}
+
+	return goerrors.Wrap(err, goerrors.CategoryAuthz, "Feature gate check failed").
+		WithCode(goerrors.CodeForbidden)
 }
 
 // Actions.
