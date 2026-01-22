@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"context"
 	"testing"
 
 	csfmw "github.com/goliatone/go-auth/middleware/csrf"
+	"github.com/goliatone/go-featuregate/gate"
 	"github.com/goliatone/go-router"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -69,6 +71,7 @@ func TestRegistrationShowAddsCSRFHelpersToView(t *testing.T) {
 	ctx.LocalsMock[csfmw.DefaultContextKey+"_field"] = "_token"
 	ctx.LocalsMock[csfmw.DefaultContextKey+"_header"] = "X-CSRF-Token"
 	ctx.On("LocalsMerge", csfmw.DefaultTemplateHelpersKey, mock.Anything).Return(map[string]any{})
+	ctx.On("Context").Return(context.Background())
 
 	ctx.On("Render", ctrl.Views.Register, mock.Anything).Return(nil).Run(func(args mock.Arguments) {
 		_, ok := args.Get(1).(router.ViewContext)
@@ -86,14 +89,90 @@ func TestRegistrationShowAddsCSRFHelpersToView(t *testing.T) {
 	ctx.AssertExpectations(t)
 }
 
+func TestRegistrationShowDeniedByFeatureGate(t *testing.T) {
+	ctrl := newTestAuthController()
+	stubGate := &stubFeatureGate{
+		enabled: map[string]bool{
+			gate.FeatureUsersSignup: false,
+		},
+	}
+	ctrl.featureGate = stubGate
+
+	var handledErr error
+	ctrl.ErrorHandler = func(ctx router.Context, err error) error {
+		handledErr = err
+		return nil
+	}
+
+	ctx := router.NewMockContext()
+	ctx.On("Context").Return(context.Background())
+	ctx.On("Cookie", mock.Anything).Return()
+	ctx.On("Locals", mock.Anything, mock.Anything).Return(nil)
+
+	err := ctrl.RegistrationShow(ctx)
+	require.NoError(t, err)
+	require.ErrorIs(t, handledErr, ErrSignupDisabled)
+	require.Equal(t, []string{gate.FeatureUsersSignup}, stubGate.calls)
+	ctx.AssertExpectations(t)
+}
+
+func TestPasswordResetGetDeniedByFeatureGate(t *testing.T) {
+	ctrl := newTestAuthController()
+	stubGate := &stubFeatureGate{
+		enabled: map[string]bool{
+			gate.FeatureUsersPasswordReset: false,
+		},
+	}
+	ctrl.featureGate = stubGate
+
+	var handledErr error
+	ctrl.ErrorHandler = func(ctx router.Context, err error) error {
+		handledErr = err
+		return nil
+	}
+
+	ctx := router.NewMockContext()
+	ctx.On("Context").Return(context.Background())
+	ctx.On("Cookie", mock.Anything).Return()
+	ctx.On("Locals", mock.Anything, mock.Anything).Return(nil)
+
+	err := ctrl.PasswordResetGet(ctx)
+	require.NoError(t, err)
+	require.ErrorIs(t, handledErr, ErrPasswordResetDisabled)
+	require.Equal(t, []string{gate.FeatureUsersPasswordReset}, stubGate.calls)
+	ctx.AssertExpectations(t)
+}
+
 func newTestAuthController() *AuthController {
 	return &AuthController{
 		Logger:       defLogger{},
 		ErrorHandler: defaultErrHandler,
 		Routes:       &AuthControllerRoutes{},
 		Views: &AuthControllerViews{
-			Login:    "login",
-			Register: "register",
+			Login:         "login",
+			Register:      "register",
+			PasswordReset: "password_reset",
 		},
 	}
+}
+
+type stubFeatureGate struct {
+	enabled map[string]bool
+	calls   []string
+	err     error
+}
+
+func (s *stubFeatureGate) Enabled(ctx context.Context, key string, opts ...gate.ResolveOption) (bool, error) {
+	s.calls = append(s.calls, key)
+	if s.err != nil {
+		return false, s.err
+	}
+	if s.enabled == nil {
+		return true, nil
+	}
+	enabled, ok := s.enabled[key]
+	if !ok {
+		return true, nil
+	}
+	return enabled, nil
 }
