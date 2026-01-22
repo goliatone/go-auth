@@ -108,6 +108,8 @@ func TestRegistrationShowDeniedByFeatureGate(t *testing.T) {
 	ctx.On("Context").Return(context.Background())
 	ctx.On("Cookie", mock.Anything).Return()
 	ctx.On("Locals", mock.Anything, mock.Anything).Return(nil)
+	ctx.On("LocalsMerge", csfmw.DefaultTemplateHelpersKey, mock.Anything).Return(map[string]any{})
+	ctx.On("Render", ctrl.Views.Register, mock.Anything).Return(nil)
 
 	err := ctrl.RegistrationShow(ctx)
 	require.NoError(t, err)
@@ -135,6 +137,8 @@ func TestPasswordResetGetDeniedByFeatureGate(t *testing.T) {
 	ctx.On("Context").Return(context.Background())
 	ctx.On("Cookie", mock.Anything).Return()
 	ctx.On("Locals", mock.Anything, mock.Anything).Return(nil)
+	ctx.On("LocalsMerge", csfmw.DefaultTemplateHelpersKey, mock.Anything).Return(map[string]any{})
+	ctx.On("Render", ctrl.Views.PasswordReset, mock.Anything).Return(nil)
 
 	err := ctrl.PasswordResetGet(ctx)
 	require.NoError(t, err)
