@@ -430,6 +430,7 @@ function release {
 
     # Create a new tag
     git tag -a "v${tag}" -m "${message}"
+    git tag -a "adapters/featuregate/v${tag}" -m "Featuregate adapter release: v${tag}"
 
     # Push tags and trigger release 🚀 🥳
     git push --tags
