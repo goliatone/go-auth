@@ -331,6 +331,32 @@ function version:check {
 ##
 ## -----
 ##
+## adapters:featuregate:sync
+##
+## Keep the adapters/featuregate module's go-auth requirement
+## in sync with the release tag.
+##
+## Arguments:
+## @arg 1 {string} tag
+function adapters:featuregate:sync {
+    local tag=${1}
+
+    if [ -z "$tag" ]; then
+        exit 1
+    fi
+
+    if [ ! -f "adapters/featuregate/go.mod" ]; then
+        return 0
+    fi
+
+    (cd adapters/featuregate && go mod edit -require=github.com/goliatone/go-auth@v${tag})
+    (cd adapters/featuregate && go mod tidy)
+}
+
+
+##
+## -----
+##
 ## release
 ##
 ## Bump our current version, create a git tag
@@ -370,8 +396,17 @@ function release {
     # Update version file
     version:set "${tag}"
 
+    # Sync adapter module to the new tag
+    adapters:featuregate:sync "${tag}"
+
     # Add updated version file to git
     git add "${VERSION_FILE}"
+    if [ -f "adapters/featuregate/go.mod" ]; then
+        git add adapters/featuregate/go.mod
+        if [ -f "adapters/featuregate/go.sum" ]; then
+            git add adapters/featuregate/go.sum
+        fi
+    fi
     git commit -m "Bump version: v${tag}"
 
     # Create a new tag
