@@ -5,6 +5,7 @@ import (
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
+	"github.com/goliatone/go-featuregate/gate"
 	"github.com/uptrace/bun"
 )
 
@@ -14,9 +15,10 @@ type FinalizePasswordResetMesasge struct {
 }
 
 type FinalizePasswordResetHandler struct {
-	repo     RepositoryManager
-	activity ActivitySink
-	logger   Logger
+	repo        RepositoryManager
+	activity    ActivitySink
+	logger      Logger
+	featureGate gate.FeatureGate
 }
 
 // NewFinalizePasswordResetHandler creates a handler with sane defaults.
@@ -42,6 +44,12 @@ func (h *FinalizePasswordResetHandler) WithLogger(logger Logger) *FinalizePasswo
 	return h
 }
 
+// WithFeatureGate sets the feature gate used to authorize reset completion.
+func (h *FinalizePasswordResetHandler) WithFeatureGate(featureGate gate.FeatureGate) *FinalizePasswordResetHandler {
+	h.featureGate = featureGate
+	return h
+}
+
 func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event FinalizePasswordResetMesasge) error {
 	select {
 	case <-ctx.Done():
@@ -51,6 +59,9 @@ func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event Finali
 			"context cancelled during password reset finalization",
 		)
 	default:
+		if err := requirePasswordResetGate(ctx, h.featureGate, true); err != nil {
+			return err
+		}
 		return h.execute(ctx, event)
 	}
 }
