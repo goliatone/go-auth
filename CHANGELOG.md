@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.28.0](https://github.com/goliatone/go-auth/compare/v0.27.5...v0.28.0) - (2026-01-23)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.28.0 ([87284f9](https://github.com/goliatone/go-auth/commit/87284f9a3aee43aaf47540394a391dcb81ede589))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Adapter use new feature gate API ([c29e0aa](https://github.com/goliatone/go-auth/commit/c29e0aa8bbec57d5d170bdbef2fa28f59f61a9e0))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.27.5 ([e0c0061](https://github.com/goliatone/go-auth/commit/e0c00617099df5be9884aa3a39c278e1bcbcc026))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([b06cb55](https://github.com/goliatone/go-auth/commit/b06cb55e8beb00301eab7e513dba3e6f9c23e1e4))  - (goliatone)
+- Update deps ([12049fe](https://github.com/goliatone/go-auth/commit/12049fe91f68b9934246b9619c20f0b9b51bd2d3))  - (goliatone)
+- Update tests ([7fcdd3a](https://github.com/goliatone/go-auth/commit/7fcdd3ac3e52cea89c519332b4d6698b4c52416d))  - (goliatone)
+
 # [0.27.5](https://github.com/goliatone/go-auth/compare/v0.27.4...v0.27.5) - (2026-01-22)
 
 ## <!-- 13 -->📦 Bumps
