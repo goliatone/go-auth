@@ -498,6 +498,21 @@ token, err := tokenService.Generate(identity, resourceRoles)
 claims, err := tokenService.Validate(tokenString)
 ```
 
+### Scoped Token Minting
+
+Use `MintScopedToken` to issue short-lived tokens with optional `scopes` and TTL overrides (useful for debug or session-scoped access). The helper reuses defaults from the built-in token service when available, and returns the computed expiration alongside the token.
+
+```go
+tokenService := authenticator.TokenService()
+
+opts := auth.ScopedTokenOptions{
+    TTL:    15 * time.Minute,            // overrides default expiration
+    Scopes: []string{"debug.view"},       // stored in the "scopes" claim
+}
+
+token, expiresAt, err := auth.MintScopedToken(tokenService, identity, nil, opts)
+```
+
 ### JWT Middleware Integration
 
 Use the `TokenService` with JWT middleware for custom authentication flows:
@@ -556,10 +571,12 @@ The library generates structured JWT claims:
     "project:123": "admin",
     "admin:dashboard": "member"
   },
+  "scopes": ["debug.view", "debug.repl"],
   "iss": "your-app",
   "aud": ["your-audience"],
   "iat": 1234567890,
-  "exp": 1234654290
+  "exp": 1234654290,
+  "jti": "token-id"
 }
 ```
 
