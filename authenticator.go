@@ -269,7 +269,7 @@ func (s *Auther) newJWTClaims(identity Identity, resourceRoles map[string]string
 		copy(aud, s.audience)
 	}
 
-	return &JWTClaims{
+	claims := &JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuer,
 			Subject:   identity.ID(),
@@ -281,6 +281,10 @@ func (s *Auther) newJWTClaims(identity Identity, resourceRoles map[string]string
 		UserRole:  identity.Role(),
 		Resources: resourceRoles,
 	}
+
+	ensureTokenID(&claims.RegisteredClaims)
+
+	return claims
 }
 
 func (s *Auther) emitAuthEvent(ctx context.Context, eventType ActivityEventType, actor ActorRef, userID string, metadata map[string]any) {
