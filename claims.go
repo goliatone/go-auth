@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // AuthClaims represents structured JWT claims with enhanced permission checking
@@ -21,6 +22,11 @@ type AuthClaims interface {
 	IssuedAt() time.Time
 }
 
+// TokenIDer is an optional interface for claims that expose a token ID (jti).
+type TokenIDer interface {
+	TokenID() string
+}
+
 // JWTClaims is the concrete implementation of AuthClaims
 type JWTClaims struct {
 	jwt.RegisteredClaims
@@ -28,6 +34,7 @@ type JWTClaims struct {
 	UserRole  string            `json:"role,omitempty"`
 	Resources map[string]string `json:"res,omitempty"`      // resource -> role mapping
 	Metadata  map[string]any    `json:"metadata,omitempty"` // extension payload
+	Scopes    []string          `json:"scopes,omitempty"`   // optional scopes (e.g., debug tokens)
 }
 
 // Verify interface compliance
@@ -36,6 +43,17 @@ var _ AuthClaims = (*JWTClaims)(nil)
 // Subject returns the subject claim
 func (c *JWTClaims) Subject() string {
 	return c.RegisteredClaims.Subject
+}
+
+// TokenID returns the JWT ID (jti) claim.
+func (c *JWTClaims) TokenID() string {
+	return c.RegisteredClaims.ID
+}
+
+func ensureTokenID(claims *jwt.RegisteredClaims) {
+	if claims != nil && claims.ID == "" {
+		claims.ID = uuid.NewString()
+	}
 }
 
 // UserID returns the user ID
