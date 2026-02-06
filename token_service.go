@@ -70,13 +70,21 @@ func (ts *TokenServiceImpl) SignClaims(claims *JWTClaims) (string, error) {
 
 // Validate parses and validates a token string, returning structured claims
 func (ts *TokenServiceImpl) Validate(tokenString string) (AuthClaims, error) {
+	parserOptions := make([]jwt.ParserOption, 0, 2)
+	if ts.issuer != "" {
+		parserOptions = append(parserOptions, jwt.WithIssuer(ts.issuer))
+	}
+	if len(ts.audience) > 0 {
+		parserOptions = append(parserOptions, jwt.WithAudience(ts.audience...))
+	}
+
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			ts.logger.Error("TokenService validate encountered unexpected signing method", "alg", t.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return ts.signingKey, nil
-	})
+	}, parserOptions...)
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
