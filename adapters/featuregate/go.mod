@@ -5,7 +5,7 @@ go 1.24.10
 toolchain go1.24.12
 
 require (
-	github.com/goliatone/go-auth v0.28.0
+	github.com/goliatone/go-auth v0.29.0
 	github.com/goliatone/go-featuregate v0.5.0
 )
 
