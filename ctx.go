@@ -64,6 +64,30 @@ func GetClaims(ctx context.Context) (AuthClaims, bool) {
 	return raw, ok
 }
 
+// TokenIDFromContext extracts the token ID (jti) from the standard context.
+func TokenIDFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+
+	claims, ok := GetClaims(ctx)
+	if !ok || claims == nil {
+		return "", false
+	}
+
+	tokenIDer, ok := claims.(TokenIDer)
+	if !ok {
+		return "", false
+	}
+
+	tokenID := tokenIDer.TokenID()
+	if tokenID == "" {
+		return "", false
+	}
+
+	return tokenID, true
+}
+
 // WithActorContext stores the ActorContext in the provided context.
 func WithActorContext(ctx context.Context, actor *ActorContext) context.Context {
 	if ctx == nil || actor == nil {
