@@ -66,8 +66,9 @@ func MintScopedToken(tokenService TokenService, identity Identity, resourceRoles
 	if issuedAt.IsZero() {
 		issuedAt = time.Now()
 	}
+	issuedAt = issuedAt.Truncate(jwt.TimePrecision)
 
-	expiresAt := issuedAt.Add(ttl)
+	expiresAt := issuedAt.Add(ttl).Truncate(jwt.TimePrecision)
 
 	var aud jwt.ClaimStrings
 	if len(audience) > 0 {
