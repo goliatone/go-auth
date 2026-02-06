@@ -43,22 +43,39 @@ func (s *SessionObject) GetData() map[string]any {
 	return s.Data
 }
 
+func (s *SessionObject) resourceRole(resource string) (UserRole, bool) {
+	if s.Data == nil {
+		return "", false
+	}
+
+	resourceRoles, exists := s.Data["resources"]
+	if !exists {
+		return "", false
+	}
+
+	switch roleMap := resourceRoles.(type) {
+	case map[string]any:
+		if roleStr, hasRole := roleMap[resource]; hasRole {
+			if role, ok := roleStr.(string); ok {
+				return UserRole(role), true
+			}
+		}
+	case map[string]string:
+		if role, hasRole := roleMap[resource]; hasRole {
+			return UserRole(role), true
+		}
+	}
+
+	return "", false
+}
+
 // RoleCapableSession implementation methods
 
 // CanRead checks if the role can read a specific resource
 func (s *SessionObject) CanRead(resource string) bool {
 	// Try to get resource-specific permissions first
-	if s.Data != nil {
-		if resourceRoles, exists := s.Data["resources"]; exists {
-			if roleMap, ok := resourceRoles.(map[string]any); ok {
-				if roleStr, hasRole := roleMap[resource]; hasRole {
-					if role, ok := roleStr.(string); ok {
-						userRole := UserRole(role)
-						return userRole.CanRead()
-					}
-				}
-			}
-		}
+	if role, ok := s.resourceRole(resource); ok {
+		return role.CanRead()
 	}
 
 	// Use global role from session data
@@ -68,17 +85,8 @@ func (s *SessionObject) CanRead(resource string) bool {
 // CanEdit checks if the role can edit a specific resource
 func (s *SessionObject) CanEdit(resource string) bool {
 	// Try to get resource-specific permissions first
-	if s.Data != nil {
-		if resourceRoles, exists := s.Data["resources"]; exists {
-			if roleMap, ok := resourceRoles.(map[string]any); ok {
-				if roleStr, hasRole := roleMap[resource]; hasRole {
-					if role, ok := roleStr.(string); ok {
-						userRole := UserRole(role)
-						return userRole.CanEdit()
-					}
-				}
-			}
-		}
+	if role, ok := s.resourceRole(resource); ok {
+		return role.CanEdit()
 	}
 
 	// Use global role from session data
@@ -88,17 +96,8 @@ func (s *SessionObject) CanEdit(resource string) bool {
 // CanCreate checks if the role can create a specific resource
 func (s *SessionObject) CanCreate(resource string) bool {
 	// Try to get resource-specific permissions first
-	if s.Data != nil {
-		if resourceRoles, exists := s.Data["resources"]; exists {
-			if roleMap, ok := resourceRoles.(map[string]any); ok {
-				if roleStr, hasRole := roleMap[resource]; hasRole {
-					if role, ok := roleStr.(string); ok {
-						userRole := UserRole(role)
-						return userRole.CanCreate()
-					}
-				}
-			}
-		}
+	if role, ok := s.resourceRole(resource); ok {
+		return role.CanCreate()
 	}
 
 	// Use global role from session data
@@ -108,17 +107,8 @@ func (s *SessionObject) CanCreate(resource string) bool {
 // CanDelete checks if the role can delete a specific resource
 func (s *SessionObject) CanDelete(resource string) bool {
 	// Try to get resource-specific permissions first
-	if s.Data != nil {
-		if resourceRoles, exists := s.Data["resources"]; exists {
-			if roleMap, ok := resourceRoles.(map[string]any); ok {
-				if roleStr, hasRole := roleMap[resource]; hasRole {
-					if role, ok := roleStr.(string); ok {
-						userRole := UserRole(role)
-						return userRole.CanDelete()
-					}
-				}
-			}
-		}
+	if role, ok := s.resourceRole(resource); ok {
+		return role.CanDelete()
 	}
 
 	// Use global role from session data
@@ -154,12 +144,16 @@ func (s *SessionObject) getGlobalRole() UserRole {
 
 // TODO: enable only in development!
 func (s SessionObject) String() string {
+	issuedAt := "<nil>"
+	if s.IssuedAt != nil {
+		issuedAt = s.IssuedAt.Format(time.RFC1123)
+	}
 	return fmt.Sprintf(
 		"user=%s aud=%v iss=%s iat=%s data=%v",
 		s.UserID,
 		s.Audience,
 		s.Issuer,
-		s.IssuedAt.Format(time.RFC1123),
+		issuedAt,
 		s.Data,
 	)
 }
