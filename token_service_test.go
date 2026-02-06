@@ -431,7 +431,7 @@ func TestMintScopedToken(t *testing.T) {
 		identity.On("ID").Return("user-123")
 		identity.On("Role").Return("admin")
 
-		issuedAt := time.Date(2025, time.January, 1, 10, 0, 0, 0, time.UTC)
+		issuedAt := time.Now().UTC().Truncate(jwt.TimePrecision)
 		opts := auth.ScopedTokenOptions{
 			TTL:      30 * time.Minute,
 			Scopes:   []string{"debug.view", "debug.repl"},
@@ -444,7 +444,9 @@ func TestMintScopedToken(t *testing.T) {
 		assert.Equal(t, issuedAt.Add(30*time.Minute), expiresAt)
 
 		claims, err := service.Validate(token)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		jwtClaims, ok := claims.(*auth.JWTClaims)
 		assert.True(t, ok)
@@ -452,7 +454,7 @@ func TestMintScopedToken(t *testing.T) {
 		assert.NotEmpty(t, jwtClaims.RegisteredClaims.ID)
 		assert.Equal(t, issuer, jwtClaims.RegisteredClaims.Issuer)
 		assert.Equal(t, audience, jwtClaims.RegisteredClaims.Audience)
-		assert.Equal(t, expiresAt, jwtClaims.RegisteredClaims.ExpiresAt.Time)
+		assert.True(t, expiresAt.Equal(jwtClaims.RegisteredClaims.ExpiresAt.Time))
 
 		identity.AssertExpectations(t)
 	})
@@ -462,7 +464,7 @@ func TestMintScopedToken(t *testing.T) {
 		identity.On("ID").Return("user-456")
 		identity.On("Role").Return("member")
 
-		issuedAt := time.Date(2025, time.January, 2, 12, 0, 0, 0, time.UTC)
+		issuedAt := time.Now().UTC().Truncate(jwt.TimePrecision)
 		opts := auth.ScopedTokenOptions{
 			IssuedAt: issuedAt,
 		}
@@ -473,11 +475,13 @@ func TestMintScopedToken(t *testing.T) {
 		assert.Equal(t, issuedAt.Add(24*time.Hour), expiresAt)
 
 		claims, err := service.Validate(token)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		jwtClaims, ok := claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-		assert.Equal(t, expiresAt, jwtClaims.RegisteredClaims.ExpiresAt.Time)
+		assert.True(t, expiresAt.Equal(jwtClaims.RegisteredClaims.ExpiresAt.Time))
 
 		identity.AssertExpectations(t)
 	})
