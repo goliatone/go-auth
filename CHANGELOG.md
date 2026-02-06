@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.29.1](https://github.com/goliatone/go-auth/compare/v0.29.0...v0.29.1) - (2026-02-06)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Enforce issuer/audience validation in token service validate ([9654b3a](https://github.com/goliatone/go-auth/commit/9654b3ab7acb20f2e5a858c0ac4f1aebdf3f6d08))  - (goliatone)
+- Truncate IssuedAt and ExpiresAt to JWT time precision ([76aa200](https://github.com/goliatone/go-auth/commit/76aa20041afee75ee71ddb0d05f58232150c97bb))  - (goliatone)
+- Session resource role lookup to handle our use case ([a68fa5c](https://github.com/goliatone/go-auth/commit/a68fa5ca444ceb3948987859f9dac08ed52caf00))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.29.1 ([4c36a58](https://github.com/goliatone/go-auth/commit/4c36a58251d0e3f6313b80b413ac2fc7c5c25a63))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.29.0 ([3b59fd7](https://github.com/goliatone/go-auth/commit/3b59fd7bd1008240bad1d349234d509e089071ac))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Udpate test ([a0eca21](https://github.com/goliatone/go-auth/commit/a0eca210d1b85faa00d98e51cbc860eb5fa2ca22))  - (goliatone)
+
 # [0.29.0](https://github.com/goliatone/go-auth/compare/v0.28.0...v0.29.0) - (2026-02-06)
 
 ## <!-- 13 -->📦 Bumps
