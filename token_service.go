@@ -47,6 +47,8 @@ func (ts *TokenServiceImpl) Generate(identity Identity, resourceRoles map[string
 		Resources: resourceRoles,
 	}
 
+	ensureTokenID(&claims.RegisteredClaims)
+
 	return ts.SignClaims(claims)
 }
 
@@ -89,4 +91,18 @@ func (ts *TokenServiceImpl) Validate(tokenString string) (AuthClaims, error) {
 
 	ts.logger.Error("TokenService validate could not decode or validate claims")
 	return nil, ErrUnableToDecodeSession
+}
+
+func (ts *TokenServiceImpl) tokenDefaults() tokenDefaults {
+	var aud jwt.ClaimStrings
+	if len(ts.audience) > 0 {
+		aud = make(jwt.ClaimStrings, len(ts.audience))
+		copy(aud, ts.audience)
+	}
+
+	return tokenDefaults{
+		issuer:   ts.issuer,
+		audience: aud,
+		ttl:      time.Duration(ts.tokenExpiration) * time.Hour,
+	}
 }
