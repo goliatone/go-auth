@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.29.0](https://github.com/goliatone/go-auth/compare/v0.28.0...v0.29.0) - (2026-02-06)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.29.0 ([85fb0aa](https://github.com/goliatone/go-auth/commit/85fb0aae467b269346c24c86b4e8bad35f181376))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Token defaults ([38b3070](https://github.com/goliatone/go-auth/commit/38b307026e0c25522b20cb46e83f3cc5d8fd83b8))  - (goliatone)
+- TokenIDFromContext helper ([e1b1660](https://github.com/goliatone/go-auth/commit/e1b1660e06ba97f93f948e2b21f0d58fadd9abde))  - (goliatone)
+- Token mint ([7ad4cdc](https://github.com/goliatone/go-auth/commit/7ad4cdcc8a766bdd728a0819d2803f63b180cf16))  - (goliatone)
+- Issue JTI and token identifier ([21c4d7c](https://github.com/goliatone/go-auth/commit/21c4d7c683a8ac371802905fd6bd3dc95c31d0b4))  - (goliatone)
+- Issue token id ([a4d713c](https://github.com/goliatone/go-auth/commit/a4d713c83e7187d54607bba1a05a990230f53bba))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.28.0 ([8d54a22](https://github.com/goliatone/go-auth/commit/8d54a2264de5c4efa8399a13fd4c8008668be80d))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([a44faad](https://github.com/goliatone/go-auth/commit/a44faad9a1e5b1fe726551dfe3d55f96b862e38b))  - (goliatone)
+- Update test ([d9cefaf](https://github.com/goliatone/go-auth/commit/d9cefafe4b4725a5d3f1c9787d8f776fcc2e2ff5))  - (goliatone)
+
 # [0.28.0](https://github.com/goliatone/go-auth/compare/v0.27.5...v0.28.0) - (2026-01-23)
 
 ## <!-- 13 -->📦 Bumps
