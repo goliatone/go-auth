@@ -119,6 +119,10 @@ func TestTokenService_Generate(t *testing.T) {
 		assert.True(t, claims.IsAtLeast("admin"))
 		assert.False(t, claims.IsAtLeast("owner"))
 
+		if tokenIDer, ok := claims.(auth.TokenIDer); assert.True(t, ok) {
+			assert.NotEmpty(t, tokenIDer.TokenID())
+		}
+
 		identity.AssertExpectations(t)
 	})
 
@@ -411,6 +415,72 @@ func TestTokenService_Validate(t *testing.T) {
 		assert.Nil(t, validatedClaims)
 	})
 
+}
+
+func TestMintScopedToken(t *testing.T) {
+	signingKey := []byte("test-signing-key")
+	tokenExpiration := 24
+	issuer := "test-issuer"
+	audience := jwt.ClaimStrings{"test-audience"}
+	logger := &MockLogger{}
+
+	service := auth.NewTokenService(signingKey, tokenExpiration, issuer, audience, logger)
+
+	t.Run("mints token with TTL override and scopes", func(t *testing.T) {
+		identity := &MockIdentity{}
+		identity.On("ID").Return("user-123")
+		identity.On("Role").Return("admin")
+
+		issuedAt := time.Date(2025, time.January, 1, 10, 0, 0, 0, time.UTC)
+		opts := auth.ScopedTokenOptions{
+			TTL:      30 * time.Minute,
+			Scopes:   []string{"debug.view", "debug.repl"},
+			IssuedAt: issuedAt,
+		}
+
+		token, expiresAt, err := auth.MintScopedToken(service, identity, map[string]string{}, opts)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+		assert.Equal(t, issuedAt.Add(30*time.Minute), expiresAt)
+
+		claims, err := service.Validate(token)
+		assert.NoError(t, err)
+
+		jwtClaims, ok := claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, opts.Scopes, jwtClaims.Scopes)
+		assert.NotEmpty(t, jwtClaims.RegisteredClaims.ID)
+		assert.Equal(t, issuer, jwtClaims.RegisteredClaims.Issuer)
+		assert.Equal(t, audience, jwtClaims.RegisteredClaims.Audience)
+		assert.Equal(t, expiresAt, jwtClaims.RegisteredClaims.ExpiresAt.Time)
+
+		identity.AssertExpectations(t)
+	})
+
+	t.Run("uses token service defaults when TTL is zero", func(t *testing.T) {
+		identity := &MockIdentity{}
+		identity.On("ID").Return("user-456")
+		identity.On("Role").Return("member")
+
+		issuedAt := time.Date(2025, time.January, 2, 12, 0, 0, 0, time.UTC)
+		opts := auth.ScopedTokenOptions{
+			IssuedAt: issuedAt,
+		}
+
+		token, expiresAt, err := auth.MintScopedToken(service, identity, map[string]string{}, opts)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, token)
+		assert.Equal(t, issuedAt.Add(24*time.Hour), expiresAt)
+
+		claims, err := service.Validate(token)
+		assert.NoError(t, err)
+
+		jwtClaims, ok := claims.(*auth.JWTClaims)
+		assert.True(t, ok)
+		assert.Equal(t, expiresAt, jwtClaims.RegisteredClaims.ExpiresAt.Time)
+
+		identity.AssertExpectations(t)
+	})
 }
 
 func TestTokenService_Integration(t *testing.T) {

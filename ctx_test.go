@@ -71,6 +71,44 @@ func TestGetClaims(t *testing.T) {
 	}
 }
 
+func TestTokenIDFromContext(t *testing.T) {
+	t.Run("returns token id when present", func(t *testing.T) {
+		claims := &JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ID:      "token-123",
+				Subject: "user123",
+			},
+		}
+		ctx := WithClaimsContext(context.Background(), claims)
+
+		tokenID, ok := TokenIDFromContext(ctx)
+
+		assert.True(t, ok)
+		assert.Equal(t, "token-123", tokenID)
+	})
+
+	t.Run("returns false when no claims in context", func(t *testing.T) {
+		tokenID, ok := TokenIDFromContext(context.Background())
+
+		assert.False(t, ok)
+		assert.Empty(t, tokenID)
+	})
+
+	t.Run("returns false when token id missing", func(t *testing.T) {
+		claims := &JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject: "user123",
+			},
+		}
+		ctx := WithClaimsContext(context.Background(), claims)
+
+		tokenID, ok := TokenIDFromContext(ctx)
+
+		assert.False(t, ok)
+		assert.Empty(t, tokenID)
+	})
+}
+
 func TestCan(t *testing.T) {
 	tests := []struct {
 		name       string

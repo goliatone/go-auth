@@ -19,6 +19,16 @@ func TestJWTClaims_Subject(t *testing.T) {
 	assert.Equal(t, "user123", claims.Subject())
 }
 
+func TestJWTClaims_TokenID(t *testing.T) {
+	claims := &auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID: "token-123",
+		},
+	}
+
+	assert.Equal(t, "token-123", claims.TokenID())
+}
+
 func TestJWTClaims_UserID(t *testing.T) {
 	t.Run("returns UID when present", func(t *testing.T) {
 		claims := &auth.JWTClaims{

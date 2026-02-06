@@ -89,6 +89,7 @@ func TestLogin(t *testing.T) {
 		assert.Equal(t, identity.ID(), claims.Subject())
 		assert.Equal(t, "test-issuer", claims.RegisteredClaims.Issuer)
 		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.RegisteredClaims.Audience)
+		assert.NotEmpty(t, claims.RegisteredClaims.ID)
 
 		// Verify role is directly in the claims
 		assert.Equal(t, "admin", claims.UserRole)
