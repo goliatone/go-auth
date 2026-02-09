@@ -1,5 +1,28 @@
 # Changelog
 
+# [0.30.0](https://github.com/goliatone/go-auth/compare/v0.29.1...v0.30.0) - (2026-02-09)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Bcrypt cost ([c970627](https://github.com/goliatone/go-auth/commit/c970627a66253959b05516bdcc10f1d34ba5fb96))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.30.0 ([21061e4](https://github.com/goliatone/go-auth/commit/21061e469ca801fec068134329add2993c50c80b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Activity map ([be08502](https://github.com/goliatone/go-auth/commit/be0850282dc505c4fa6be9560511de7bd889da24))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.29.1 ([33bd632](https://github.com/goliatone/go-auth/commit/33bd632d937f04ce742ad5144a62e4e868ad8b9e))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([71d3e55](https://github.com/goliatone/go-auth/commit/71d3e557e2a1d7b4e946f1d41664597fa7865199))  - (goliatone)
+- Udpate deps ([d5470ac](https://github.com/goliatone/go-auth/commit/d5470acfbdef4fca5dde2e57e71a607228ac93be))  - (goliatone)
+
 # [0.29.1](https://github.com/goliatone/go-auth/compare/v0.29.0...v0.29.1) - (2026-02-06)
 
 ## <!-- 1 -->🐛 Bug Fixes
