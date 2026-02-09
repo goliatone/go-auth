@@ -13,7 +13,7 @@ func HashPassword(password string) (string, error) {
 		return "", ErrNoEmptyString
 	}
 
-	h, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	h, err := bcrypt.GenerateFromPassword([]byte(password), passwordHashCost())
 	return string(h), err
 }
 
