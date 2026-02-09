@@ -120,7 +120,7 @@ protected := httpAuth.ProtectedRoute(config, errorHandler)
 router.Get("/profile", profileHandler, protected)
 ```
 
-**Success handler contract (jwt middleware)**  
+**Success handler contract (jwt middleware)**
 The JWT middleware now invokes a `SuccessHandler` with the signature `func(ctx router.Context, next router.HandlerFunc) error`. The default simply calls `next(ctx)`. If you override it, you are responsible for deciding whether to call `next` (run the protected handler) or short-circuit (e.g., redirect). Example:
 
 ```go
@@ -451,6 +451,69 @@ stateMachine := auth.NewUserStateMachine(users,
 auther := auth.NewAuthenticator(provider, cfg).
     WithActivitySink(auditSink)
 ```
+
+### Activity Mapping Helpers
+
+Use `activitymap.Normalize` when you need to forward `auth.ActivityEvent` into
+another activity record contract without re implementing translation logic:
+
+```go
+import (
+    "context"
+    "time"
+
+    auth "github.com/goliatone/go-auth"
+    "github.com/goliatone/go-auth/activitymap"
+)
+
+type ExternalRecord struct {
+    ActorID    string
+    Verb       string
+    ObjectType string
+    ObjectID   string
+    Channel    string
+    Metadata   map[string]any
+    OccurredAt time.Time
+}
+
+sink := auth.ActivitySinkFunc(func(ctx context.Context, event auth.ActivityEvent) error {
+    normalized := activitymap.Normalize(
+        event,
+        activitymap.WithDefaultChannel("auth"),
+        activitymap.WithDefaultObjectType("user"),
+        activitymap.WithObjectIDResolver(func(e auth.ActivityEvent) string {
+            if v, ok := e.Metadata["password_reset_id"].(string); ok {
+                return v
+            }
+            return e.UserID
+        }),
+    )
+
+    record := ExternalRecord{
+        ActorID:    normalized.ActorID,
+        Verb:       normalized.Verb,
+        ObjectType: normalized.ObjectType,
+        ObjectID:   normalized.ObjectID,
+        Channel:    normalized.Channel,
+        Metadata:   normalized.Metadata,
+        OccurredAt: normalized.OccurredAt,
+    }
+    _ = record
+    return nil
+})
+```
+
+Defaults:
+- `channel`: `auth`
+- `object_type`: `user`
+- `object_id`: `event.UserID`
+- `actor_id`: `event.Actor.ID -> event.UserID -> "system"`
+
+Normalized metadata preserves `event.Metadata` and adds:
+- `actor_type` (from `event.Actor.Type`, when available)
+- `from_status` / `to_status` for lifecycle transitions
+
+See `docs/ACTIVITY_MAPPING.md` for additional adapter guidance.
 
 The same sink can forward events to a SQL table, queue, or logging pipeline. Refer to `examples/extensions/extensions.go` for a Postgres-based implementation and batching hints.
 
