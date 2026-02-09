@@ -12,11 +12,11 @@ require (
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/goliatone/go-errors v0.10.0
-	github.com/goliatone/go-featuregate v0.2.0
+	github.com/goliatone/go-featuregate v0.6.0
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.12.0
-	github.com/goliatone/go-router v0.42.0
-	github.com/goliatone/hashid v0.1.1
+	github.com/goliatone/go-repository-bun v0.13.0
+	github.com/goliatone/go-router v0.45.1
+	github.com/goliatone/hashid v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/stretchr/testify v1.11.1
@@ -51,6 +51,7 @@ require (
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-masker v0.1.0 // indirect
+	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
