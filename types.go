@@ -2,14 +2,24 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/goliatone/go-logger/glog"
+	"github.com/goliatone/go-logger/glog/compat"
 	"github.com/goliatone/go-router"
 	"github.com/google/uuid"
 )
 
-type Logger interface {
+type Logger = glog.Logger
+
+type LoggerProvider = glog.LoggerProvider
+
+type FieldsLogger = glog.FieldsLogger
+
+type FormattedLogger = compat.FormattedLogger
+
+// LegacyLogger matches the historical go-auth logging contract.
+type LegacyLogger interface {
 	Debug(format string, args ...any)
 	Info(format string, args ...any)
 	Warn(format string, args ...any)
@@ -129,27 +139,54 @@ type PasswordAuthenticator interface {
 	ComparePasswordAndHash(password, hash string) error
 }
 
-type defLogger struct{}
-
-func (d defLogger) Error(format string, args ...any) {
-	fmt.Printf("[ERR] AUTH "+newline(format), args...)
+type legacyFormattedAdapter struct {
+	logger LegacyLogger
 }
 
-func (d defLogger) Warn(format string, args ...any) {
-	fmt.Printf("[WRN] AUTH "+newline(format), args...)
+func (l legacyFormattedAdapter) Debugf(format string, args ...any) {
+	l.logger.Debug(format, args...)
 }
 
-func (d defLogger) Info(format string, args ...any) {
-	fmt.Printf("[INF] AUTH "+newline(format), args...)
+func (l legacyFormattedAdapter) Infof(format string, args ...any) {
+	l.logger.Info(format, args...)
 }
 
-func (d defLogger) Debug(format string, args ...any) {
-	fmt.Printf("[DBG] AUTH "+newline(format), args...)
+func (l legacyFormattedAdapter) Warnf(format string, args ...any) {
+	l.logger.Warn(format, args...)
 }
 
-func newline(s string) string {
-	if len(s) > 0 && s[len(s)-1] != '\n' {
-		s += "\n"
+func (l legacyFormattedAdapter) Errorf(format string, args ...any) {
+	l.logger.Error(format, args...)
+}
+
+// FromLegacyLogger adapts the historical go-auth logger into a glog.Logger.
+func FromLegacyLogger(logger LegacyLogger) Logger {
+	if logger == nil {
+		return glog.Nop()
 	}
-	return s
+	return compat.FromFormatted(legacyFormattedAdapter{logger: logger})
+}
+
+// FromFormattedLogger adapts a format-style logger into a glog.Logger.
+func FromFormattedLogger(logger FormattedLogger) Logger {
+	return compat.FromFormatted(logger)
+}
+
+// ToFormattedLogger adapts a glog.Logger into a format-style logger.
+func ToFormattedLogger(logger Logger) FormattedLogger {
+	return compat.ToFormatted(logger)
+}
+
+// EnsureLogger guarantees a non-nil logger.
+func EnsureLogger(logger Logger) Logger {
+	return glog.Ensure(logger)
+}
+
+// ResolveLogger resolves provider and logger with precedence provider > logger > nop.
+func ResolveLogger(name string, provider LoggerProvider, logger Logger) (LoggerProvider, Logger) {
+	return glog.Resolve(name, provider, logger)
+}
+
+func defaultLogger() Logger {
+	return glog.Nop()
 }
