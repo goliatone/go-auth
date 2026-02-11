@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -301,8 +300,8 @@ func multiKeyfunc(givenKeys map[string]keyfunc.GivenKey, jwtSetUrls []string) (j
 func keyfuncOptions(givenKeys map[string]keyfunc.GivenKey) keyfunc.Options {
 	return keyfunc.Options{
 		GivenKeys: givenKeys,
-		RefreshErrorHandler: func(err error) {
-			log.Printf("failed to do a background refresh of JWT set: %s", err)
+		RefreshErrorHandler: func(error) {
+			// Keep refresh failures non-fatal for middleware behavior.
 		},
 		RefreshInterval:   time.Hour,
 		RefreshRateLimit:  time.Minute * 5,
