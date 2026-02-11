@@ -101,8 +101,15 @@ func WithStateMachineHookErrorHandler(handler HookErrorHandler) StateMachineOpti
 func WithStateMachineLogger(logger Logger) StateMachineOption {
 	return func(sm *userStateMachine) {
 		if logger != nil {
-			sm.logger = logger
+			sm.loggerProvider, sm.logger = ResolveLogger("auth.state_machine", sm.loggerProvider, logger)
 		}
+	}
+}
+
+// WithStateMachineLoggerProvider overrides the logger provider used by the state machine.
+func WithStateMachineLoggerProvider(provider LoggerProvider) StateMachineOption {
+	return func(sm *userStateMachine) {
+		sm.loggerProvider, sm.logger = ResolveLogger("auth.state_machine", provider, sm.logger)
 	}
 }
 
@@ -162,6 +169,7 @@ func WithSuspensionTime(t time.Time) TransitionOption {
 
 // NewUserStateMachine returns the default implementation backed by the provided repository.
 func NewUserStateMachine(users Users, opts ...StateMachineOption) UserStateMachine {
+	loggerProvider, logger := ResolveLogger("auth.state_machine", nil, nil)
 	sm := &userStateMachine{
 		users: users,
 		transitions: map[UserStatus]map[UserStatus]struct{}{
@@ -182,9 +190,10 @@ func NewUserStateMachine(users Users, opts ...StateMachineOption) UserStateMachi
 				UserStatusArchived: {},
 			},
 		},
-		now:          time.Now,
-		activitySink: noopActivitySink{},
-		logger:       defLogger{},
+		now:            time.Now,
+		activitySink:   noopActivitySink{},
+		logger:         logger,
+		loggerProvider: loggerProvider,
 		hookErrorHandler: func(ctx context.Context, phase TransitionHookPhase, err error, tc TransitionContext) error {
 			return defaultHookErrorHandler(ctx, phase, err, tc)
 		},
@@ -205,6 +214,7 @@ type userStateMachine struct {
 	now              func() time.Time
 	activitySink     ActivitySink
 	logger           Logger
+	loggerProvider   LoggerProvider
 	hookErrorHandler HookErrorHandler
 }
 
@@ -409,7 +419,7 @@ func (sm *userStateMachine) recordActivity(ctx context.Context, event ActivityEv
 
 	sink := normalizeActivitySink(sm.activitySink)
 	if err := sink.Record(ctx, event); err != nil {
-		sm.logger.Warn("state machine activity sink error: %v", err)
+		sm.logger.Warn("state machine activity sink error", "error", err)
 	}
 }
 
