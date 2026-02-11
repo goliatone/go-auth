@@ -19,9 +19,7 @@ type TokenServiceImpl struct {
 
 // NewTokenService creates a new TokenService instance
 func NewTokenService(signingKey []byte, tokenExpiration int, issuer string, audience jwt.ClaimStrings, logger Logger) TokenService {
-	if logger == nil {
-		logger = defLogger{}
-	}
+	logger = EnsureLogger(logger)
 	return &TokenServiceImpl{
 		signingKey:      signingKey,
 		tokenExpiration: tokenExpiration,
