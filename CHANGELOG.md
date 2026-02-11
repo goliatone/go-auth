@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.31.0](https://github.com/goliatone/go-auth/compare/v0.30.0...v0.31.0) - (2026-02-11)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.31.0 ([d187010](https://github.com/goliatone/go-auth/commit/d187010237be7ad78d38aa7cbc057f660ccda1e3))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Logger integration in http ([3aa5d44](https://github.com/goliatone/go-auth/commit/3aa5d44974c0b5deed98bb9b36f792399a85b91e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.30.0 ([6d51422](https://github.com/goliatone/go-auth/commit/6d514221ecd774383bd6f041ec30f8525094fa88))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([d141727](https://github.com/goliatone/go-auth/commit/d141727daef95c4acaccc6e7ace5386549596d57))  - (goliatone)
+- Update tests ([ff72e3e](https://github.com/goliatone/go-auth/commit/ff72e3ef0d376ad8cb76bac3a51bd3e1c6c6fc44))  - (goliatone)
+
 # [0.30.0](https://github.com/goliatone/go-auth/compare/v0.29.1...v0.30.0) - (2026-02-09)
 
 ## <!-- 1 -->🐛 Bug Fixes
