@@ -23,6 +23,7 @@ type UserProvider struct {
 	store     UserTracker
 	Validator func(*User) error
 	logger    Logger
+	provider  LoggerProvider
 }
 
 // MaxLoginAttempts is the maximun number of attempts a user gets
@@ -34,15 +35,23 @@ var CoolDownPeriod = "24h"
 
 // NewUserProvider will create a new UserProvider
 func NewUserProvider(store UserTracker) *UserProvider {
+	loggerProvider, logger := ResolveLogger("auth.user_provider", nil, nil)
 	return &UserProvider{
 		store:     store,
-		logger:    &defLogger{},
+		logger:    logger,
+		provider:  loggerProvider,
 		Validator: defaultValidator,
 	}
 }
 
 func (u *UserProvider) WithLogger(l Logger) *UserProvider {
-	u.logger = l
+	u.provider, u.logger = ResolveLogger("auth.user_provider", u.provider, l)
+	return u
+}
+
+// WithLoggerProvider overrides the logger provider used by the user provider.
+func (u *UserProvider) WithLoggerProvider(provider LoggerProvider) *UserProvider {
+	u.provider, u.logger = ResolveLogger("auth.user_provider", provider, u.logger)
 	return u
 }
 
