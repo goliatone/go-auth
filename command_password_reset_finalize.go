@@ -18,15 +18,18 @@ type FinalizePasswordResetHandler struct {
 	repo        RepositoryManager
 	activity    ActivitySink
 	logger      Logger
+	provider    LoggerProvider
 	featureGate gate.FeatureGate
 }
 
 // NewFinalizePasswordResetHandler creates a handler with sane defaults.
 func NewFinalizePasswordResetHandler(repo RepositoryManager) *FinalizePasswordResetHandler {
+	loggerProvider, logger := ResolveLogger("auth.password_reset", nil, nil)
 	return &FinalizePasswordResetHandler{
 		repo:     repo,
 		activity: noopActivitySink{},
-		logger:   defLogger{},
+		logger:   logger,
+		provider: loggerProvider,
 	}
 }
 
@@ -38,9 +41,13 @@ func (h *FinalizePasswordResetHandler) WithActivitySink(sink ActivitySink) *Fina
 
 // WithLogger overrides the logger used by the handler.
 func (h *FinalizePasswordResetHandler) WithLogger(logger Logger) *FinalizePasswordResetHandler {
-	if logger != nil {
-		h.logger = logger
-	}
+	h.provider, h.logger = ResolveLogger("auth.password_reset", h.provider, logger)
+	return h
+}
+
+// WithLoggerProvider overrides the logger provider used by the handler.
+func (h *FinalizePasswordResetHandler) WithLoggerProvider(provider LoggerProvider) *FinalizePasswordResetHandler {
+	h.provider, h.logger = ResolveLogger("auth.password_reset", provider, h.logger)
 	return h
 }
 
@@ -159,13 +166,10 @@ func (h *FinalizePasswordResetHandler) recordActivity(ctx context.Context, reset
 	}
 
 	if err := normalizeActivitySink(h.activity).Record(ctx, event); err != nil {
-		h.getLogger().Warn("activity sink error during password reset: %v", err)
+		h.getLogger().Warn("activity sink error during password reset", "error", err)
 	}
 }
 
 func (h *FinalizePasswordResetHandler) getLogger() Logger {
-	if h.logger != nil {
-		return h.logger
-	}
-	return defLogger{}
+	return EnsureLogger(h.logger)
 }
