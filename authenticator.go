@@ -16,6 +16,7 @@ type Auther struct {
 	issuer          string
 	audience        []string
 	logger          Logger
+	loggerProvider  LoggerProvider
 	tokenService    TokenService
 	tokenValidator  TokenValidator
 	activitySink    ActivitySink
@@ -24,13 +25,14 @@ type Auther struct {
 
 // NewAuthenticator returns a new Authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
+	loggerProvider, logger := ResolveLogger("auth", nil, nil)
 	// Initialize TokenService with configuration from opts
 	tokenService := NewTokenService(
 		[]byte(opts.GetSigningKey()),
 		opts.GetTokenExpiration(),
 		opts.GetIssuer(),
 		opts.GetAudience(),
-		defLogger{},
+		loggerProvider.GetLogger("auth.token_service"),
 	)
 
 	return &Auther{
@@ -40,7 +42,8 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		tokenExpiration: opts.GetTokenExpiration(),
 		audience:        opts.GetAudience(),
 		issuer:          opts.GetIssuer(),
-		logger:          defLogger{},
+		logger:          logger,
+		loggerProvider:  loggerProvider,
 		tokenService:    tokenService,
 		activitySink:    noopActivitySink{},
 		claimsDecorator: noopClaimsDecorator{},
@@ -48,14 +51,27 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 }
 
 func (s *Auther) WithLogger(logger Logger) *Auther {
-	s.logger = logger
+	s.loggerProvider, s.logger = ResolveLogger("auth", s.loggerProvider, logger)
 	// Update the TokenService logger as well
 	s.tokenService = NewTokenService(
 		s.signingKey,
 		s.tokenExpiration,
 		s.issuer,
 		s.audience,
-		logger,
+		s.loggerProvider.GetLogger("auth.token_service"),
+	)
+	return s
+}
+
+// WithLoggerProvider overrides the logger provider used by the authenticator.
+func (s *Auther) WithLoggerProvider(provider LoggerProvider) *Auther {
+	s.loggerProvider, s.logger = ResolveLogger("auth", provider, s.logger)
+	s.tokenService = NewTokenService(
+		s.signingKey,
+		s.tokenExpiration,
+		s.issuer,
+		s.audience,
+		s.loggerProvider.GetLogger("auth.token_service"),
 	)
 	return s
 }
@@ -212,7 +228,7 @@ func (s *Auther) IdentityFromSession(ctx context.Context, session Session) (Iden
 	identity, err := s.provider.FindIdentityByIdentifier(ctx, session.GetUserID())
 
 	if err != nil {
-		s.logger.Error("IdentityFromSession findidentity by identifier: %s", err)
+		s.logger.Error("IdentityFromSession find identity by identifier", "error", err)
 		return nil, err
 	}
 
@@ -305,7 +321,7 @@ func (s *Auther) emitAuthEvent(ctx context.Context, eventType ActivityEventType,
 	}
 
 	if err := sink.Record(ctx, event); err != nil {
-		s.logger.Warn("activity sink record error: %v", err)
+		s.logger.Warn("activity sink record error", "error", err)
 	}
 }
 
