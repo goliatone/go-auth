@@ -125,6 +125,7 @@ type AuthControllerViews struct {
 type AuthController struct {
 	Debug            bool
 	Logger           Logger
+	LoggerProvider   LoggerProvider
 	Repo             RepositoryManager
 	Routes           *AuthControllerRoutes
 	Views            *AuthControllerViews
@@ -140,7 +141,14 @@ type AuthControllerOption func(*AuthController) *AuthController
 
 func WithControllerLogger(logger Logger) AuthControllerOption {
 	return func(ac *AuthController) *AuthController {
-		ac.Logger = logger
+		ac.LoggerProvider, ac.Logger = ResolveLogger("auth.controller", ac.LoggerProvider, logger)
+		return ac
+	}
+}
+
+func WithControllerLoggerProvider(provider LoggerProvider) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.LoggerProvider, ac.Logger = ResolveLogger("auth.controller", provider, ac.Logger)
 		return ac
 	}
 }
@@ -196,7 +204,7 @@ func WithFeatureGate(featureGate gate.FeatureGate) AuthControllerOption {
 
 func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	c := &AuthController{
-		Logger:           defLogger{},
+		Logger:           defaultLogger(),
 		ErrorHandler:     defaultErrHandler,
 		RegisterRedirect: "/",
 		activity:         noopActivitySink{},
@@ -217,6 +225,8 @@ func NewAuthController(opts ...AuthControllerOption) *AuthController {
 	for _, opt := range opts {
 		c = opt(c)
 	}
+
+	c.LoggerProvider, c.Logger = ResolveLogger("auth.controller", c.LoggerProvider, c.Logger)
 
 	if c.Repo == nil {
 		panic("Missing RepositoryManager in auth controller...")
@@ -292,7 +302,7 @@ func (a *AuthController) LoginShow(ctx router.Context) error {
 }
 
 func (a *AuthController) WithLogger(l Logger) *AuthController {
-	a.Logger = l
+	a.LoggerProvider, a.Logger = ResolveLogger("auth.controller", a.LoggerProvider, l)
 	return a
 }
 
@@ -610,7 +620,7 @@ func (a *AuthController) PasswordResetForm(ctx router.Context) error {
 	accountVerify := AccountVerificationHandler{repo: a.Repo}
 
 	if err := accountVerify.Execute(ctx.Context(), input); err != nil {
-		a.Logger.Error("verification error", err)
+		a.Logger.Error("verification error", "error", err)
 		errors["verification"] = err.Error()
 		return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
 			"errors": errors,
@@ -697,9 +707,14 @@ func (a *AuthController) PasswordResetExecute(ctx router.Context) error {
 		Password: payload.Password,
 	}
 
+	resetLogger := a.Logger
+	if a.LoggerProvider != nil {
+		resetLogger = a.LoggerProvider.GetLogger("auth.password_reset")
+	}
+
 	finalizePwdReset := NewFinalizePasswordResetHandler(a.Repo).
 		WithActivitySink(a.activity).
-		WithLogger(a.Logger)
+		WithLogger(resetLogger)
 	if err := finalizePwdReset.Execute(ctx.Context(), input); err != nil {
 		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
