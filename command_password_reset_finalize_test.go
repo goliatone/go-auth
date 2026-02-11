@@ -15,10 +15,15 @@ import (
 
 type testLogger struct{}
 
+func (testLogger) Trace(string, ...any) {}
 func (testLogger) Debug(string, ...any) {}
 func (testLogger) Info(string, ...any)  {}
 func (testLogger) Warn(string, ...any)  {}
 func (testLogger) Error(string, ...any) {}
+func (testLogger) Fatal(string, ...any) {}
+func (testLogger) WithContext(context.Context) auth.Logger {
+	return testLogger{}
+}
 
 func TestFinalizePasswordResetHandlerEmitsActivity(t *testing.T) {
 	ctx := context.Background()

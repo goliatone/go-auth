@@ -149,7 +149,7 @@ func TestPasswordResetGetDeniedByFeatureGate(t *testing.T) {
 
 func newTestAuthController() *AuthController {
 	return &AuthController{
-		Logger:       defLogger{},
+		Logger:       defaultLogger(),
 		ErrorHandler: defaultErrHandler,
 		Routes:       &AuthControllerRoutes{},
 		Views: &AuthControllerViews{

@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -40,6 +41,10 @@ type MockLogger struct {
 	mock.Mock
 }
 
+func (m *MockLogger) Trace(msg string, args ...any) {
+	m.Called(msg, args)
+}
+
 func (m *MockLogger) Debug(format string, args ...any) {
 	m.Called(format, args)
 }
@@ -54,6 +59,15 @@ func (m *MockLogger) Warn(format string, args ...any) {
 
 func (m *MockLogger) Error(format string, args ...any) {
 	m.Called(format, args)
+}
+
+func (m *MockLogger) Fatal(msg string, args ...any) {
+	m.Called(msg, args)
+}
+
+func (m *MockLogger) WithContext(ctx context.Context) auth.Logger {
+	m.Called(ctx)
+	return m
 }
 
 func TestNewTokenService(t *testing.T) {
