@@ -37,6 +37,7 @@ type RouteAuthenticator struct {
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
 	logger                 Logger
+	loggerProvider         LoggerProvider
 	AuthErrorHandler       func(c router.Context, err error) error // TODO: make functions
 	ErrorHandler           func(c router.Context, err error) error // TODO: make functions
 	validationListeners    []ValidationListener
@@ -53,10 +54,12 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 		extendedCookieDuration = time.Duration(cfg.GetExtendedTokenDuration()) * time.Hour
 	}
 
+	loggerProvider, logger := ResolveLogger("auth.http", nil, nil)
 	a := &RouteAuthenticator{
 		cfg:                    cfg,
 		auth:                   auther,
-		logger:                 defLogger{},
+		logger:                 logger,
+		loggerProvider:         loggerProvider,
 		cookieDuration:         cookieDuration,
 		extendedCookieDuration: extendedCookieDuration,
 	}
@@ -68,7 +71,13 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 }
 
 func (a *RouteAuthenticator) WithLogger(l Logger) *RouteAuthenticator {
-	a.logger = l
+	a.loggerProvider, a.logger = ResolveLogger("auth.http", a.loggerProvider, l)
+	return a
+}
+
+// WithLoggerProvider overrides the logger provider used by the HTTP authenticator.
+func (a *RouteAuthenticator) WithLoggerProvider(provider LoggerProvider) *RouteAuthenticator {
+	a.loggerProvider, a.logger = ResolveLogger("auth.http", provider, a.logger)
 	return a
 }
 
@@ -123,7 +132,7 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
-		a.logger.Error("Login error: %s", err)
+		a.logger.Error("Login error", "error", err)
 		return err
 	}
 
