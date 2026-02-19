@@ -15,6 +15,7 @@ A Go authentication library providing JWT based authentication, password managem
 - Database persistence layer using Bun ORM
 - OAuth2 social login (GitHub, Google) with account linking
 - Customizable identity providers and role providers
+- Store backed permission resolver cache with pluggable backends
 
 ## Installation
 
@@ -326,24 +327,24 @@ return ctx.Render("form", viewCtx)
 
 ```html
 <form method="post">
-    {{ csrf_field }}
-    <!-- other fields -->
+  {{ csrf_field }}
+  <!-- other fields -->
 </form>
 
 <script>
-    const token = "{{ csrf_token }}";
-    const header = "{{ csrf_header_name }}";
-    fetch("/submit", {
-        method: "POST",
-        headers: { [header]: token },
-    });
+  const token = "{{ csrf_token }}";
+  const header = "{{ csrf_header_name }}";
+  fetch("/submit", {
+    method: "POST",
+    headers: { [header]: token },
+  });
 </script>
 ```
 
 ```html
 <!-- Layout head section -->
 {{ csrf_meta }}
-<meta name="another-example" content="value">
+<meta name="another-example" content="value" />
 ```
 
 See `middleware/csrf/README.md` for more examples and configuration options (custom token lookup, skipping routes, etc.).
@@ -504,12 +505,14 @@ sink := auth.ActivitySinkFunc(func(ctx context.Context, event auth.ActivityEvent
 ```
 
 Defaults:
+
 - `channel`: `auth`
 - `object_type`: `user`
 - `object_id`: `event.UserID`
 - `actor_id`: `event.Actor.ID -> event.UserID -> "system"`
 
 Normalized metadata preserves `event.Metadata` and adds:
+
 - `actor_type` (from `event.Actor.Type`, when available)
 - `from_status` / `to_status` for lifecycle transitions
 
@@ -563,7 +566,7 @@ claims, err := tokenService.Validate(tokenString)
 
 ### Scoped Token Minting
 
-Use `MintScopedToken` to issue short-lived tokens with optional `scopes` and TTL overrides (useful for debug or session-scoped access). The helper reuses defaults from the built-in token service when available, and returns the computed expiration alongside the token.
+Use `MintScopedToken` to issue short lived tokens with optional `scopes` and TTL overrides (useful for debug or session scoped access). The helper reuses defaults from the built-in token service when available, and returns the computed expiration alongside the token.
 
 ```go
 tokenService := authenticator.TokenService()
@@ -575,6 +578,93 @@ opts := auth.ScopedTokenOptions{
 
 token, expiresAt, err := auth.MintScopedToken(tokenService, identity, nil, opts)
 ```
+
+### Permission Resolver Cache
+
+Use `CachedPermissionsResolver` to cache expensive permission resolution across requests. The resolver keeps request fanout under control with `singleflight` and stores permission sets through a pluggable `PermissionCacheStore`.
+
+```go
+baseResolver := func(ctx context.Context) ([]string, error) {
+    // load effective permissions (db, role registry, policy engine, etc.)
+    return []string{"admin.translations.export"}, nil
+}
+
+resolver := auth.NewCachedPermissionsResolver(auth.CachedPermissionsResolverConfig{
+    Resolver: baseResolver,
+    KeyFunc:  auth.DefaultPermissionsCacheKeyFromContext,
+    TTL:      2 * time.Minute,
+    // Store omitted -> defaults to in-memory implementation
+    // CacheErrorMode omitted -> defaults to fail_open
+})
+
+resolvePermissions := resolver.ResolverFunc()
+```
+
+`PermissionCacheStore` contract:
+
+```go
+type PermissionCacheStore interface {
+    Get(ctx context.Context, key string) (permissions []string, ok bool, err error)
+    Set(ctx context.Context, key string, permissions []string, ttl time.Duration) error
+    Delete(ctx context.Context, key string) error
+}
+```
+
+Optional purge capability:
+
+```go
+type PurgeablePermissionCacheStore interface {
+    PurgeExpired(ctx context.Context) (purged int, err error)
+}
+```
+
+If you use a generic cache package (for example `go-cache`), create a thin adapter that satisfies `PermissionCacheStore`:
+
+```go
+type PermissionStoreAdapter struct {
+    cache cache.Cache[string, []string]
+}
+
+func (s *PermissionStoreAdapter) Get(ctx context.Context, key string) ([]string, bool, error) {
+    return s.cache.Get(ctx, key)
+}
+
+func (s *PermissionStoreAdapter) Set(ctx context.Context, key string, permissions []string, ttl time.Duration) error {
+    return s.cache.Set(ctx, key, permissions, ttl)
+}
+
+func (s *PermissionStoreAdapter) Delete(ctx context.Context, key string) error {
+    return s.cache.Delete(ctx, key)
+}
+```
+
+Then wire it into the resolver:
+
+```go
+resolver := auth.NewCachedPermissionsResolver(auth.CachedPermissionsResolverConfig{
+    Resolver:       baseResolver,
+    KeyFunc:        auth.DefaultPermissionsCacheKeyFromContext,
+    Store:          &PermissionStoreAdapter{cache: sharedCache},
+    TTL:            2 * time.Minute,
+    CacheErrorMode: auth.PermissionCacheErrorModeFailOpen, // or FailClosed
+})
+```
+
+Manual cache operations:
+
+```go
+_ = resolver.Invalidate(ctx, cacheKey)
+purged, err := resolver.PurgeExpired(ctx) // returns 0,nil if store is not purgeable
+_ = purged
+_ = err
+```
+
+Notes:
+
+- `DefaultPermissionsCacheKeyFromContext` includes permission affecting discriminators (version, token id, scopes, impersonation, session). If no discriminator is available, cross request caching is bypassed.
+- `PermissionCacheErrorModeFailOpen` (default) keeps authz available when cache operations fail.
+- `PermissionCacheErrorModeFailClosed` propagates cache errors immediately.
+- Runtime counters are available through `resolver.Stats()`.
 
 ### JWT Middleware Integration
 
