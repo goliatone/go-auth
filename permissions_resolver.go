@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,13 +34,12 @@ type PermissionCacheKeyFunc func(context.Context) (key string, ok bool)
 
 // CachedPermissionsResolverConfig configures the cross-request resolver cache.
 type CachedPermissionsResolverConfig struct {
-	Resolver PermissionResolverFunc
-	KeyFunc  PermissionCacheKeyFunc
-	TTL      time.Duration
-	// PurgeInterval controls how often expired entries are opportunistically
-	// removed during writes. Zero selects a safe default when caching is enabled.
-	PurgeInterval time.Duration
-	Logger        Logger
+	Resolver       PermissionResolverFunc
+	KeyFunc        PermissionCacheKeyFunc
+	Store          PermissionCacheStore
+	TTL            time.Duration
+	CacheErrorMode PermissionCacheErrorMode
+	Logger         Logger
 }
 
 // PermissionResolverStats exposes lightweight runtime counters for observability.
@@ -53,29 +51,24 @@ type PermissionResolverStats struct {
 	NoCacheCalls       uint64
 	Errors             uint64
 	SingleflightShared uint64
-}
-
-type cachedPermissionsEntry struct {
-	permissions []string
-	expiresAt   time.Time
+	StoreGetErrors     uint64
+	StoreSetErrors     uint64
+	StoreDeleteErrors  uint64
+	PurgeRuns          uint64
+	PurgedEntries      uint64
 }
 
 // CachedPermissionsResolver wraps a permission resolver with key-based TTL caching
 // and singleflight deduplication to prevent query amplification under load.
 type CachedPermissionsResolver struct {
-	resolver PermissionResolverFunc
-	keyFunc  PermissionCacheKeyFunc
-	ttl      time.Duration
-	// purgeInterval throttles automatic expired-entry cleanup while storing keys.
-	purgeInterval time.Duration
-	logger        Logger
-	now           func() time.Time
+	resolver       PermissionResolverFunc
+	keyFunc        PermissionCacheKeyFunc
+	store          PermissionCacheStore
+	ttl            time.Duration
+	logger         Logger
+	cacheErrorMode PermissionCacheErrorMode
 
 	group singleflight.Group
-	mu    sync.RWMutex
-	cache map[string]cachedPermissionsEntry
-	// lastPurgeUnixNano tracks the last opportunistic purge execution.
-	lastPurgeUnixNano atomic.Int64
 
 	calls              atomic.Uint64
 	resolverRuns       atomic.Uint64
@@ -84,6 +77,11 @@ type CachedPermissionsResolver struct {
 	noCacheCalls       atomic.Uint64
 	errors             atomic.Uint64
 	singleflightShared atomic.Uint64
+	storeGetErrors     atomic.Uint64
+	storeSetErrors     atomic.Uint64
+	storeDeleteErrors  atomic.Uint64
+	purgeRuns          atomic.Uint64
+	purgedEntries      atomic.Uint64
 }
 
 // NewCachedPermissionsResolver builds a CachedPermissionsResolver. When cfg.TTL <= 0,
@@ -93,25 +91,21 @@ func NewCachedPermissionsResolver(cfg CachedPermissionsResolverConfig) *CachedPe
 	if keyFn == nil {
 		keyFn = DefaultPermissionsCacheKeyFromContext
 	}
+	store := cfg.Store
+	if store == nil {
+		store = NewInMemoryPermissionCacheStore(InMemoryPermissionCacheStoreConfig{})
+	}
 	ttl := cfg.TTL
 	if ttl < 0 {
 		ttl = 0
 	}
-	purgeInterval := cfg.PurgeInterval
-	if purgeInterval < 0 {
-		purgeInterval = 0
-	}
-	if ttl > 0 && purgeInterval == 0 {
-		purgeInterval = minDuration(ttl, time.Minute)
-	}
 	return &CachedPermissionsResolver{
-		resolver:      cfg.Resolver,
-		keyFunc:       keyFn,
-		ttl:           ttl,
-		purgeInterval: purgeInterval,
-		logger:        EnsureLogger(cfg.Logger),
-		now:           time.Now,
-		cache:         map[string]cachedPermissionsEntry{},
+		resolver:       cfg.Resolver,
+		keyFunc:        keyFn,
+		store:          store,
+		ttl:            ttl,
+		cacheErrorMode: normalizePermissionCacheErrorMode(cfg.CacheErrorMode),
+		logger:         EnsureLogger(cfg.Logger),
 	}
 }
 
@@ -134,12 +128,14 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 	}
 
 	key, ok := r.keyFunc(ctx)
-	if !ok || strings.TrimSpace(key) == "" {
+	if !ok || strings.TrimSpace(key) == "" || r.ttl <= 0 {
 		return r.resolveWithoutCache(ctx)
 	}
 	key = strings.TrimSpace(key)
 
-	if cached, hit := r.lookup(key); hit {
+	if cached, hit, err := r.lookup(ctx, key); err != nil {
+		return nil, err
+	} else if hit {
 		r.cacheHits.Add(1)
 		return cloneStringSlice(cached), nil
 	}
@@ -147,7 +143,9 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 	resolverCtx := context.WithoutCancel(ctx)
 
 	value, err, shared := r.group.Do(key, func() (any, error) {
-		if cached, hit := r.lookup(key); hit {
+		if cached, hit, lookupErr := r.lookup(resolverCtx, key); lookupErr != nil {
+			return nil, lookupErr
+		} else if hit {
 			return cloneStringSlice(cached), nil
 		}
 		r.resolverRuns.Add(1)
@@ -157,7 +155,9 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 			return nil, resolveErr
 		}
 		perms = normalizePermissionValues(perms)
-		r.store(key, perms)
+		if storeErr := r.storePermissions(resolverCtx, key, perms); storeErr != nil {
+			return nil, storeErr
+		}
 		return cloneStringSlice(perms), nil
 	})
 	if shared {
@@ -183,44 +183,65 @@ func (r *CachedPermissionsResolver) Stats() PermissionResolverStats {
 		NoCacheCalls:       r.noCacheCalls.Load(),
 		Errors:             r.errors.Load(),
 		SingleflightShared: r.singleflightShared.Load(),
+		StoreGetErrors:     r.storeGetErrors.Load(),
+		StoreSetErrors:     r.storeSetErrors.Load(),
+		StoreDeleteErrors:  r.storeDeleteErrors.Load(),
+		PurgeRuns:          r.purgeRuns.Load(),
+		PurgedEntries:      r.purgedEntries.Load(),
 	}
+}
+
+// Store returns the configured cache store implementation.
+func (r *CachedPermissionsResolver) Store() PermissionCacheStore {
+	if r == nil {
+		return nil
+	}
+	return r.store
 }
 
 // Invalidate removes a single cache key.
-func (r *CachedPermissionsResolver) Invalidate(key string) {
-	if r == nil {
-		return
+func (r *CachedPermissionsResolver) Invalidate(ctx context.Context, key string) error {
+	if r == nil || r.store == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return
+		return nil
 	}
-	r.mu.Lock()
-	delete(r.cache, key)
-	r.mu.Unlock()
+	err := r.store.Delete(ctx, key)
+	if err == nil {
+		return nil
+	}
+	r.storeDeleteErrors.Add(1)
+	r.logCacheStoreError("delete", key, err)
+	return err
 }
 
-// PurgeExpired deletes stale cache entries.
-func (r *CachedPermissionsResolver) PurgeExpired() {
-	if r == nil || r.ttl <= 0 {
-		return
+// PurgeExpired deletes stale cache entries when the configured store supports it.
+func (r *CachedPermissionsResolver) PurgeExpired(ctx context.Context) (int, error) {
+	if r == nil || r.store == nil || r.ttl <= 0 {
+		return 0, nil
 	}
-	now := r.now()
-	r.lastPurgeUnixNano.Store(now.UnixNano())
-	r.purgeExpiredAt(now)
-}
-
-func (r *CachedPermissionsResolver) purgeExpiredAt(now time.Time) {
-	if r == nil || r.ttl <= 0 {
-		return
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	r.mu.Lock()
-	for key, entry := range r.cache {
-		if !entry.expiresAt.IsZero() && !now.Before(entry.expiresAt) {
-			delete(r.cache, key)
-		}
+	purgeable, ok := r.store.(PurgeablePermissionCacheStore)
+	if !ok || purgeable == nil {
+		return 0, nil
 	}
-	r.mu.Unlock()
+	r.purgeRuns.Add(1)
+	purged, err := purgeable.PurgeExpired(ctx)
+	if err != nil {
+		r.logCacheStoreError("purge", "", err)
+		return 0, err
+	}
+	if purged > 0 {
+		r.purgedEntries.Add(uint64(purged))
+	}
+	return purged, nil
 }
 
 func (r *CachedPermissionsResolver) resolveWithoutCache(ctx context.Context) ([]string, error) {
@@ -235,56 +256,55 @@ func (r *CachedPermissionsResolver) resolveWithoutCache(ctx context.Context) ([]
 	return normalizePermissionValues(perms), nil
 }
 
-func (r *CachedPermissionsResolver) lookup(key string) ([]string, bool) {
-	if r == nil || r.ttl <= 0 {
-		return nil, false
+func (r *CachedPermissionsResolver) lookup(ctx context.Context, key string) ([]string, bool, error) {
+	if r == nil || r.ttl <= 0 || r.store == nil {
+		return nil, false, nil
 	}
-	now := r.now()
-	r.mu.RLock()
-	entry, ok := r.cache[key]
-	r.mu.RUnlock()
-	if !ok {
-		return nil, false
-	}
-	if !entry.expiresAt.IsZero() && !now.Before(entry.expiresAt) {
-		r.mu.Lock()
-		if current, exists := r.cache[key]; exists && current.expiresAt.Equal(entry.expiresAt) {
-			delete(r.cache, key)
+	cached, ok, err := r.store.Get(ctx, key)
+	if err != nil {
+		r.storeGetErrors.Add(1)
+		if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
+			return nil, false, err
 		}
-		r.mu.Unlock()
-		return nil, false
+		r.logCacheStoreError("get", key, err)
+		return nil, false, nil
 	}
-	return entry.permissions, true
+	if !ok {
+		return nil, false, nil
+	}
+	return normalizePermissionValues(cached), true, nil
 }
 
-func (r *CachedPermissionsResolver) store(key string, permissions []string) {
-	if r == nil || r.ttl <= 0 {
-		return
+func (r *CachedPermissionsResolver) storePermissions(ctx context.Context, key string, permissions []string) error {
+	if r == nil || r.ttl <= 0 || r.store == nil {
+		return nil
 	}
-	now := r.now()
-	r.purgeExpiredIfDue(now)
-	expiresAt := now.Add(r.ttl)
-	r.mu.Lock()
-	r.cache[key] = cachedPermissionsEntry{
-		permissions: cloneStringSlice(permissions),
-		expiresAt:   expiresAt,
+	err := r.store.Set(ctx, key, normalizePermissionValues(permissions), r.ttl)
+	if err == nil {
+		return nil
 	}
-	r.mu.Unlock()
+	r.storeSetErrors.Add(1)
+	if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
+		return err
+	}
+	r.logCacheStoreError("set", key, err)
+	return nil
 }
 
-func (r *CachedPermissionsResolver) purgeExpiredIfDue(now time.Time) {
-	if r == nil || r.ttl <= 0 || r.purgeInterval <= 0 {
+func (r *CachedPermissionsResolver) logCacheStoreError(operation, key string, err error) {
+	if r == nil || err == nil {
 		return
 	}
-	nowUnix := now.UnixNano()
-	last := r.lastPurgeUnixNano.Load()
-	if last != 0 && nowUnix-last < r.purgeInterval.Nanoseconds() {
+	logger := EnsureLogger(r.logger)
+	if logger == nil {
 		return
 	}
-	if !r.lastPurgeUnixNano.CompareAndSwap(last, nowUnix) {
-		return
-	}
-	r.purgeExpiredAt(now)
+	logger.Debug(
+		"permission cache store operation failed",
+		"operation", operation,
+		"key", key,
+		"error", err.Error(),
+	)
 }
 
 // SetPermissionsVersionMetadata stores a compact permission-version marker in claims metadata.
@@ -640,17 +660,4 @@ func firstNonEmptyStrings(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func minDuration(a, b time.Duration) time.Duration {
-	if a <= 0 {
-		return b
-	}
-	if b <= 0 {
-		return a
-	}
-	if a < b {
-		return a
-	}
-	return b
 }
