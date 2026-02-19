@@ -1,5 +1,20 @@
 # Changelog
 
+# [0.33.0](https://github.com/goliatone/go-auth/compare/v0.32.0...v0.33.0) - (2026-02-19)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.33.0 ([ce7cd14](https://github.com/goliatone/go-auth/commit/ce7cd1422c4b9e32ad0b80cb3bcadd5b4ee171f7))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Permissions cache store setup, generic interface ([57779aa](https://github.com/goliatone/go-auth/commit/57779aa46bb8095d5bd2e69a2194042431d37b0f))  - (goliatone)
+- Purge interval in perm cache to prevent unlimited gorwth ([39a39be](https://github.com/goliatone/go-auth/commit/39a39be084bc3fc754feae583009405244ff386e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.32.0 ([b6b6817](https://github.com/goliatone/go-auth/commit/b6b681770a78955df8e125b59039b7ca174cf89d))  - (goliatone)
+
 # [0.32.0](https://github.com/goliatone/go-auth/compare/v0.31.0...v0.32.0) - (2026-02-19)
 
 ## <!-- 13 -->📦 Bumps
