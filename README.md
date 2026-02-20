@@ -543,6 +543,54 @@ auther := auth.NewAuthenticator(provider, cfg).
 
 If the decorator returns an error the token flow stops, the failure is logged, and no JWT is issued. Coordinate decorations with your `ActivitySink` so downstream services can reconcile claims with lifecycle transitions. Additional wiring tips and a multi-tenant example live in `examples/extensions/extensions.go`.
 
+### JWT Size Safety Defaults
+
+`go-auth` minimizes oversized JWT metadata by default to reduce cookie bloat and
+HTTP `431 Request Header Fields Too Large` failures.
+
+- Default claim minimization removes metadata keys (case-insensitive, `-` normalized to `_`):
+  - `permissions`, `permission_list`, `permissions_list`
+  - `scopes`, `scope_list`, `scopes_list`
+- Top-level structured claims are preserved:
+  - `role`, `res`, and top-level `scopes`
+- Legacy compatibility mode is opt-in:
+
+```go
+auther := auth.NewAuthenticator(provider, cfg).
+    WithLegacyFatClaims(true)
+```
+
+Token size guardrails apply to all signed JWTs:
+
+- Warning threshold: `2048` bytes (default)
+- Hard limit: `4096` bytes (default, returns `ErrTokenTooLarge`)
+
+You can override thresholds without changing interfaces:
+
+```go
+auther := auth.NewAuthenticator(provider, cfg).
+    WithTokenSizeGuardrails(3072, 6144)
+```
+
+Equivalent token-service options:
+
+```go
+tokenService := auth.NewTokenService(
+    signingKey,
+    tokenExpiration,
+    issuer,
+    audience,
+    logger,
+    auth.WithLegacyFatClaims(false),
+    auth.WithTokenSizeGuardrails(2048, 4096),
+)
+```
+
+Migration note: applications that previously read `permissions`/`scopes` from
+JWT `metadata` should move permission expansion to resolver-based checks
+(`CachedPermissionsResolver` + request-scoped cache) and keep JWT payloads
+minimal.
+
 ## API Reference
 
 ### TokenService Access
@@ -579,6 +627,9 @@ opts := auth.ScopedTokenOptions{
 token, expiresAt, err := auth.MintScopedToken(tokenService, identity, nil, opts)
 ```
 
+`MintScopedToken` keeps top-level `JWTClaims.Scopes` intact. Only metadata
+scope arrays are minimized by default on token signing.
+
 ### Permission Resolver Cache
 
 Use `CachedPermissionsResolver` to cache expensive permission resolution across requests. The resolver keeps request fanout under control with `singleflight` and stores permission sets through a pluggable `PermissionCacheStore`.
@@ -598,6 +649,23 @@ resolver := auth.NewCachedPermissionsResolver(auth.CachedPermissionsResolverConf
 })
 
 resolvePermissions := resolver.ResolverFunc()
+```
+
+Request-scope dedupe helper:
+
+```go
+ctx := auth.WithResolvedPermissionsCache(req.Context())
+permissions, err := resolvePermissions(ctx) // repeated calls in this request resolve once
+```
+
+Strict-mode resolver validation:
+
+```go
+if err := auth.ValidateResolverConfigured(true, resolvePermissions); err != nil {
+    return err
+}
+// or panic-fast for startup wiring:
+auth.MustValidateResolverConfigured(true, resolvePermissions)
 ```
 
 `PermissionCacheStore` contract:
@@ -665,6 +733,7 @@ Notes:
 - `PermissionCacheErrorModeFailOpen` (default) keeps authz available when cache operations fail.
 - `PermissionCacheErrorModeFailClosed` propagates cache errors immediately.
 - Runtime counters are available through `resolver.Stats()`.
+- `SetPermissionsVersionMetadata` / `PermissionsVersionFromContext` keep cache keys stable across permission-set updates.
 
 ### JWT Middleware Integration
 
