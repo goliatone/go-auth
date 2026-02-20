@@ -7,22 +7,24 @@ import (
 )
 
 const (
-	TextCodeInvalidCreds          = "INVALID_CREDENTIALS"
-	TextCodeTooManyAttempts       = "TOO_MANY_ATTEMPTS"
-	TextCodeSessionNotFound       = "SESSION_NOT_FOUND"
-	TextCodeSessionDecodeError    = "SESSION_DECODE_ERROR"
-	TextCodeClaimsMappingError    = "CLAIMS_MAPPING_ERROR"
-	TextCodeDataParseError        = "DATA_PARSE_ERROR"
-	TextCodeEmptyPassword         = "EMPTY_PASSWORD_NOT_ALLOWED"
-	TextCodeTokenExpired          = "TOKEN_EXPIRED"
-	TextCodeTokenMalformed        = "TOKEN_MALFORMED"
-	TextCodeImmutableClaim        = "IMMUTABLE_CLAIM_MUTATION"
-	TextCodeAccountSuspended      = "ACCOUNT_SUSPENDED"
-	TextCodeAccountDisabled       = "ACCOUNT_DISABLED"
-	TextCodeAccountArchived       = "ACCOUNT_ARCHIVED"
-	TextCodeAccountPending        = "ACCOUNT_PENDING"
-	TextCodeSignupDisabled        = "SIGNUP_DISABLED"
-	TextCodePasswordResetDisabled = "PASSWORD_RESET_DISABLED"
+	TextCodeInvalidCreds               = "INVALID_CREDENTIALS"
+	TextCodeTooManyAttempts            = "TOO_MANY_ATTEMPTS"
+	TextCodeSessionNotFound            = "SESSION_NOT_FOUND"
+	TextCodeSessionDecodeError         = "SESSION_DECODE_ERROR"
+	TextCodeClaimsMappingError         = "CLAIMS_MAPPING_ERROR"
+	TextCodeDataParseError             = "DATA_PARSE_ERROR"
+	TextCodeEmptyPassword              = "EMPTY_PASSWORD_NOT_ALLOWED"
+	TextCodeTokenExpired               = "TOKEN_EXPIRED"
+	TextCodeTokenMalformed             = "TOKEN_MALFORMED"
+	TextCodeTokenTooLarge              = "TOKEN_TOO_LARGE"
+	TextCodeImmutableClaim             = "IMMUTABLE_CLAIM_MUTATION"
+	TextCodeAccountSuspended           = "ACCOUNT_SUSPENDED"
+	TextCodeAccountDisabled            = "ACCOUNT_DISABLED"
+	TextCodeAccountArchived            = "ACCOUNT_ARCHIVED"
+	TextCodeAccountPending             = "ACCOUNT_PENDING"
+	TextCodeSignupDisabled             = "SIGNUP_DISABLED"
+	TextCodePasswordResetDisabled      = "PASSWORD_RESET_DISABLED"
+	TextCodePermissionResolverRequired = "PERMISSION_RESOLVER_REQUIRED"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -75,6 +77,11 @@ var ErrTokenMalformed = errors.New("token is malformed", errors.CategoryAuth).
 	WithTextCode(TextCodeTokenMalformed).
 	WithCode(errors.CodeBadRequest)
 
+// ErrTokenTooLarge is returned when a signed JWT exceeds configured guardrails.
+var ErrTokenTooLarge = errors.New("token exceeds maximum allowed size", errors.CategoryValidation).
+	WithTextCode(TextCodeTokenTooLarge).
+	WithCode(errors.CodeBadRequest)
+
 // ErrImmutableClaimMutation is returned when a decorator tampers with protected claims.
 var ErrImmutableClaimMutation = errors.New("claims decorator attempted to mutate immutable claim", errors.CategoryValidation).
 	WithTextCode(TextCodeImmutableClaim).
@@ -110,6 +117,11 @@ var ErrPasswordResetDisabled = errors.New("password reset is currently disabled"
 	WithTextCode(TextCodePasswordResetDisabled).
 	WithCode(errors.CodeForbidden)
 
+// ErrPermissionResolverRequired is returned when strict resolver mode is enabled without a resolver.
+var ErrPermissionResolverRequired = errors.New("permission resolver is required in strict mode", errors.CategoryValidation).
+	WithTextCode(TextCodePermissionResolverRequired).
+	WithCode(errors.CodeBadRequest)
+
 func IsTokenExpiredError(err error) bool {
 	if err == nil {
 		return false
@@ -135,6 +147,21 @@ func IsMalformedError(err error) bool {
 
 	return strings.Contains(err.Error(), "token is malformed") ||
 		strings.Contains(err.Error(), "missing or malformed JWT")
+}
+
+func newTokenTooLargeError(sizeBytes, limitBytes int, tokenType string) error {
+	clone := ErrTokenTooLarge.Clone()
+	if clone == nil {
+		clone = ErrTokenTooLarge
+	}
+	if tokenType == "" {
+		tokenType = TokenTypeCustom
+	}
+	return clone.WithMetadata(map[string]any{
+		"size_bytes":  sizeBytes,
+		"limit_bytes": limitBytes,
+		"token_type":  tokenType,
+	})
 }
 
 func statusAuthError(status UserStatus) error {
