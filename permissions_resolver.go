@@ -128,10 +128,23 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 	}
 
 	key, ok := r.keyFunc(ctx)
-	if !ok || strings.TrimSpace(key) == "" || r.ttl <= 0 {
+	key = strings.TrimSpace(key)
+
+	resolve := func() ([]string, error) {
+		return r.resolveWithCacheKey(ctx, key, ok)
+	}
+
+	if requestCache, hasRequestCache := resolvedPermissionsCacheFromContext(ctx); hasRequestCache {
+		return requestCache.resolve(r.requestCacheKey(key, ok), resolve)
+	}
+
+	return resolve()
+}
+
+func (r *CachedPermissionsResolver) resolveWithCacheKey(ctx context.Context, key string, keyOK bool) ([]string, error) {
+	if !keyOK || key == "" || r.ttl <= 0 {
 		return r.resolveWithoutCache(ctx)
 	}
-	key = strings.TrimSpace(key)
 
 	if cached, hit, err := r.lookup(ctx, key); err != nil {
 		return nil, err
@@ -168,6 +181,16 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 	}
 	perms, _ := value.([]string)
 	return cloneStringSlice(perms), nil
+}
+
+func (r *CachedPermissionsResolver) requestCacheKey(cacheKey string, cacheKeyOK bool) string {
+	if r == nil {
+		return ""
+	}
+	if cacheKeyOK && strings.TrimSpace(cacheKey) != "" {
+		return fmt.Sprintf("resolver:%p|key:%s", r, cacheKey)
+	}
+	return fmt.Sprintf("resolver:%p|key:none", r)
 }
 
 // Stats returns a copy of the internal counters.
