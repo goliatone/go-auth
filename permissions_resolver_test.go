@@ -61,6 +61,42 @@ func TestCachedPermissionsResolverCachesAndDedupes(t *testing.T) {
 	}
 }
 
+func TestWithResolvedPermissionsCacheResolvesOncePerContext(t *testing.T) {
+	var runs atomic.Int64
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(context.Context) ([]string, error) {
+			runs.Add(1)
+			return []string{"admin.translations.export"}, nil
+		},
+		// Force cross-request cache bypass so this test verifies request-scope behavior.
+		KeyFunc: func(context.Context) (string, bool) { return "", false },
+		TTL:     2 * time.Minute,
+	})
+
+	ctx := WithResolvedPermissionsCache(context.Background())
+	for i := 0; i < 3; i++ {
+		perms, err := resolver.ResolvePermissions(ctx)
+		if err != nil {
+			t.Fatalf("resolve permissions: %v", err)
+		}
+		if len(perms) != 1 || perms[0] != "admin.translations.export" {
+			t.Fatalf("unexpected permissions: %v", perms)
+		}
+	}
+
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("expected a single resolver run per request context, got %d", got)
+	}
+
+	nextCtx := WithResolvedPermissionsCache(context.Background())
+	if _, err := resolver.ResolvePermissions(nextCtx); err != nil {
+		t.Fatalf("resolve on new context: %v", err)
+	}
+	if got := runs.Load(); got != 2 {
+		t.Fatalf("expected second context to trigger another resolver run, got %d", got)
+	}
+}
+
 func TestPermissionsVersionMetadataHelpers(t *testing.T) {
 	claims := &JWTClaims{
 		RegisteredClaims: jwt.RegisteredClaims{ID: "token-1", Subject: "user-1"},
@@ -84,6 +120,37 @@ func TestPermissionsVersionMetadataHelpers(t *testing.T) {
 	}
 	if key == "" {
 		t.Fatalf("expected non-empty cache key")
+	}
+}
+
+func TestDefaultPermissionsCacheKeyChangesWhenPermissionsVersionChanges(t *testing.T) {
+	baseClaims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{ID: "token-1", Subject: "user-1"},
+		UID:              "user-1",
+		UserRole:         "admin",
+		Metadata: map[string]any{
+			PermissionsVersionMetadataKey: "v1",
+		},
+	}
+	otherClaims := &JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{ID: "token-1", Subject: "user-1"},
+		UID:              "user-1",
+		UserRole:         "admin",
+		Metadata: map[string]any{
+			PermissionsVersionMetadataKey: "v2",
+		},
+	}
+
+	keyA, ok := DefaultPermissionsCacheKeyFromContext(WithClaimsContext(context.Background(), baseClaims))
+	if !ok || keyA == "" {
+		t.Fatalf("expected keyA")
+	}
+	keyB, ok := DefaultPermissionsCacheKeyFromContext(WithClaimsContext(context.Background(), otherClaims))
+	if !ok || keyB == "" {
+		t.Fatalf("expected keyB")
+	}
+	if keyA == keyB {
+		t.Fatalf("expected keys to differ when permissions_version changes")
 	}
 }
 

@@ -2,11 +2,13 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/goliatone/go-auth"
+	goerrors "github.com/goliatone/go-errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -591,4 +593,141 @@ func TestTokenService_Integration(t *testing.T) {
 
 		identity.AssertExpectations(t)
 	})
+}
+
+func TestTokenService_DefaultMetadataMinimization(t *testing.T) {
+	service := auth.NewTokenService(
+		[]byte("test-signing-key"),
+		24,
+		"test-issuer",
+		jwt.ClaimStrings{"test-audience"},
+		nil,
+	)
+
+	now := time.Now()
+	claims := &auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "test-issuer",
+			Subject:   "user-1",
+			Audience:  jwt.ClaimStrings{"test-audience"},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "token-1",
+		},
+		UID:      "user-1",
+		UserRole: "admin",
+		Scopes:   []string{"debug.view"},
+		Metadata: map[string]any{
+			"permissions":      []string{"one", "two"},
+			"Permissions-List": []string{"three"},
+			"scope-list":       []string{"admin:read"},
+			"tenant_id":        "tenant-1",
+			"custom":           "kept",
+		},
+	}
+
+	token, err := service.SignClaims(claims)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	parsed, err := service.Validate(token)
+	assert.NoError(t, err)
+
+	jwtClaims, ok := parsed.(*auth.JWTClaims)
+	if !assert.True(t, ok) {
+		return
+	}
+
+	_, hasPermissions := jwtClaims.Metadata["permissions"]
+	_, hasPermissionList := jwtClaims.Metadata["Permissions-List"]
+	_, hasScopeList := jwtClaims.Metadata["scope-list"]
+	assert.False(t, hasPermissions)
+	assert.False(t, hasPermissionList)
+	assert.False(t, hasScopeList)
+	assert.Equal(t, "tenant-1", jwtClaims.Metadata["tenant_id"])
+	assert.Equal(t, "kept", jwtClaims.Metadata["custom"])
+	assert.Equal(t, []string{"debug.view"}, jwtClaims.Scopes)
+}
+
+func TestTokenService_LegacyFatClaimsPreservesMetadata(t *testing.T) {
+	service := auth.NewTokenService(
+		[]byte("test-signing-key"),
+		24,
+		"test-issuer",
+		jwt.ClaimStrings{"test-audience"},
+		nil,
+		auth.WithLegacyFatClaims(true),
+	)
+
+	now := time.Now()
+	claims := &auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "test-issuer",
+			Subject:   "user-1",
+			Audience:  jwt.ClaimStrings{"test-audience"},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "token-1",
+		},
+		UID:      "user-1",
+		UserRole: "admin",
+		Metadata: map[string]any{
+			"permissions": []string{"one", "two"},
+			"scopes":      []string{"admin:read"},
+		},
+	}
+
+	token, err := service.SignClaims(claims)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	parsed, err := service.Validate(token)
+	assert.NoError(t, err)
+
+	jwtClaims, ok := parsed.(*auth.JWTClaims)
+	if !assert.True(t, ok) {
+		return
+	}
+
+	assert.Contains(t, jwtClaims.Metadata, "permissions")
+	assert.Contains(t, jwtClaims.Metadata, "scopes")
+}
+
+func TestTokenService_GuardrailsRejectOversizedTokens(t *testing.T) {
+	service := auth.NewTokenService(
+		[]byte("test-signing-key"),
+		24,
+		"test-issuer",
+		jwt.ClaimStrings{"test-audience"},
+		nil,
+		auth.WithTokenSizeGuardrails(64, 128),
+	)
+
+	now := time.Now()
+	claims := &auth.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "test-issuer",
+			Subject:   "user-1",
+			Audience:  jwt.ClaimStrings{"test-audience"},
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			ID:        "token-1",
+		},
+		UID:      "user-1",
+		UserRole: "admin",
+		Metadata: map[string]any{
+			"blob": "this-payload-is-intentionally-large-to-trigger-hard-limit-checks",
+		},
+	}
+
+	token, err := service.SignClaims(claims)
+	assert.Error(t, err)
+	assert.Empty(t, token)
+
+	var richErr *goerrors.Error
+	if assert.True(t, errors.As(err, &richErr)) {
+		assert.Equal(t, auth.TextCodeTokenTooLarge, richErr.TextCode)
+		assert.Equal(t, 128, richErr.Metadata["limit_bytes"])
+		assert.Equal(t, auth.TokenTypeCustom, richErr.Metadata["token_type"])
+	}
 }
