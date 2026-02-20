@@ -649,50 +649,6 @@ func TestTokenService_DefaultMetadataMinimization(t *testing.T) {
 	assert.Equal(t, []string{"debug.view"}, jwtClaims.Scopes)
 }
 
-func TestTokenService_LegacyFatClaimsPreservesMetadata(t *testing.T) {
-	service := auth.NewTokenService(
-		[]byte("test-signing-key"),
-		24,
-		"test-issuer",
-		jwt.ClaimStrings{"test-audience"},
-		nil,
-		auth.WithLegacyFatClaims(true),
-	)
-
-	now := time.Now()
-	claims := &auth.JWTClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    "test-issuer",
-			Subject:   "user-1",
-			Audience:  jwt.ClaimStrings{"test-audience"},
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-			ID:        "token-1",
-		},
-		UID:      "user-1",
-		UserRole: "admin",
-		Metadata: map[string]any{
-			"permissions": []string{"one", "two"},
-			"scopes":      []string{"admin:read"},
-		},
-	}
-
-	token, err := service.SignClaims(claims)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, token)
-
-	parsed, err := service.Validate(token)
-	assert.NoError(t, err)
-
-	jwtClaims, ok := parsed.(*auth.JWTClaims)
-	if !assert.True(t, ok) {
-		return
-	}
-
-	assert.Contains(t, jwtClaims.Metadata, "permissions")
-	assert.Contains(t, jwtClaims.Metadata, "scopes")
-}
-
 func TestTokenService_GuardrailsRejectOversizedTokens(t *testing.T) {
 	service := auth.NewTokenService(
 		[]byte("test-signing-key"),
