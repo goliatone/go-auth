@@ -19,7 +19,6 @@ type TokenServiceImpl struct {
 	audience        jwt.ClaimStrings
 	logger          Logger
 
-	legacyFatClaims    bool
 	metadataStripKeys  map[string]struct{}
 	warnThresholdBytes int
 	hardLimitBytes     int
@@ -45,7 +44,6 @@ func NewTokenService(signingKey []byte, tokenExpiration int, issuer string, audi
 		issuer:             issuer,
 		audience:           audience,
 		logger:             logger,
-		legacyFatClaims:    false,
 		metadataStripKeys:  makeClaimsMetadataStripSet(defaultFatClaimsMetadataKeys),
 		warnThresholdBytes: DefaultTokenWarnThresholdBytes,
 		hardLimitBytes:     DefaultTokenHardLimitBytes,
@@ -96,14 +94,12 @@ func (ts *TokenServiceImpl) signClaims(claims *JWTClaims, tokenType string) (str
 		return "", errors.New("claims must not be nil", errors.CategoryInternal)
 	}
 
-	if !ts.legacyFatClaims {
-		if stripped := stripLargeMetadataClaims(claims.Metadata, ts.metadataStripKeys); len(stripped) > 0 {
-			ts.logger.Debug(
-				"token claims metadata minimized",
-				"removed_keys", stripped,
-				"token_type", normalizeTokenType(tokenType),
-			)
-		}
+	if stripped := stripLargeMetadataClaims(claims.Metadata, ts.metadataStripKeys); len(stripped) > 0 {
+		ts.logger.Debug(
+			"token claims metadata minimized",
+			"removed_keys", stripped,
+			"token_type", normalizeTokenType(tokenType),
+		)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
