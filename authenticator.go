@@ -22,7 +22,6 @@ type Auther struct {
 	activitySink    ActivitySink
 	claimsDecorator ClaimsDecorator
 
-	legacyFatClaims         bool
 	tokenWarnThresholdBytes int
 	tokenHardLimitBytes     int
 }
@@ -30,7 +29,6 @@ type Auther struct {
 // NewAuthenticator returns a new Authenticator
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 	loggerProvider, logger := ResolveLogger("auth", nil, nil)
-	legacyFatClaims := false
 	tokenWarnThresholdBytes := DefaultTokenWarnThresholdBytes
 	tokenHardLimitBytes := DefaultTokenHardLimitBytes
 	// Initialize TokenService with configuration from opts
@@ -40,7 +38,6 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		opts.GetIssuer(),
 		opts.GetAudience(),
 		loggerProvider.GetLogger("auth.token_service"),
-		WithLegacyFatClaims(legacyFatClaims),
 		WithTokenSizeGuardrails(tokenWarnThresholdBytes, tokenHardLimitBytes),
 	)
 
@@ -56,7 +53,6 @@ func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 		tokenService:            tokenService,
 		activitySink:            noopActivitySink{},
 		claimsDecorator:         noopClaimsDecorator{},
-		legacyFatClaims:         legacyFatClaims,
 		tokenWarnThresholdBytes: tokenWarnThresholdBytes,
 		tokenHardLimitBytes:     tokenHardLimitBytes,
 	}
@@ -71,14 +67,6 @@ func (s *Auther) WithLogger(logger Logger) *Auther {
 // WithLoggerProvider overrides the logger provider used by the authenticator.
 func (s *Auther) WithLoggerProvider(provider LoggerProvider) *Auther {
 	s.loggerProvider, s.logger = ResolveLogger("auth", provider, s.logger)
-	s.rebuildTokenService()
-	return s
-}
-
-// WithLegacyFatClaims enables or disables compatibility mode that preserves
-// fat permission/scope metadata in JWT claims.
-func (s *Auther) WithLegacyFatClaims(enabled bool) *Auther {
-	s.legacyFatClaims = enabled
 	s.rebuildTokenService()
 	return s
 }
@@ -400,7 +388,6 @@ func (s *Auther) rebuildTokenService() {
 		s.issuer,
 		s.audience,
 		s.loggerProvider.GetLogger("auth.token_service"),
-		WithLegacyFatClaims(s.legacyFatClaims),
 		WithTokenSizeGuardrails(s.tokenWarnThresholdBytes, s.tokenHardLimitBytes),
 	)
 }
