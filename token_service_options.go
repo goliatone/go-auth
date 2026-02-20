@@ -38,17 +38,6 @@ type tokenSizeGuardrails struct {
 // TokenService interface.
 type TokenServiceOption func(*TokenServiceImpl)
 
-// WithLegacyFatClaims preserves legacy fat-claims behavior by disabling
-// metadata minimization.
-func WithLegacyFatClaims(enabled bool) TokenServiceOption {
-	return func(ts *TokenServiceImpl) {
-		if ts == nil {
-			return
-		}
-		ts.legacyFatClaims = enabled
-	}
-}
-
 // WithTokenSizeGuardrails overrides warning and hard-limit thresholds for signed JWT size.
 // Values <= 0 disable the respective threshold.
 func WithTokenSizeGuardrails(warnThresholdBytes, hardLimitBytes int) TokenServiceOption {
