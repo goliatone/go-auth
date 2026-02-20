@@ -95,7 +95,17 @@ func MintScopedToken(tokenService TokenService, identity Identity, resourceRoles
 
 	ensureTokenID(&claims.RegisteredClaims)
 
-	token, err := tokenService.SignClaims(claims)
+	var (
+		token string
+		err   error
+	)
+	if signer, ok := tokenService.(interface {
+		SignClaimsWithType(claims *JWTClaims, tokenType string) (string, error)
+	}); ok {
+		token, err = signer.SignClaimsWithType(claims, TokenTypeScoped)
+	} else {
+		token, err = tokenService.SignClaims(claims)
+	}
 	if err != nil {
 		return "", time.Time{}, err
 	}
