@@ -553,12 +553,6 @@ HTTP `431 Request Header Fields Too Large` failures.
   - `scopes`, `scope_list`, `scopes_list`
 - Top-level structured claims are preserved:
   - `role`, `res`, and top-level `scopes`
-- Legacy compatibility mode is opt-in:
-
-```go
-auther := auth.NewAuthenticator(provider, cfg).
-    WithLegacyFatClaims(true)
-```
 
 Token size guardrails apply to all signed JWTs:
 
@@ -581,7 +575,6 @@ tokenService := auth.NewTokenService(
     issuer,
     audience,
     logger,
-    auth.WithLegacyFatClaims(false),
     auth.WithTokenSizeGuardrails(2048, 4096),
 )
 ```
