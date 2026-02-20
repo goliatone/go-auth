@@ -1,5 +1,29 @@
 # Changelog
 
+# [0.34.0](https://github.com/goliatone/go-auth/compare/v0.33.0...v0.34.0) - (2026-02-20)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.34.0 ([52881cf](https://github.com/goliatone/go-auth/commit/52881cfd86c6635a4d067473b32b4b20b31d9b00))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Token service stats ([911fe52](https://github.com/goliatone/go-auth/commit/911fe52a110e115eebf6abdcfb8f496aa0a2d8a4))  - (goliatone)
+- Signing claims with type ([90a718d](https://github.com/goliatone/go-auth/commit/90a718dc996a76cc723ae72b7be7b077acb49ff7))  - (goliatone)
+- Errors for claims setup ([bc4da49](https://github.com/goliatone/go-auth/commit/bc4da49cb13f542405e94d2df6fe6bbfc67c404f))  - (goliatone)
+- Legacy auth claims ([2b77628](https://github.com/goliatone/go-auth/commit/2b776287c764879077d19ded0a084e0d639f42e5))  - (goliatone)
+- Token service options ([54f9fb8](https://github.com/goliatone/go-auth/commit/54f9fb803e06d83babbddc0814cfcba4488d15c3))  - (goliatone)
+- Permission resolver ([1b4dede](https://github.com/goliatone/go-auth/commit/1b4dede61d210c01b32e6a105db884da597dca9c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.33.0 ([769dcf4](https://github.com/goliatone/go-auth/commit/769dcf4a6a90ce88c63965f36c56d4bb1c5033ae))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([aed67ee](https://github.com/goliatone/go-auth/commit/aed67eee1012eb5f33fe77889734ed4faddb7d34))  - (goliatone)
+- Update test ([e4737b2](https://github.com/goliatone/go-auth/commit/e4737b2deef1f503c070ebf2e8f5cb98a96cbaa2))  - (goliatone)
+
 # [0.33.0](https://github.com/goliatone/go-auth/compare/v0.32.0...v0.33.0) - (2026-02-19)
 
 ## <!-- 13 -->📦 Bumps
