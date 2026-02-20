@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.35.0](https://github.com/goliatone/go-auth/compare/v0.34.0...v0.35.0) - (2026-02-20)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Remove legacy code ([ed3b6b5](https://github.com/goliatone/go-auth/commit/ed3b6b52040e7a478144a5a2a24031a7f1fe0244))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.35.0 ([a765bd2](https://github.com/goliatone/go-auth/commit/a765bd2e47cf90ea9cf07a608a9b4e95e8f3e08c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.34.0 ([cd08adc](https://github.com/goliatone/go-auth/commit/cd08adc1caab7df4a35741a478091a0bf1e75475))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([de7bd85](https://github.com/goliatone/go-auth/commit/de7bd85094129a4f3d4f92eed111308f0aab4ae7))  - (goliatone)
+- Update test ([c9d3c19](https://github.com/goliatone/go-auth/commit/c9d3c1930e74c51e3136da2b9477a7d5dd91be7a))  - (goliatone)
+
 # [0.34.0](https://github.com/goliatone/go-auth/compare/v0.33.0...v0.34.0) - (2026-02-20)
 
 ## <!-- 13 -->📦 Bumps
