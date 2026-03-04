@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+## <!-- 16 -->➕ Add
+
+- Segmented migration packaging APIs: `GetCoreMigrationsFS()` and `GetAuthExtrasMigrationsFS()`.
+- Standalone migration integration coverage for apply, rollback-all, and reapply (SQLite + Postgres DSN-gated).
+
+## <!-- 3 -->📚 Documentation
+
+- Migration docs updated to canonical Auth0 identifier migration version (`20240701090000_auth0_identifiers`) and segmented registration guidance.
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Removed legacy duplicate `0001_auth0_identifiers` migration files from canonical runtime migration tree.
+- Refactored segmented migration packaging to directory-based embed tracks (`data/sql/migration_tracks/core`, `data/sql/migration_tracks/auth_extras`) with parity guard tests against the full migration tree.
+
 # [0.35.0](https://github.com/goliatone/go-auth/compare/v0.34.0...v0.35.0) - (2026-02-20)
 
 ## <!-- 1 -->🐛 Bug Fixes
@@ -1042,5 +1058,3 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
-
-

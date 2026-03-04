@@ -7,5 +7,5 @@ This folder contains Auth0 wiring examples:
 
 Apply the Auth0 sync migrations before using the sync example:
 
-- `data/sql/migrations/0001_auth0_identifiers.up.sql`
-- `data/sql/migrations/sqlite/0001_auth0_identifiers.up.sql`
+- `data/sql/migrations/20240701090000_auth0_identifiers.up.sql`
+- `data/sql/migrations/sqlite/20240701090000_auth0_identifiers.up.sql`

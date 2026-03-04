@@ -856,6 +856,8 @@ CREATE TABLE password_reset (
 
 Social login adds a `social_accounts` table for linked provider identities.
 Migrations ship in `data/sql/migrations` and `data/sql/migrations/sqlite`.
+Use `auth.GetAuthExtrasMigrationsFS()` for segmented registration (or
+`auth.GetMigrationsFS()` for the full tree).
 
 ```sql
 CREATE TABLE social_accounts (
@@ -888,10 +890,24 @@ Auth0 sync adds a `user_identifiers` mapping table and optional external ID
 columns on `users`. Migrations ship in `data/sql/migrations` and
 `data/sql/migrations/sqlite`:
 
-- `0001_auth0_identifiers.up.sql`
-- `0001_auth0_identifiers.down.sql`
+- `20240701090000_auth0_identifiers.up.sql`
+- `20240701090000_auth0_identifiers.down.sql`
 
 See `docs/AUTH0.md` for schema details and sync wiring.
+
+### Migration Registration Profiles
+
+`go-auth` exposes segmented migration filesystems:
+
+- `auth.GetCoreMigrationsFS()` for core auth schema (`users`, `password_reset`,
+  `user_status`).
+- `auth.GetAuthExtrasMigrationsFS()` for optional extras
+  (`social_accounts`, `user_identifiers`, `users.external_id*`).
+- `auth.GetMigrationsFS()` for the full migration tree.
+
+Register core first, then extras when both are used.
+Segmented assets are now directory-packaged under
+`data/sql/migration_tracks/{core,auth_extras}` to avoid filename-pattern embeds.
 
 ## Configuration
 
