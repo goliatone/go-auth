@@ -1,20 +1,29 @@
 # Changelog
 
-## Unreleased
+# [0.36.0](https://github.com/goliatone/go-auth/compare/v0.35.0...v0.36.0) - (2026-03-04)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.36.0 ([7dabef6](https://github.com/goliatone/go-auth/commit/7dabef6f84462ebe8b21fc4f5062869e301e37d5))  - (goliatone)
 
 ## <!-- 16 -->➕ Add
 
-- Segmented migration packaging APIs: `GetCoreMigrationsFS()` and `GetAuthExtrasMigrationsFS()`.
-- Standalone migration integration coverage for apply, rollback-all, and reapply (SQLite + Postgres DSN-gated).
+- Expose migrations in sub pacakges ([13483dc](https://github.com/goliatone/go-auth/commit/13483dccc471de9fc050fc513882dcd1b5dc6632))  - (goliatone)
+- Migrations strucutre ([3d85ab1](https://github.com/goliatone/go-auth/commit/3d85ab1f71e05dafe9294dce310168d76a3050d9))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Migrations setup ([139ea37](https://github.com/goliatone/go-auth/commit/139ea378b1659ee02a8d21ccd2943f5e062f0b47))  - (goliatone)
 
 ## <!-- 3 -->📚 Documentation
 
-- Migration docs updated to canonical Auth0 identifier migration version (`20240701090000_auth0_identifiers`) and segmented registration guidance.
+- Update changelog for v0.35.0 ([c5af746](https://github.com/goliatone/go-auth/commit/c5af74624ff54341228fea904a82e9969733b2b0))  - (goliatone)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
 
-- Removed legacy duplicate `0001_auth0_identifiers` migration files from canonical runtime migration tree.
-- Refactored segmented migration packaging to directory-based embed tracks (`data/sql/migration_tracks/core`, `data/sql/migration_tracks/auth_extras`) with parity guard tests against the full migration tree.
+- Update deps ([c6e25b9](https://github.com/goliatone/go-auth/commit/c6e25b980c756970d0519f206c42f21036c86383))  - (goliatone)
+- Update docs ([3129cc1](https://github.com/goliatone/go-auth/commit/3129cc153a0be2081dd2b86366082922694648d6))  - (goliatone)
+- Update tests ([929ba5d](https://github.com/goliatone/go-auth/commit/929ba5d51c6cd5189560a7bf4736494d427a3c9a))  - (goliatone)
 
 # [0.35.0](https://github.com/goliatone/go-auth/compare/v0.34.0...v0.35.0) - (2026-02-20)
 
@@ -1058,3 +1067,5 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
+
+
