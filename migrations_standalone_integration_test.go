@@ -29,6 +29,58 @@ func TestMigrationGettersExposeCoreAndExtras(t *testing.T) {
 	}
 }
 
+func TestSegmentedTracksMatchFullMigrationTree(t *testing.T) {
+	t.Parallel()
+
+	type dialectSpec struct {
+		name string
+		path string
+	}
+	dialects := []dialectSpec{
+		{name: "postgres", path: "data/sql/migrations"},
+		{name: "sqlite", path: "data/sql/migrations/sqlite"},
+	}
+
+	for _, dialect := range dialects {
+		dialect := dialect
+		t.Run(dialect.name, func(t *testing.T) {
+			fullFiles := mustReadMigrationFiles(t, auth.GetMigrationsFS(), dialect.path)
+			coreFiles := mustReadMigrationFiles(t, auth.GetCoreMigrationsFS(), dialect.path)
+			extraFiles := mustReadMigrationFiles(t, auth.GetAuthExtrasMigrationsFS(), dialect.path)
+
+			merged := make(map[string]string, len(coreFiles)+len(extraFiles))
+			for name, content := range coreFiles {
+				merged[name] = content
+			}
+			for name, content := range extraFiles {
+				if _, exists := merged[name]; exists {
+					t.Fatalf("duplicate segmented migration %q in %s track", name, dialect.name)
+				}
+				merged[name] = content
+			}
+
+			if len(merged) != len(fullFiles) {
+				t.Fatalf(
+					"segmented/full file count mismatch for %s: segmented=%d full=%d",
+					dialect.name,
+					len(merged),
+					len(fullFiles),
+				)
+			}
+
+			for name, fullContent := range fullFiles {
+				segmentedContent, exists := merged[name]
+				if !exists {
+					t.Fatalf("segmented tracks missing %s migration %q", dialect.name, name)
+				}
+				if segmentedContent != fullContent {
+					t.Fatalf("segmented content mismatch for %s migration %q", dialect.name, name)
+				}
+			}
+		})
+	}
+}
+
 func TestStandaloneMigrationsSQLiteApplyRollbackReapply(t *testing.T) {
 	t.Parallel()
 
@@ -195,6 +247,34 @@ func splitSQLStatements(sqlText string) []string {
 		}
 	}
 	return statements
+}
+
+func mustReadMigrationFiles(t *testing.T, source fs.FS, subdir string) map[string]string {
+	t.Helper()
+
+	root, err := fs.Sub(source, subdir)
+	if err != nil {
+		t.Fatalf("resolve migrations subdir %q: %v", subdir, err)
+	}
+
+	files, err := fs.Glob(root, "*.sql")
+	if err != nil {
+		t.Fatalf("glob migrations in %q: %v", subdir, err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("expected migration files in %q", subdir)
+	}
+	sort.Strings(files)
+
+	output := make(map[string]string, len(files))
+	for _, file := range files {
+		content, err := fs.ReadFile(root, file)
+		if err != nil {
+			t.Fatalf("read migration %s/%s: %v", subdir, file, err)
+		}
+		output[file] = string(content)
+	}
+	return output
 }
 
 func isCommentOnly(input string) bool {
