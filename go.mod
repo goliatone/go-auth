@@ -15,15 +15,17 @@ require (
 	github.com/goliatone/go-featuregate v0.6.0
 	github.com/goliatone/go-logger v0.8.0
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.13.0
-	github.com/goliatone/go-router v0.45.1
+	github.com/goliatone/go-repository-bun v0.15.1
+	github.com/goliatone/go-router v0.50.0
 	github.com/goliatone/hashid v0.2.0
 	github.com/google/uuid v1.6.0
+	github.com/lib/pq v1.10.9
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.16
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.16
 	golang.org/x/crypto v0.46.0
+	golang.org/x/sync v0.19.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
@@ -65,7 +67,6 @@ require (
 	github.com/lestrrat-go/iter v1.0.2 // indirect
 	github.com/lestrrat-go/jwx/v2 v2.1.6 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/lithammer/shortuuid v3.0.0+incompatible // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -84,7 +85,6 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.29.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
