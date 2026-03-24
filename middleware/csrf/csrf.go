@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	ErrTokenMismatch    = errors.New("CSRF token mismatch")
-	ErrTokenMissing     = errors.New("CSRF token missing")
-	ErrTokenExpired     = errors.New("CSRF token expired")
-	ErrSecureKeyMissing = errors.New("CSRF secure key required for stateless mode")
+	ErrTokenMismatch     = errors.New("CSRF token mismatch")
+	ErrTokenMissing      = errors.New("CSRF token missing")
+	ErrTokenExpired      = errors.New("CSRF token expired")
+	ErrSecureKeyMissing  = errors.New("CSRF secure key required for stateless mode")
+	ErrSessionKeyMissing = errors.New("CSRF session key missing")
 )
 
 // TemplateHelperFactory allows template engines to lazily evaluate CSRF helpers per request.
@@ -105,6 +106,9 @@ type Config struct {
 	// SecureKey is used for token generation when using stateless mode
 	SecureKey []byte
 
+	// SessionKeyResolver resolves the storage key used when Storage is configured.
+	SessionKeyResolver SessionKeyResolver
+
 	// DisableTemplateHelpers disables automatic template helper injection when true.
 	DisableTemplateHelpers bool
 	// TemplateHelpersKey defines the context key used when storing helper maps via LocalsMerge.
@@ -120,6 +124,9 @@ type Storage interface {
 
 // TokenExtractor defines a function to extract token from request
 type TokenExtractor func(router.Context) (string, error)
+
+// SessionKeyResolver resolves the request-scoped storage key used for CSRF stateful tokens.
+type SessionKeyResolver func(router.Context) (string, bool)
 
 // New creates a new CSRF middleware
 func New(config ...Config) router.MiddlewareFunc {
@@ -163,7 +170,10 @@ func New(config ...Config) router.MiddlewareFunc {
 func getOrGenerateToken(ctx router.Context, cfg Config) (string, error) {
 	if cfg.Storage != nil {
 		// storage based mode, we check if token exists for this session/user
-		sessionKey := getSessionKey(ctx)
+		sessionKey, ok := getSessionKey(ctx, cfg)
+		if !ok {
+			return "", ErrSessionKeyMissing
+		}
 		if token, err := cfg.Storage.Get(sessionKey); err == nil && token != "" {
 			return token, nil
 		}
@@ -227,7 +237,7 @@ func generateStatelessToken(ctx router.Context, cfg Config) (string, error) {
 		return "", err
 	}
 
-	sessionKey := getSessionKey(ctx)
+	sessionKey, _ := getSessionKey(ctx, cfg)
 	timestamp := time.Now().UTC().Unix()
 	payload := fmt.Sprintf("%d:%s:%s", timestamp, hex.EncodeToString(nonce), sessionKey)
 
@@ -279,7 +289,9 @@ func validateStatelessToken(ctx router.Context, cfg Config, token string) error 
 		return ErrTokenMismatch
 	}
 
-	if subtle.ConstantTimeCompare([]byte(sessionFromToken), []byte(getSessionKey(ctx))) != 1 {
+	sessionKey, _ := getSessionKey(ctx, cfg)
+
+	if subtle.ConstantTimeCompare([]byte(sessionFromToken), []byte(sessionKey)) != 1 {
 		return ErrTokenMismatch
 	}
 
@@ -307,22 +319,25 @@ func extractToken(ctx router.Context, cfg Config) (string, error) {
 }
 
 // getSessionKey generates a session key for token storage
-func getSessionKey(ctx router.Context) string {
+func getSessionKey(ctx router.Context, cfg Config) (string, bool) {
+	if cfg.SessionKeyResolver != nil {
+		return cfg.SessionKeyResolver(ctx)
+	}
+
 	// Try to get session ID or user ID for storage key
 	if sessionID := ctx.Locals("session_id"); sessionID != nil {
 		if id, ok := sessionID.(string); ok && id != "" {
-			return "csrf_" + id
+			return "csrf_" + id, true
 		}
 	}
 
 	if userID := ctx.Locals("user_id"); userID != nil {
 		if id, ok := userID.(string); ok && id != "" {
-			return "csrf_user_" + id
+			return "csrf_user_" + id, true
 		}
 	}
 
-	// fallback to IP based key, less secure but OK
-	return "csrf_ip_" + ctx.IP()
+	return "", false
 }
 
 // getExtractors returns token extractors based on configuration
@@ -364,7 +379,7 @@ func extractorFromForm(fieldName string) TokenExtractor {
 // extractorFromHeader extracts token from request header
 func extractorFromHeader(headerName string) TokenExtractor {
 	return func(ctx router.Context) (string, error) {
-		return ctx.GetString(headerName, ""), nil
+		return ctx.Header(headerName), nil
 	}
 }
 
@@ -445,6 +460,8 @@ func defaultErrorHandler(cfg Config) router.ErrorHandler {
 			return ctx.Status(router.StatusForbidden).SendString("CSRF token expired")
 		case ErrSecureKeyMissing:
 			return ctx.Status(router.StatusInternalServerError).SendString("CSRF configuration error")
+		case ErrSessionKeyMissing:
+			return ctx.Status(router.StatusForbidden).SendString("CSRF session key missing")
 		default:
 			return ctx.Status(router.StatusInternalServerError).SendString("CSRF validation error")
 		}
