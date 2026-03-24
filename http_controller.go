@@ -45,6 +45,7 @@ func ensureTemplateHelpers(ctx router.Context) {
 type Middleware interface {
 	Impersonate(c router.Context, identifier string) error
 	ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc
+	ProtectedBrowserRoute(cfg Config, errorHandler func(router.Context, error) error, config ...BrowserProtectionConfig) router.MiddlewareFunc
 }
 
 func GetRouterSession(c router.Context, key string) (*SessionObject, error) {
