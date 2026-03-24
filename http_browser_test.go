@@ -190,6 +190,42 @@ func TestProtectedBrowserRouteAllowsBearerOnlyPostWithoutCSRF(t *testing.T) {
 	}
 }
 
+func TestProtectedBrowserRouteSupportsDirectWrapperComposition(t *testing.T) {
+	cfg := browserTestConfig{}
+	store := &memoryCSRFStore{}
+	auther := auth.NewAuthenticator(browserIdentityProvider{}, cfg)
+	httpAuth, err := auth.NewHTTPAuthenticator(auther, cfg)
+	if err != nil {
+		t.Fatalf("NewHTTPAuthenticator error: %v", err)
+	}
+
+	token, err := auther.TokenService().Generate(browserIdentity{}, nil)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	protected := httpAuth.ProtectedBrowserRoute(cfg, authErrorHandler(t), auth.BrowserProtectionConfig{
+		CSRF: csrfmw.Config{Storage: store},
+	})(func(c router.Context) error {
+		return c.SendString("wrapped-ok")
+	})
+
+	server := router.NewHTTPServer().(*router.HTTPServer)
+	server.Router().Get("/wrapped", protected)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/wrapped", nil)
+	req.Host = "example.com"
+	req.AddCookie(&http.Cookie{Name: "auth", Value: token})
+	resp := httptest.NewRecorder()
+	server.WrappedRouter().ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected direct wrapper GET to succeed, got %d", resp.Code)
+	}
+	if resp.Body.String() != "wrapped-ok" {
+		t.Fatalf("expected wrapped handler body, got %q", resp.Body.String())
+	}
+}
+
 func TestStatefulCSRFFailsWithoutSessionKey(t *testing.T) {
 	server := router.NewHTTPServer().(*router.HTTPServer)
 	store := &memoryCSRFStore{}
