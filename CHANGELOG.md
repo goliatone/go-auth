@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.38.0](https://github.com/goliatone/go-auth/compare/v0.37.0...v0.38.0) - (2026-03-24)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.38.0 ([de8822e](https://github.com/goliatone/go-auth/commit/de8822e5caed24ede019c8c32ec38e6f0af4a2e2))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- CSRF config ([f8f0144](https://github.com/goliatone/go-auth/commit/f8f0144a90deb1345d05c37af584440c887f5c56))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.37.0 ([06cd739](https://github.com/goliatone/go-auth/commit/06cd739c20c2fce9e29dbbe398f587b3b896f677))  - (goliatone)
+
 # [0.37.0](https://github.com/goliatone/go-auth/compare/v0.36.0...v0.37.0) - (2026-03-24)
 
 ## <!-- 13 -->📦 Bumps
