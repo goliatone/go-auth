@@ -216,6 +216,11 @@ func (m *MockHTTPAuthenticator) ProtectedRoute(cfg auth.Config, errorHandler fun
 	return args.Get(0).(func(router.HandlerFunc) router.HandlerFunc)
 }
 
+func (m *MockHTTPAuthenticator) ProtectedBrowserRoute(cfg auth.Config, errorHandler func(router.Context, error) error, config ...auth.BrowserProtectionConfig) router.MiddlewareFunc {
+	args := m.Called(cfg, errorHandler, config)
+	return args.Get(0).(func(router.HandlerFunc) router.HandlerFunc)
+}
+
 func (m *MockHTTPAuthenticator) Impersonate(c router.Context, identifier string) error {
 	args := m.Called(c, identifier)
 	return args.Error(0)
