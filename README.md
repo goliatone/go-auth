@@ -32,9 +32,38 @@ package main
 
 import (
     "context"
+    "fmt"
+    "log"
+
     "github.com/goliatone/go-auth"
     repo "github.com/goliatone/go-auth/repository"
 )
+
+type AppAuthConfig struct {
+    SigningKey            string
+    SigningMethod         string
+    ContextKey            string
+    TokenExpiration       int
+    ExtendedTokenDuration int
+    TokenLookup           string
+    AuthScheme            string
+    Issuer                string
+    Audience              []string
+    RejectedRouteKey      string
+    RejectedRouteDefault  string
+}
+
+func (c AppAuthConfig) GetSigningKey() string           { return c.SigningKey }
+func (c AppAuthConfig) GetSigningMethod() string        { return c.SigningMethod }
+func (c AppAuthConfig) GetContextKey() string           { return c.ContextKey }
+func (c AppAuthConfig) GetTokenExpiration() int         { return c.TokenExpiration }
+func (c AppAuthConfig) GetExtendedTokenDuration() int   { return c.ExtendedTokenDuration }
+func (c AppAuthConfig) GetTokenLookup() string          { return c.TokenLookup }
+func (c AppAuthConfig) GetAuthScheme() string           { return c.AuthScheme }
+func (c AppAuthConfig) GetIssuer() string               { return c.Issuer }
+func (c AppAuthConfig) GetAudience() []string           { return c.Audience }
+func (c AppAuthConfig) GetRejectedRouteKey() string     { return c.RejectedRouteKey }
+func (c AppAuthConfig) GetRejectedRouteDefault() string { return c.RejectedRouteDefault }
 
 func main() {
     // Create repository manager
@@ -43,12 +72,19 @@ func main() {
     // Create user provider
     userProvider := auth.NewUserProvider(repoManager.Users())
 
-    // Create authenticator with basic configuration
-    config := &AuthConfig{
-        SigningKey:      "your-secret-key",
-        TokenExpiration: 24, // hours
-        Issuer:         "your-app",
-        Audience:       []string{"your-audience"},
+    // Any struct that satisfies auth.Config works.
+    config := AppAuthConfig{
+        SigningKey:            "your-secret-key",
+        SigningMethod:         "HS256",
+        ContextKey:            "auth",
+        TokenExpiration:       24, // hours
+        ExtendedTokenDuration: 24 * 7,
+        TokenLookup:           "header:Authorization",
+        AuthScheme:            "Bearer",
+        Issuer:                "your-app",
+        Audience:              []string{"your-audience"},
+        RejectedRouteKey:      "redirect",
+        RejectedRouteDefault:  "/",
     }
 
     authenticator := auth.NewAuthenticator(userProvider, config)
@@ -961,16 +997,21 @@ The library provides HTTP middleware for route protection:
 
 ```go
 // Protect routes requiring authentication
-protectedRoute := auth.ProtectedRoute(config, errorHandler)
+httpAuth, err := auth.NewHTTPAuthenticator(authenticator, config)
+if err != nil {
+    log.Fatal(err)
+}
+protectedRoute := httpAuth.ProtectedRoute(config, errorHandler)
 router.Use("/api/", protectedRoute)
 
 // Custom authorization logic
 func requireAdminRole(c router.Context) error {
-    session, _ := auth.GetRouterSession(c, "auth")
-    if roleSession, ok := session.(auth.RoleCapableSession); ok {
-        if !roleSession.IsAtLeast("admin") {
-            return c.Status(403).SendString("Forbidden")
-        }
+    session, err := auth.GetRouterSession(c, config.GetContextKey())
+    if err != nil {
+        return c.Status(401).SendString("Unauthorized")
+    }
+    if !session.IsAtLeast(auth.RoleAdmin) {
+        return c.Status(403).SendString("Forbidden")
     }
     return c.Next()
 }
