@@ -1,5 +1,27 @@
 # Changelog
 
+# [0.37.0](https://github.com/goliatone/go-auth/compare/v0.36.0...v0.37.0) - (2026-03-24)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.37.0 ([1753072](https://github.com/goliatone/go-auth/commit/1753072027428f32df4d758e85c2a26c6a2f14e5))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Harden CSRF middleware ([f779ffd](https://github.com/goliatone/go-auth/commit/f779ffda77656fdec43782bc625f1c0809de4b6d))  - (goliatone)
+- Protected browser route to middleware ([7cdbd72](https://github.com/goliatone/go-auth/commit/7cdbd723370a2c553ebc73eb6b14ff71e145526f))  - (goliatone)
+- Browser protection setup ([facea2b](https://github.com/goliatone/go-auth/commit/facea2b2dc08835f666c65974508f5631e54aad3))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.36.0 ([e8ff863](https://github.com/goliatone/go-auth/commit/e8ff8633f4fe09d9b8ceb7626447f1ff9eecb875))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([f6e0f49](https://github.com/goliatone/go-auth/commit/f6e0f4919c93c5efda1bc226b03edb024b4586cd))  - (goliatone)
+- Update deps ([9b2bd51](https://github.com/goliatone/go-auth/commit/9b2bd51f4777dabebcbaaecd6e77a5df1b2ba5b9))  - (goliatone)
+- Update tests ([93916d8](https://github.com/goliatone/go-auth/commit/93916d80a64ed65ccbb25f6b53d85ab085138220))  - (goliatone)
+
 # [0.36.0](https://github.com/goliatone/go-auth/compare/v0.35.0...v0.36.0) - (2026-03-04)
 
 ## <!-- 13 -->📦 Bumps
