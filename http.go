@@ -2,8 +2,10 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
+	csrf "github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-auth/middleware/jwtware"
 	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-print"
@@ -36,6 +38,8 @@ type RouteAuthenticator struct {
 	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
+	authCookieTemplate     router.Cookie
+	redirectCookieTemplate router.Cookie
 	logger                 Logger
 	loggerProvider         LoggerProvider
 	AuthErrorHandler       func(c router.Context, err error) error // TODO: make functions
@@ -43,7 +47,35 @@ type RouteAuthenticator struct {
 	validationListeners    []ValidationListener
 }
 
-func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator, error) {
+type HTTPAuthenticatorOption func(*RouteAuthenticator) error
+
+type BrowserProtectionConfig struct {
+	AuthCookieName string
+	CSRF           csrf.Config
+	Origin         router.OriginProtectionConfig
+}
+
+func WithAuthCookieTemplate(cookie router.Cookie) HTTPAuthenticatorOption {
+	return func(a *RouteAuthenticator) error {
+		if err := router.ValidateCookie(cookie); err != nil {
+			return err
+		}
+		a.authCookieTemplate = cookie
+		return nil
+	}
+}
+
+func WithRedirectCookieTemplate(cookie router.Cookie) HTTPAuthenticatorOption {
+	return func(a *RouteAuthenticator) error {
+		if err := router.ValidateCookie(cookie); err != nil {
+			return err
+		}
+		a.redirectCookieTemplate = cookie
+		return nil
+	}
+}
+
+func NewHTTPAuthenticator(auther Authenticator, cfg Config, opts ...HTTPAuthenticatorOption) (*RouteAuthenticator, error) {
 	cookieDuration := 24 * time.Hour
 	if cfg.GetTokenExpiration() > 0 {
 		cookieDuration = time.Duration(cfg.GetTokenExpiration()) * time.Hour
@@ -62,10 +94,21 @@ func NewHTTPAuthenticator(auther Authenticator, cfg Config) (*RouteAuthenticator
 		loggerProvider:         loggerProvider,
 		cookieDuration:         cookieDuration,
 		extendedCookieDuration: extendedCookieDuration,
+		authCookieTemplate:     router.FirstPartySessionCookie("", ""),
+		redirectCookieTemplate: router.Cookie{Path: "/", HTTPOnly: true, Secure: true, SameSite: router.CookieSameSiteLaxMode},
 	}
 
 	a.ErrorHandler = a.defaultErrHandler
 	a.AuthErrorHandler = a.defaultAuthErrHandler
+
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(a); err != nil {
+			return nil, err
+		}
+	}
 
 	return a, nil
 }
@@ -129,6 +172,26 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 	return jwtware.New(jwtConfig)
 }
 
+func (a *RouteAuthenticator) ProtectedBrowserRoute(cfg Config, errorHandler func(router.Context, error) error, config ...BrowserProtectionConfig) router.MiddlewareFunc {
+	jwtMiddleware := a.ProtectedRoute(cfg, errorHandler)
+	securityCfg := browserProtectionConfigDefault(config, cfg)
+	csrfMiddleware := csrf.New(securityCfg.CSRF)
+	originMiddleware := router.OriginProtection(securityCfg.Origin)
+
+	return func(next router.HandlerFunc) router.HandlerFunc {
+		protectedHandler := func(c router.Context) error {
+			if requestUsesCookieAuth(c, securityCfg.AuthCookieName) {
+				return originMiddleware(csrfMiddleware(next))(c)
+			}
+			if methodRequiresProtection(c.Method(), securityCfg.CSRF.SafeMethods) {
+				return next(c)
+			}
+			return csrfMiddleware(next)(c)
+		}
+		return jwtMiddleware(protectedHandler)
+	}
+}
+
 func (a *RouteAuthenticator) Login(ctx router.Context, payload LoginPayload) error {
 	token, err := a.auth.Login(ctx.Context(), payload.GetIdentifier(), payload.GetPassword())
 	if err != nil {
@@ -183,7 +246,7 @@ func (a *RouteAuthenticator) GetRedirect(ctx router.Context, def ...string) stri
 
 func (a *RouteAuthenticator) GetRedirectOrDefault(ctx router.Context) string {
 	rejectedRoute := a.cfg.GetRejectedRouteKey()
-	refererHeader := string(ctx.Referer())
+	refererHeader := router.ResolveRedirectBackTarget(ctx, "")
 
 	r := ctx.Cookies(rejectedRoute, refererHeader)
 	if r == "" {
@@ -201,10 +264,11 @@ func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 	ctx.Cookie(&router.Cookie{
 		Name:     rejectedRoute,
 		Value:    ctx.OriginalURL(),
+		Path:     firstNonEmptyString(a.redirectCookieTemplate.Path, "/"),
 		Expires:  time.Now().Add(time.Minute * 5),
-		HTTPOnly: true,
-		Secure:   true,
-		SameSite: "Lax",
+		HTTPOnly: a.redirectCookieTemplate.HTTPOnly,
+		Secure:   a.redirectCookieTemplate.Secure,
+		SameSite: router.NormalizeCookieSameSite(a.redirectCookieTemplate.SameSite),
 	})
 }
 
@@ -220,25 +284,21 @@ func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) er
 }
 
 func (a *RouteAuthenticator) setCookieToken(c router.Context, val string, duration time.Duration) {
-	c.Cookie(&router.Cookie{
-		Name:     a.cfg.GetContextKey(),
-		Value:    val,
-		Expires:  time.Now().Add(duration),
-		HTTPOnly: true,
-		Secure:   true,
-		SameSite: "Lax",
-	})
+	cookie := a.authCookieTemplate
+	cookie.Name = a.cfg.GetContextKey()
+	cookie.Value = val
+	cookie.Expires = time.Now().Add(duration)
+	cookie.SessionOnly = false
+	c.Cookie(&cookie)
 }
 
 func (a *RouteAuthenticator) cookieDel(c router.Context, name string) {
-	c.Cookie(&router.Cookie{
-		Name:     name,
-		Value:    "",
-		Expires:  time.Now().Add(-time.Hour * (24 * 365)),
-		HTTPOnly: true,
-		Secure:   true,
-		SameSite: "Lax",
-	})
+	cookie := a.authCookieTemplate
+	cookie.Name = name
+	cookie.Value = ""
+	cookie.Expires = time.Now().Add(-time.Hour * (24 * 365))
+	cookie.SessionOnly = false
+	c.Cookie(&cookie)
 }
 
 func (a *RouteAuthenticator) defaultAuthErrHandler(c router.Context, err error) error {
@@ -286,4 +346,91 @@ func (a *RouteAuthenticator) defaultErrHandler(c router.Context, err error) erro
 			"error": richErr,
 		})
 	}
+}
+
+func browserProtectionConfigDefault(config []BrowserProtectionConfig, authCfg Config) BrowserProtectionConfig {
+	cfg := BrowserProtectionConfig{}
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+	cfg.AuthCookieName = strings.TrimSpace(cfg.AuthCookieName)
+	if cfg.AuthCookieName == "" {
+		cfg.AuthCookieName = authCookieNameFromTokenLookup(authCfg)
+	}
+	if cfg.AuthCookieName == "" {
+		cfg.AuthCookieName = authCfg.GetContextKey()
+	}
+	if cfg.CSRF.SessionKeyResolver == nil {
+		cfg.CSRF.SessionKeyResolver = browserCSRFSessionKeyResolver
+	}
+	if cfg.Origin.ErrorHandler == nil {
+		cfg.Origin.ErrorHandler = func(c router.Context, err error) error {
+			return c.Status(http.StatusForbidden).SendString("forbidden")
+		}
+	}
+	return cfg
+}
+
+func browserCSRFSessionKeyResolver(c router.Context) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	if sessionID := strings.TrimSpace(c.GetString("session_id", "")); sessionID != "" {
+		return "csrf_" + sessionID, true
+	}
+	if userID := strings.TrimSpace(c.GetString("user_id", "")); userID != "" {
+		return "csrf_user_" + userID, true
+	}
+	if claims, ok := GetClaims(c.Context()); ok && claims != nil {
+		if tokenIDer, ok := claims.(interface{ TokenID() string }); ok {
+			if tokenID := strings.TrimSpace(tokenIDer.TokenID()); tokenID != "" {
+				return "csrf_session_" + tokenID, true
+			}
+		}
+		if userID := strings.TrimSpace(claims.UserID()); userID != "" {
+			return "csrf_user_" + userID, true
+		}
+	}
+	if actor, ok := ActorFromContext(c.Context()); ok && actor != nil {
+		if actorID := strings.TrimSpace(actor.ActorID); actorID != "" {
+			return "csrf_user_" + actorID, true
+		}
+	}
+	return "", false
+}
+
+func authCookieNameFromTokenLookup(cfg Config) string {
+	for _, part := range strings.Split(cfg.GetTokenLookup(), ",") {
+		part = strings.TrimSpace(part)
+		if after, ok := strings.CutPrefix(part, "cookie:"); ok {
+			return strings.TrimSpace(after)
+		}
+	}
+	return ""
+}
+
+func requestUsesCookieAuth(c router.Context, cookieName string) bool {
+	if c == nil || strings.TrimSpace(cookieName) == "" {
+		return false
+	}
+	return strings.TrimSpace(c.Cookies(cookieName)) != ""
+}
+
+func methodRequiresProtection(method string, safeMethods []string) bool {
+	method = strings.ToUpper(strings.TrimSpace(method))
+	for _, safe := range safeMethods {
+		if method == strings.ToUpper(strings.TrimSpace(safe)) {
+			return false
+		}
+	}
+	return true
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
