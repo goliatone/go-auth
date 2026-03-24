@@ -175,10 +175,14 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 func (a *RouteAuthenticator) ProtectedBrowserRoute(cfg Config, errorHandler func(router.Context, error) error, config ...BrowserProtectionConfig) router.MiddlewareFunc {
 	jwtMiddleware := a.ProtectedRoute(cfg, errorHandler)
 	securityCfg := browserProtectionConfigDefault(config, cfg)
-	csrfMiddleware := csrf.New(securityCfg.CSRF)
 	originMiddleware := router.OriginProtection(securityCfg.Origin)
 
 	return func(next router.HandlerFunc) router.HandlerFunc {
+		csrfCfg := securityCfg.CSRF
+		csrfCfg.SuccessHandler = func(c router.Context) error {
+			return next(c)
+		}
+		csrfMiddleware := csrf.New(csrfCfg)
 		protectedHandler := func(c router.Context) error {
 			if requestUsesCookieAuth(c, securityCfg.AuthCookieName) {
 				return originMiddleware(csrfMiddleware(next))(c)
