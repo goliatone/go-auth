@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"net/http"
 	"strings"
 	"time"
@@ -179,7 +180,18 @@ func (a *RouteAuthenticator) ProtectedBrowserRoute(cfg Config, errorHandler func
 
 	return func(next router.HandlerFunc) router.HandlerFunc {
 		csrfCfg := securityCfg.CSRF
+		if strings.TrimSpace(csrfCfg.ContextKey) == "" {
+			csrfCfg.ContextKey = csrf.DefaultContextKey
+		}
+		if strings.TrimSpace(csrfCfg.HeaderName) == "" {
+			csrfCfg.HeaderName = csrf.DefaultHeaderName
+		}
 		csrfCfg.SuccessHandler = func(c router.Context) error {
+			if headerName := strings.TrimSpace(csrfCfg.HeaderName); headerName != "" {
+				if token, ok := c.Locals(csrfCfg.ContextKey).(string); ok && strings.TrimSpace(token) != "" {
+					c.SetHeader(headerName, token)
+				}
+			}
 			return next(c)
 		}
 		csrfMiddleware := csrf.New(csrfCfg)
@@ -367,12 +379,20 @@ func browserProtectionConfigDefault(config []BrowserProtectionConfig, authCfg Co
 	if cfg.CSRF.SessionKeyResolver == nil {
 		cfg.CSRF.SessionKeyResolver = browserCSRFSessionKeyResolver
 	}
+	if cfg.CSRF.Storage == nil && len(cfg.CSRF.SecureKey) == 0 {
+		cfg.CSRF.SecureKey = deriveBrowserCSRFSecureKey(authCfg)
+	}
 	if cfg.Origin.ErrorHandler == nil {
 		cfg.Origin.ErrorHandler = func(c router.Context, err error) error {
 			return c.Status(http.StatusForbidden).SendString("forbidden")
 		}
 	}
 	return cfg
+}
+
+func deriveBrowserCSRFSecureKey(authCfg Config) []byte {
+	sum := sha256.Sum256([]byte("go-auth-browser-csrf:" + authCfg.GetSigningKey() + ":" + authCfg.GetContextKey()))
+	return sum[:]
 }
 
 func browserCSRFSessionKeyResolver(c router.Context) (string, bool) {

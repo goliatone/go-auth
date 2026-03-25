@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,6 +137,11 @@ func TestProtectedBrowserRouteEnforcesCSRFForCookieAuth(t *testing.T) {
 	csrfToken := getResp.Body.String()
 	if csrfToken == "" {
 		t.Fatalf("expected GET to provide csrf token")
+	}
+	if headerToken := strings.TrimSpace(getResp.Header().Get(csrfmw.DefaultHeaderName)); headerToken == "" {
+		t.Fatalf("expected GET to emit csrf header")
+	} else if headerToken != csrfToken {
+		t.Fatalf("expected GET csrf header to match rendered token")
 	}
 
 	postReq := httptest.NewRequest(http.MethodPost, "http://example.com/protected", nil)
