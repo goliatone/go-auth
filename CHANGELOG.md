@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.39.0](https://github.com/goliatone/go-auth/compare/v0.38.0...v0.39.0) - (2026-03-25)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Use SetHeader to emit CSRF token ([714891f](https://github.com/goliatone/go-auth/commit/714891f1ab231896d1e52cfe97147e92931cf9d2))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.39.0 ([f76e7bd](https://github.com/goliatone/go-auth/commit/f76e7bd7f396f67d4548284d6d0f0ee7f5947508))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.38.0 ([6a3b030](https://github.com/goliatone/go-auth/commit/6a3b0305c68e844b99bb6a8db7c65844f39ca4a5))  - (goliatone)
+
 # [0.38.0](https://github.com/goliatone/go-auth/compare/v0.37.0...v0.38.0) - (2026-03-24)
 
 ## <!-- 13 -->📦 Bumps
