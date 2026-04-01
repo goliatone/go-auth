@@ -142,6 +142,13 @@ func (a RouteAuthenticator) GetExtendedCookieDuration() time.Duration {
 	return a.extendedCookieDuration
 }
 
+func (a *RouteAuthenticator) AuthCookieName() string {
+	if a == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.cfg.GetContextKey())
+}
+
 func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
 	jwtConfig := jwtware.Config{
 		ErrorHandler: errorHandler,
@@ -277,15 +284,13 @@ func (a *RouteAuthenticator) SetRedirect(ctx router.Context) {
 
 	a.logger.Info("Setting redirect cookie", "key", rejectedRoute, "path", ctx.OriginalURL())
 
-	ctx.Cookie(&router.Cookie{
-		Name:     rejectedRoute,
-		Value:    ctx.OriginalURL(),
-		Path:     firstNonEmptyString(a.redirectCookieTemplate.Path, "/"),
-		Expires:  time.Now().Add(time.Minute * 5),
-		HTTPOnly: a.redirectCookieTemplate.HTTPOnly,
-		Secure:   a.redirectCookieTemplate.Secure,
-		SameSite: router.NormalizeCookieSameSite(a.redirectCookieTemplate.SameSite),
-	})
+	cookie := a.redirectCookieTemplate
+	cookie.Name = rejectedRoute
+	cookie.Value = ctx.OriginalURL()
+	cookie.Path = firstNonEmptyString(cookie.Path, "/")
+	cookie.Expires = time.Now().Add(time.Minute * 5)
+	cookie.SessionOnly = false
+	ctx.Cookie(&cookie)
 }
 
 func (a *RouteAuthenticator) Impersonate(c router.Context, identifier string) error {

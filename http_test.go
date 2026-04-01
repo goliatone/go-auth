@@ -160,10 +160,44 @@ func TestRouteAuthenticator_RedirectFunctions(t *testing.T) {
 
 		mockCtx.On("OriginalURL").Return("/dashboard")
 		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
-			return c.Name == "rejected_route" && c.Value == "/dashboard" && c.HTTPOnly
+			return c.Name == "rejected_route" &&
+				c.Value == "/dashboard" &&
+				c.Path == "/" &&
+				c.HTTPOnly
 		})).Return()
 
 		httpAuth.SetRedirect(mockCtx)
+
+		mockCtx.AssertExpectations(t)
+	})
+
+	t.Run("SetRedirect_PreservesCookieTemplateDomain", func(t *testing.T) {
+		httpAuthWithDomain, err := auth.NewHTTPAuthenticator(
+			mockAuth,
+			mockConfig,
+			auth.WithRedirectCookieTemplate(router.Cookie{
+				Path:     "/",
+				Domain:   ".example.com",
+				HTTPOnly: true,
+				Secure:   true,
+				SameSite: router.CookieSameSiteLaxMode,
+			}),
+		)
+		require.NoError(t, err)
+
+		mockCtx := router.NewMockContext()
+		mockCtx.On("OriginalURL").Return("https://sim.example.com/workspace?scenario=launch-success")
+		mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
+			return c.Name == "rejected_route" &&
+				c.Value == "https://sim.example.com/workspace?scenario=launch-success" &&
+				c.Path == "/" &&
+				c.Domain == ".example.com" &&
+				c.HTTPOnly &&
+				c.Secure &&
+				c.SameSite == router.CookieSameSiteLaxMode
+		})).Return()
+
+		httpAuthWithDomain.SetRedirect(mockCtx)
 
 		mockCtx.AssertExpectations(t)
 	})
