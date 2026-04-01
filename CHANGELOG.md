@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.40.0](https://github.com/goliatone/go-auth/compare/v0.39.0...v0.40.0) - (2026-04-01)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Auth cookie name ([a562dcd](https://github.com/goliatone/go-auth/commit/a562dcdcb070fcd03190c55ba49ff792e2ffcf23))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.40.0 ([2486b84](https://github.com/goliatone/go-auth/commit/2486b84c89e38a1e7459a602dd7f95dcd68b44ab))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.39.0 ([9f14140](https://github.com/goliatone/go-auth/commit/9f14140650793836a0dcfc3e3c6d9ee189199bfa))  - (goliatone)
+
 # [0.39.0](https://github.com/goliatone/go-auth/compare/v0.38.0...v0.39.0) - (2026-03-25)
 
 ## <!-- 1 -->🐛 Bug Fixes
