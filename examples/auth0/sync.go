@@ -12,12 +12,12 @@ import (
 
 // SyncConfig holds the configuration for Auth0 sync wiring.
 type SyncConfig struct {
-	Auth              auth.Config
-	Domain            string
-	Audience          []string
-	Namespace         string
-	AcceptLocalTokens bool
-	ManagementDomain  string
+	Auth               auth.Config
+	Domain             string
+	Audience           []string
+	Namespace          string
+	AcceptLocalTokens  bool
+	ManagementDomain   string
 	ManagementClientID string
 	ManagementSecret   string
 }
