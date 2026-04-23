@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
@@ -129,9 +130,7 @@ func WithTransitionMetadata(metadata map[string]any) TransitionOption {
 		if opts.metadata.Metadata == nil {
 			opts.metadata.Metadata = make(map[string]any, len(metadata))
 		}
-		for k, v := range metadata {
-			opts.metadata.Metadata[k] = v
-		}
+		maps.Copy(opts.metadata.Metadata, metadata)
 	}
 }
 
@@ -230,9 +229,7 @@ func (o *transitionOptions) cloneMetadata() TransitionMetadata {
 	var cloned map[string]any
 	if len(o.metadata.Metadata) > 0 {
 		cloned = make(map[string]any, len(o.metadata.Metadata))
-		for k, v := range o.metadata.Metadata {
-			cloned[k] = v
-		}
+		maps.Copy(cloned, o.metadata.Metadata)
 	}
 
 	return TransitionMetadata{
@@ -432,8 +429,6 @@ func (sm *userStateMachine) transitionMetadata(meta TransitionMetadata) map[stri
 	if meta.Reason != "" {
 		result["reason"] = meta.Reason
 	}
-	for k, v := range meta.Metadata {
-		result[k] = v
-	}
+	maps.Copy(result, meta.Metadata)
 	return result
 }
