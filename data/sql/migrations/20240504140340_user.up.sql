@@ -36,7 +36,7 @@ CREATE TABLE password_reset (
 	user_id TEXT NOT NULL,
 	email TEXT NOT NULL,
 	status TEXT NOT NULL DEFAULT 'unknown' CHECK (
-		status IN ('unknown', 'requested', 'expired', 'changed')
+		status IN ('unknown', 'requested', 'processing', 'expired', 'changed')
 	),
 	reseted_at TIMESTAMP,
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
