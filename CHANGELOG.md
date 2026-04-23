@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.43.0](https://github.com/goliatone/go-auth/compare/v0.42.0...v0.43.0) - (2026-04-23)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Code quality ([d3ca990](https://github.com/goliatone/go-auth/commit/d3ca990d4579af71fa3356c0e6984fbfb9bcd9be))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.43.0 ([4f02c0e](https://github.com/goliatone/go-auth/commit/4f02c0e323218bac6abbe4e6a48be7512c8fb15e))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Migratons for password reset ([49f0f3c](https://github.com/goliatone/go-auth/commit/49f0f3c549d47c8f08c417e325487695306297d3))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.42.0 ([e7f8c9f](https://github.com/goliatone/go-auth/commit/e7f8c9fef9fa87dfb339fefa36c1c37645c9576e))  - (goliatone)
+
 # [0.42.0](https://github.com/goliatone/go-auth/compare/v0.41.0...v0.42.0) - (2026-04-23)
 
 ## <!-- 1 -->🐛 Bug Fixes
