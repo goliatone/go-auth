@@ -133,9 +133,7 @@ func TemplateHelpersWithRouter(ctx router.Context, userKey string) map[string]an
 	}
 
 	// Merge CSRF helpers with router context for actual token values
-	for key, value := range csrf.CSRFTemplateHelpersWithRouter(ctx, csrf.DefaultContextKey) {
-		helpers[key] = value
-	}
+	maps.Copy(helpers, csrf.CSRFTemplateHelpersWithRouter(ctx, csrf.DefaultContextKey))
 
 	return helpers
 }

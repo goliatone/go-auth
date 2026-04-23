@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"maps"
 	"time"
 
 	"github.com/goliatone/go-errors"
@@ -198,9 +199,7 @@ func cloneUserMetadata(src map[string]any) map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(src))
-	for key, value := range src {
-		out[key] = value
-	}
+	maps.Copy(out, src)
 	return out
 }
 
