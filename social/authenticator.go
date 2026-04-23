@@ -240,11 +240,11 @@ func (sa *SocialAuthenticator) CompleteAuth(
 	}
 
 	if state.Action == ActionSignup {
-		if err := guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
+		if guardErr := guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
 			guard.WithDisabledError(ErrSignupNotAllowed),
 			guard.WithErrorMapper(normalizeFeatureGateError),
-		); err != nil {
-			return nil, err
+		); guardErr != nil {
+			return nil, guardErr
 		}
 	}
 
@@ -281,8 +281,8 @@ func (sa *SocialAuthenticator) CompleteAuth(
 		return nil, auth.ErrIdentityNotFound
 	}
 
-	if err := ensureIdentityActive(identity); err != nil {
-		return nil, err
+	if activeErr := ensureIdentityActive(identity); activeErr != nil {
+		return nil, activeErr
 	}
 
 	var expiresAt *time.Time
@@ -308,15 +308,15 @@ func (sa *SocialAuthenticator) CompleteAuth(
 	if sa.accountRepo == nil {
 		return nil, ErrLinkingNotAllowed
 	}
-	if err := sa.accountRepo.Upsert(ctx, account); err != nil {
-		return nil, fmt.Errorf("failed to save social account: %w", err)
+	if upsertErr := sa.accountRepo.Upsert(ctx, account); upsertErr != nil {
+		return nil, fmt.Errorf("failed to save social account: %w", upsertErr)
 	}
 
 	resourceRoles := map[string]string{}
 	if sa.roleProvider != nil {
-		roles, err := sa.roleProvider.FindResourceRoles(ctx, identity)
-		if err != nil {
-			return nil, err
+		roles, rolesErr := sa.roleProvider.FindResourceRoles(ctx, identity)
+		if rolesErr != nil {
+			return nil, rolesErr
 		}
 		resourceRoles = roles
 	}

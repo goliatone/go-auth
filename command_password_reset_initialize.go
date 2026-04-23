@@ -87,8 +87,8 @@ func (h *InitializePasswordResetHandler) execute(ctx context.Context, event Init
 		reset.UserID = &user.ID
 		reset.Email = event.Email
 		reset.Status = ResetRequestedStatus
-		if createdReset, err := h.repo.PasswordResets().CreateTx(ctx, tx, reset); err != nil {
-			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to create password reset record")
+		if createdReset, createErr := h.repo.PasswordResets().CreateTx(ctx, tx, reset); createErr != nil {
+			return goerrors.Wrap(createErr, goerrors.CategoryInternal, "failed to create password reset record")
 		} else {
 			resp.Reset = createdReset
 		}

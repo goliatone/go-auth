@@ -134,7 +134,7 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -186,7 +186,7 @@ func (p *Provider) UserInfo(ctx context.Context, token *social.Token) (*social.S
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -233,7 +233,7 @@ func (p *Provider) RefreshToken(ctx context.Context, refreshToken string) (*soci
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

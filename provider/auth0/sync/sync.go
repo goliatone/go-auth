@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/auth0/go-auth0/management"
@@ -69,8 +70,8 @@ func (s *Service) SyncUser(ctx context.Context, user *management.User) (*auth.Us
 	}
 
 	if s.identifierStore != nil {
-		localID, err := s.identifierStore.FindUserID(ctx, s.provider, user.GetID())
-		if err == nil && localID != "" {
+		localID, findErr := s.identifierStore.FindUserID(ctx, s.provider, user.GetID())
+		if findErr == nil && localID != "" {
 			if parsed, parseErr := uuid.Parse(localID); parseErr == nil {
 				localUser.ID = parsed
 			}
@@ -213,9 +214,7 @@ func mapFromMetadataPointer(metadata *map[string]any) map[string]any {
 	}
 
 	out := make(map[string]any, len(*metadata))
-	for key, value := range *metadata {
-		out[key] = value
-	}
+	maps.Copy(out, *metadata)
 
 	return out
 }
@@ -226,8 +225,6 @@ func copyMap(source map[string]any) map[string]any {
 	}
 
 	copy := make(map[string]any, len(source))
-	for k, v := range source {
-		copy[k] = v
-	}
+	maps.Copy(copy, source)
 	return copy
 }

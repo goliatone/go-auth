@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/auth0/go-auth0/management"
@@ -84,12 +85,12 @@ func (p *IdentityProvider) FindIdentityByIdentifier(ctx context.Context, identif
 	if p.identifierStore != nil && p.localUsers != nil {
 		userID, err := p.identifierStore.FindUserID(ctx, IdentifierProviderAuth0, identifier)
 		if err == nil && userID != "" {
-			localUser, err := p.localUsers.GetByIdentifier(ctx, userID)
-			if err == nil && localUser != nil {
+			localUser, localErr := p.localUsers.GetByIdentifier(ctx, userID)
+			if localErr == nil && localUser != nil {
 				return auth.NewIdentityFromUser(localUser), nil
 			}
-			if err != nil && !repository.IsRecordNotFound(err) && err != sql.ErrNoRows {
-				return nil, fmt.Errorf("auth0: failed to resolve local user: %w", err)
+			if localErr != nil && !repository.IsRecordNotFound(localErr) && localErr != sql.ErrNoRows {
+				return nil, fmt.Errorf("auth0: failed to resolve local user: %w", localErr)
 			}
 		} else if err != nil && !repository.IsRecordNotFound(err) && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("auth0: failed to resolve identifier: %w", err)
@@ -122,9 +123,7 @@ func (p *IdentityProvider) mapAuth0User(u *management.User) *Auth0Identity {
 
 	metadata := map[string]any{}
 	if u.AppMetadata != nil {
-		for k, v := range *u.AppMetadata {
-			metadata[k] = v
-		}
+		maps.Copy(metadata, *u.AppMetadata)
 	}
 
 	role := roleFromMetadata(metadata)

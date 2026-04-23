@@ -132,14 +132,15 @@ func (s *Auther) Login(ctx context.Context, identifier, password string) (string
 		return "", ErrIdentityNotFound
 	}
 
-	if status, err := s.ensureIdentityActive(identity); err != nil {
-		s.logger.Warn("Login blocked due to user status", "status", status, "error", err)
+	status, activeErr := s.ensureIdentityActive(identity)
+	if activeErr != nil {
+		s.logger.Warn("Login blocked due to user status", "status", status, "error", activeErr)
 		s.emitAuthEvent(ctx, ActivityEventLoginFailure, s.actorFromIdentity(identity), identity.ID(), map[string]any{
 			"identifier": identifier,
-			"error":      err.Error(),
+			"error":      activeErr.Error(),
 			"status":     status,
 		})
-		return "", err
+		return "", activeErr
 	}
 
 	// Fetch resource roles and generate structured token
@@ -191,14 +192,15 @@ func (s *Auther) Impersonate(ctx context.Context, identifier string) (string, er
 		return "", ErrIdentityNotFound
 	}
 
-	if status, err := s.ensureIdentityActive(identity); err != nil {
-		s.logger.Warn("Impersonation blocked due to user status", "status", status, "error", err)
+	status, activeErr := s.ensureIdentityActive(identity)
+	if activeErr != nil {
+		s.logger.Warn("Impersonation blocked due to user status", "status", status, "error", activeErr)
 		s.emitAuthEvent(ctx, ActivityEventImpersonationFailure, ActorRef{Type: "system"}, identity.ID(), map[string]any{
 			"identifier": identifier,
-			"error":      err.Error(),
+			"error":      activeErr.Error(),
 			"status":     status,
 		})
-		return "", err
+		return "", activeErr
 	}
 
 	// Fetch resource roles and generate structured token

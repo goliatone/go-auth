@@ -132,7 +132,7 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -200,7 +200,7 @@ func (p *Provider) fetchUser(ctx context.Context, accessToken string) (*githubUs
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -231,7 +231,7 @@ func (p *Provider) fetchPrimaryEmail(ctx context.Context, accessToken string) (s
 	if err != nil {
 		return "", false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

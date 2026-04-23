@@ -2,6 +2,7 @@ package auth0
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -353,9 +354,7 @@ func mapStringStringFromAny(val any) map[string]string {
 	switch typed := val.(type) {
 	case map[string]string:
 		out := make(map[string]string, len(typed))
-		for key, value := range typed {
-			out[key] = value
-		}
+		maps.Copy(out, typed)
 		return out
 	case map[string]any:
 		out := make(map[string]string, len(typed))

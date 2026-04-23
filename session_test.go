@@ -1,7 +1,6 @@
 package auth_test
 
 import (
-	"context"
 	"testing"
 	"time"
 

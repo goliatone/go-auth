@@ -271,7 +271,7 @@ func validateStatelessToken(ctx router.Context, cfg Config, token string) error 
 		return ErrTokenMismatch
 	}
 
-	if _, err := hex.DecodeString(nonceHex); err != nil {
+	if _, decodeErr := hex.DecodeString(nonceHex); decodeErr != nil {
 		return ErrTokenMismatch
 	}
 
@@ -354,14 +354,14 @@ func getExtractors(tokenLookup, formField, header string) []TokenExtractor {
 	}
 
 	// Parse tokenLookup: "form:_token,header:X-CSRF-Token"
-	parts := strings.Split(tokenLookup, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(tokenLookup, ",")
+	for part := range parts {
 		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "form:") {
-			field := strings.TrimPrefix(part, "form:")
+		if after, ok := strings.CutPrefix(part, "form:"); ok {
+			field := after
 			extractors = append(extractors, extractorFromForm(field))
-		} else if strings.HasPrefix(part, "header:") {
-			headerName := strings.TrimPrefix(part, "header:")
+		} else if after, ok := strings.CutPrefix(part, "header:"); ok {
+			headerName := after
 			extractors = append(extractors, extractorFromHeader(headerName))
 		}
 	}

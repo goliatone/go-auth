@@ -3,6 +3,7 @@ package social
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	goerrors "github.com/goliatone/go-errors"
 )
@@ -95,9 +96,7 @@ func wrapProviderError(base *goerrors.Error, provider, operation string, err err
 
 	var perr *ProviderError
 	if errors.As(err, &perr) && perr != nil {
-		for k, v := range perr.Metadata() {
-			meta[k] = v
-		}
+		maps.Copy(meta, perr.Metadata())
 	} else if err != nil {
 		meta["error"] = err.Error()
 	}
@@ -110,7 +109,7 @@ func wrapProviderError(base *goerrors.Error, provider, operation string, err err
 		clone.Source = err
 	}
 	if len(meta) > 0 {
-		clone.WithMetadata(meta)
+		return clone.WithMetadata(meta)
 	}
 
 	return clone

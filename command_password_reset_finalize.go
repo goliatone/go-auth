@@ -102,9 +102,9 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 			return goerrors.New("password reset record is missing creation date", goerrors.CategoryInternal)
 		}
 
-		expired, err := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
-		if err != nil {
-			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to check token expiration period")
+		expired, thresholdErr := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
+		if thresholdErr != nil {
+			return goerrors.Wrap(thresholdErr, goerrors.CategoryInternal, "failed to check token expiration period")
 		}
 
 		if expired {

@@ -881,8 +881,8 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 	var receivedClaims jwtware.AuthClaims
 	contextEnricher := func(c context.Context, claims jwtware.AuthClaims) context.Context {
 		receivedClaims = claims
-			return context.WithValue(c, testContextKey("verified"), true)
-		}
+		return context.WithValue(c, testContextKey("verified"), true)
+	}
 
 	cfg := jwtware.Config{
 		SigningKey: jwtware.SigningKey{

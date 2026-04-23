@@ -79,7 +79,7 @@ func (h *RegisterUserHandler) execute(ctx context.Context, event RegisterUserMes
 		user.LastName = event.LastName
 		user.Username = getUsername(event.Username, event.Email)
 		if event.UseHashid {
-			if id, err := hashid.NewUUID(event.Email); err == nil {
+			if id, hashErr := hashid.NewUUID(event.Email); hashErr == nil {
 				user.ID = id
 			}
 		}

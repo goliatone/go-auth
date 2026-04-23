@@ -105,9 +105,9 @@ func (s *DefaultLinkingStrategy) ResolveUser(ctx context.Context, lc LinkingCont
 
 	existing, err := lc.AccountRepo.FindByProviderID(ctx, profile.Provider, profile.ProviderUserID)
 	if err == nil && existing != nil {
-		user, err := lc.UserRepo.GetByIdentifier(ctx, existing.UserID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find linked user: %w", err)
+		user, userErr := lc.UserRepo.GetByIdentifier(ctx, existing.UserID)
+		if userErr != nil {
+			return nil, fmt.Errorf("failed to find linked user: %w", userErr)
 		}
 		return &LinkingResult{User: user, IsNewUser: false}, nil
 	}
@@ -120,14 +120,14 @@ func (s *DefaultLinkingStrategy) ResolveUser(ctx context.Context, lc LinkingCont
 			return nil, ErrLinkingNotAllowed
 		}
 
-		user, err := lc.UserRepo.GetByIdentifier(ctx, lc.LinkUserID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to find user to link: %w", err)
+		user, userErr := lc.UserRepo.GetByIdentifier(ctx, lc.LinkUserID)
+		if userErr != nil {
+			return nil, fmt.Errorf("failed to find user to link: %w", userErr)
 		}
 
 		if s.OnAccountLinked != nil {
-			if err := s.OnAccountLinked(ctx, user, profile); err != nil {
-				return nil, err
+			if linkErr := s.OnAccountLinked(ctx, user, profile); linkErr != nil {
+				return nil, linkErr
 			}
 		}
 
@@ -139,20 +139,20 @@ func (s *DefaultLinkingStrategy) ResolveUser(ctx context.Context, lc LinkingCont
 	}
 
 	if profile.Email != "" && lc.Mode != LinkModeRejectUnknown {
-		user, err := lc.UserRepo.GetByIdentifier(ctx, profile.Email)
-		if err == nil && user != nil {
+		user, userErr := lc.UserRepo.GetByIdentifier(ctx, profile.Email)
+		if userErr == nil && user != nil {
 			if s.AllowLinking {
 				if s.OnAccountLinked != nil {
-					if err := s.OnAccountLinked(ctx, user, profile); err != nil {
-						return nil, err
+					if linkErr := s.OnAccountLinked(ctx, user, profile); linkErr != nil {
+						return nil, linkErr
 					}
 				}
 				return &LinkingResult{User: user, IsNewUser: false, Linked: true}, nil
 			}
 			return nil, ErrEmailAlreadyExists
 		}
-		if err != nil && !repository.IsRecordNotFound(err) {
-			return nil, fmt.Errorf("failed to find user by email: %w", err)
+		if userErr != nil && !repository.IsRecordNotFound(userErr) {
+			return nil, fmt.Errorf("failed to find user by email: %w", userErr)
 		}
 	}
 

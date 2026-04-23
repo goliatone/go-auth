@@ -335,8 +335,8 @@ func GetExtractors(tokenLookup string, authSchemes ...string) []JWTExtractor {
 	}
 
 	// header:Authorization,cookie:jwt,query:auth_token,param:token
-	rootParts := strings.Split(tokenLookup, ",")
-	for _, rootPart := range rootParts {
+	rootParts := strings.SplitSeq(tokenLookup, ",")
+	for rootPart := range rootParts {
 		//header:Authorization
 		parts := strings.Split(strings.TrimSpace(rootPart), ":")
 

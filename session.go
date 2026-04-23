@@ -182,8 +182,8 @@ func sessionFromAuthClaims(claims AuthClaims) (*SessionObject, error) {
 	// Convert audience from jwt.ClaimStrings to []string
 	var audience []string
 	if jwtClaims, ok := claims.(*JWTClaims); ok {
-		if jwtClaims.RegisteredClaims.Audience != nil {
-			for _, aud := range jwtClaims.RegisteredClaims.Audience {
+		if jwtClaims.Audience != nil {
+			for _, aud := range jwtClaims.Audience {
 				audience = append(audience, aud)
 			}
 		}
@@ -205,8 +205,8 @@ func sessionFromAuthClaims(claims AuthClaims) (*SessionObject, error) {
 // getIssuerFromClaims extracts the issuer from AuthClaims
 func getIssuerFromClaims(claims AuthClaims) string {
 	if jwtClaims, ok := claims.(*JWTClaims); ok {
-		if jwtClaims.RegisteredClaims.Issuer != "" {
-			return jwtClaims.RegisteredClaims.Issuer
+		if jwtClaims.Issuer != "" {
+			return jwtClaims.Issuer
 		}
 	}
 	// Fallback to subject if no issuer is available

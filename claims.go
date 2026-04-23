@@ -47,7 +47,7 @@ func (c *JWTClaims) Subject() string {
 
 // TokenID returns the JWT ID (jti) claim.
 func (c *JWTClaims) TokenID() string {
-	return c.RegisteredClaims.ID
+	return c.ID
 }
 
 func ensureTokenID(claims *jwt.RegisteredClaims) {
@@ -131,8 +131,8 @@ func (c *JWTClaims) IsAtLeast(minRole string) bool {
 
 // Expires returns the expiration time
 func (c *JWTClaims) Expires() time.Time {
-	if c.RegisteredClaims.ExpiresAt != nil {
-		return c.RegisteredClaims.ExpiresAt.Time
+	if c.ExpiresAt != nil {
+		return c.ExpiresAt.Time
 	}
 	return time.Time{}
 }
