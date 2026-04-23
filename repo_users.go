@@ -49,6 +49,13 @@ type Users interface {
 	ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error
 }
 
+// TemporaryPasswordResetRepository is an optional user repository capability for
+// replacing a password hash and clearing temporary-password metadata together.
+type TemporaryPasswordResetRepository interface {
+	ResetPasswordAndClearTemporaryPassword(ctx context.Context, id uuid.UUID, passwordHash string) error
+	ResetPasswordAndClearTemporaryPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error
+}
+
 type users struct {
 	repository.Repository[*User]
 	db                  *bun.DB
@@ -187,6 +194,24 @@ func (a *users) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, p
 	}
 
 	return nil
+}
+
+func (a *users) ResetPasswordAndClearTemporaryPassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	return a.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		return a.ResetPasswordAndClearTemporaryPasswordTx(ctx, tx, id, passwordHash)
+	})
+}
+
+func (a *users) ResetPasswordAndClearTemporaryPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
+	user, err := a.GetByIDTx(ctx, tx, id.String())
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = passwordHash
+	user.EmailValidated = true
+	user.Metadata = ClearTemporaryPasswordMetadata(user.Metadata)
+	_, err = a.UpdateTx(ctx, tx, user, repository.UpdateColumns("password_hash", "is_email_verified", "metadata"))
+	return err
 }
 
 func (a *users) TrackSucccessfulLogin(ctx context.Context, user *User) error {
