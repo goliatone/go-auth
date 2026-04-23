@@ -322,6 +322,57 @@ func TestUserProviderTemporaryPassword(t *testing.T) {
 		assert.Nil(t, identity)
 		tracker.AssertExpectations(t)
 	})
+
+	t.Run("rejects temporary password with missing expiry", func(t *testing.T) {
+		tracker := new(MockUserTracker)
+		provider := auth.NewUserProvider(tracker)
+		passwordHash, _ := auth.HashPassword("temporary-secret")
+		user := &auth.User{
+			ID:           uuid.New(),
+			Username:     "bootstrap",
+			Email:        "bootstrap-missing-expiry@example.com",
+			PasswordHash: passwordHash,
+			Role:         auth.RoleAdmin,
+			Status:       auth.UserStatusActive,
+			Metadata: map[string]any{
+				auth.TemporaryPasswordMetadataKey:      true,
+				auth.PasswordChangeRequiredMetadataKey: true,
+			},
+		}
+
+		tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+
+		identity, err := provider.VerifyIdentity(ctx, user.Email, "temporary-secret")
+		assert.ErrorIs(t, err, auth.ErrTemporaryPasswordExpired)
+		assert.Nil(t, identity)
+		tracker.AssertExpectations(t)
+	})
+
+	t.Run("rejects temporary password with malformed expiry", func(t *testing.T) {
+		tracker := new(MockUserTracker)
+		provider := auth.NewUserProvider(tracker)
+		passwordHash, _ := auth.HashPassword("temporary-secret")
+		user := &auth.User{
+			ID:           uuid.New(),
+			Username:     "bootstrap",
+			Email:        "bootstrap-malformed-expiry@example.com",
+			PasswordHash: passwordHash,
+			Role:         auth.RoleAdmin,
+			Status:       auth.UserStatusActive,
+			Metadata: map[string]any{
+				auth.TemporaryPasswordMetadataKey:          true,
+				auth.PasswordChangeRequiredMetadataKey:     true,
+				auth.TemporaryPasswordExpiresAtMetadataKey: "not-a-time",
+			},
+		}
+
+		tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+
+		identity, err := provider.VerifyIdentity(ctx, user.Email, "temporary-secret")
+		assert.ErrorIs(t, err, auth.ErrTemporaryPasswordExpired)
+		assert.Nil(t, identity)
+		tracker.AssertExpectations(t)
+	})
 }
 
 func TestUserProviderValidation(t *testing.T) {

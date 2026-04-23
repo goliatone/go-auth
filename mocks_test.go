@@ -419,6 +419,16 @@ func (m *MockUsers) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUI
 	return args.Error(0)
 }
 
+func (m *MockUsers) ResetPasswordAndClearTemporaryPassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	args := m.Called(ctx, id, passwordHash)
+	return args.Error(0)
+}
+
+func (m *MockUsers) ResetPasswordAndClearTemporaryPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
+	args := m.Called(ctx, tx, id, passwordHash)
+	return args.Error(0)
+}
+
 // ////////////////////////////////////////////////////////////////////
 // MockActivitySink
 // ////////////////////////////////////////////////////////////////////

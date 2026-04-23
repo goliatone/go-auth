@@ -56,8 +56,8 @@ func TestFinalizePasswordResetHandlerEmitsActivity(t *testing.T) {
 
 	resets.On("GetByID", mock.Anything, event.Session, mock.Anything).
 		Return(resetRecord, nil).Once()
-	users.On("RawTx", mock.Anything, mock.Anything, auth.ResetUserPasswordSQL, mock.Anything).
-		Return([]*auth.User{{}}, nil).Once()
+	users.On("ResetPasswordAndClearTemporaryPasswordTx", mock.Anything, mock.Anything, userID, mock.Anything).
+		Return(nil).Once()
 	resets.On("UpdateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(resetRecord, nil).Once()
 
