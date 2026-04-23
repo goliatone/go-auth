@@ -115,31 +115,7 @@ func New(config ...Config) router.MiddlewareFunc {
 
 			ctx.Locals(cfg.ContextKey, claims)
 
-			// Store user data for template usage if configured
-			if cfg.TemplateUserKey != "" {
-				var templateUser any
-				if cfg.UserProvider != nil {
-					// Try to get full user object using the provider
-					user, err := cfg.UserProvider(claims)
-					if err != nil {
-						// Log error but don't fail - use claims instead
-						// TODO: Consider adding logging interface to Config for better error reporting
-						templateUser = claims
-					} else {
-						templateUser = user
-					}
-				} else {
-					// Use claims directly as template user data
-					templateUser = claims
-				}
-
-				// Use LocalsMerge if templateUser is a map[string]any, otherwise use Locals
-				if userMap, ok := templateUser.(map[string]any); ok {
-					ctx.LocalsMerge(cfg.TemplateUserKey, userMap)
-				} else {
-					ctx.Locals(cfg.TemplateUserKey, templateUser)
-				}
-			}
+			storeTemplateUser(ctx, cfg, claims)
 
 			// if a context enricher we use it to propagate claims to the standard context
 			if cfg.ContextEnricher != nil {
@@ -189,6 +165,27 @@ func performAuthorizationChecks(claims AuthClaims, cfg Config) error {
 	return nil
 }
 
+func storeTemplateUser(ctx router.Context, cfg Config, claims AuthClaims) {
+	if cfg.TemplateUserKey == "" {
+		return
+	}
+
+	templateUser := any(claims)
+	if cfg.UserProvider != nil {
+		user, err := cfg.UserProvider(claims)
+		if err == nil {
+			templateUser = user
+		}
+	}
+
+	if userMap, ok := templateUser.(map[string]any); ok {
+		ctx.LocalsMerge(cfg.TemplateUserKey, userMap)
+		return
+	}
+
+	ctx.Locals(cfg.TemplateUserKey, templateUser)
+}
+
 func ExtractRawTokenFromContext(ctx router.Context, extractors []JWTExtractor) (string, error) {
 	var raw string
 	var err error
@@ -208,6 +205,16 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 		cfg = config[0]
 	}
 
+	applyHandlerDefaults(&cfg)
+	validateConfig(cfg)
+	applyStringDefaults(&cfg)
+	applyKeyFuncDefault(&cfg)
+	applySerializerDefault(&cfg)
+
+	return cfg
+}
+
+func applyHandlerDefaults(cfg *Config) {
 	if cfg.SuccessHandler == nil {
 		cfg.SuccessHandler = func(ctx router.Context, next router.HandlerFunc) error {
 			return next(ctx)
@@ -215,14 +222,18 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 	}
 
 	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = func(c router.Context, err error) error {
-			if err.Error() == ErrJWTMissingOrMalformed.Error() {
-				return c.Status(router.StatusBadRequest).SendString(ErrJWTMissingOrMalformed.Error())
-			}
-			return c.Status(router.StatusUnauthorized).SendString("Invalid or expired token")
-		}
+		cfg.ErrorHandler = defaultErrorHandler
 	}
+}
 
+func defaultErrorHandler(c router.Context, err error) error {
+	if err.Error() == ErrJWTMissingOrMalformed.Error() {
+		return c.Status(router.StatusBadRequest).SendString(ErrJWTMissingOrMalformed.Error())
+	}
+	return c.Status(router.StatusUnauthorized).SendString("Invalid or expired token")
+}
+
+func validateConfig(cfg Config) {
 	if cfg.TokenValidator == nil {
 		panic("AUTH: JWT middleware configuration: TokenValidator is required.")
 	}
@@ -230,55 +241,66 @@ func GetDefaultConfig(config ...Config) (cfg Config) {
 	if cfg.SigningKey.Key == nil && len(cfg.SigningKeys) == 0 && len(cfg.JWKSetURLs) == 0 && cfg.KeyFunc == nil {
 		panic("AUTH: JWT middleware configuration: At least one of the following is required: KeyFunc, JWKSetURLs, SigningKeys, or SigningKey.")
 	}
+}
 
+func applyStringDefaults(cfg *Config) {
 	if cfg.ContextKey == "" {
 		cfg.ContextKey = "user"
 	}
-
 	if cfg.TokenLookup == "" {
 		cfg.TokenLookup = defaultTokenLookup
 	}
-
 	if cfg.AuthScheme == "" {
 		cfg.AuthScheme = "Bearer"
 	}
+	if cfg.TemplateUserKey == "" {
+		cfg.TemplateUserKey = "current_user"
+	}
+}
 
-	if cfg.KeyFunc == nil {
-		if len(cfg.SigningKeys) > 0 || len(cfg.JWKSetURLs) > 0 {
-			var givenKeys map[string]keyfunc.GivenKey
-			if cfg.SigningKeys != nil {
-				givenKeys = make(map[string]keyfunc.GivenKey, len(cfg.SigningKeys))
-				for kid, key := range cfg.SigningKeys {
-					givenKeys[kid] = keyfunc.NewGivenCustom(key.Key, keyfunc.GivenKeyOptions{
-						Algorithm: key.JWTAlg,
-					})
-				}
-			}
-			if len(cfg.JWKSetURLs) > 0 {
-				var err error
-				cfg.KeyFunc, err = multiKeyfunc(givenKeys, cfg.JWKSetURLs)
-				if err != nil {
-					panic("Failed to create keyfunc from JWK Set URL: " + err.Error())
-				}
-			} else {
-				cfg.KeyFunc = keyfunc.NewGiven(givenKeys).Keyfunc
-			}
-		} else {
-			cfg.KeyFunc = signingKeyFunc(cfg.SigningKey)
-		}
+func applyKeyFuncDefault(cfg *Config) {
+	if cfg.KeyFunc != nil {
+		return
 	}
 
+	if len(cfg.SigningKeys) == 0 && len(cfg.JWKSetURLs) == 0 {
+		cfg.KeyFunc = signingKeyFunc(cfg.SigningKey)
+		return
+	}
+
+	givenKeys := givenKeyMap(cfg.SigningKeys)
+	if len(cfg.JWKSetURLs) == 0 {
+		cfg.KeyFunc = keyfunc.NewGiven(givenKeys).Keyfunc
+		return
+	}
+
+	keyFunc, err := multiKeyfunc(givenKeys, cfg.JWKSetURLs)
+	if err != nil {
+		panic("Failed to create keyfunc from JWK Set URL: " + err.Error())
+	}
+	cfg.KeyFunc = keyFunc
+}
+
+func givenKeyMap(signingKeys map[string]SigningKey) map[string]keyfunc.GivenKey {
+	if signingKeys == nil {
+		return nil
+	}
+
+	givenKeys := make(map[string]keyfunc.GivenKey, len(signingKeys))
+	for kid, key := range signingKeys {
+		givenKeys[kid] = keyfunc.NewGivenCustom(key.Key, keyfunc.GivenKeyOptions{
+			Algorithm: key.JWTAlg,
+		})
+	}
+	return givenKeys
+}
+
+func applySerializerDefault(cfg *Config) {
 	if cfg.LocalTokenSerilizer == nil {
 		cfg.LocalTokenSerilizer = func(t *jwt.Token) any {
 			return t
 		}
 	}
-
-	if cfg.TemplateUserKey == "" {
-		cfg.TemplateUserKey = "current_user"
-	}
-
-	return cfg
 }
 
 func multiKeyfunc(givenKeys map[string]keyfunc.GivenKey, jwtSetUrls []string) (jwt.Keyfunc, error) {

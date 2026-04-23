@@ -42,10 +42,7 @@ func NewInMemoryPermissionCacheStore(cfg InMemoryPermissionCacheStoreConfig) *In
 	if now == nil {
 		now = time.Now
 	}
-	purgeInterval := cfg.PurgeInterval
-	if purgeInterval < 0 {
-		purgeInterval = 0
-	}
+	purgeInterval := max(cfg.PurgeInterval, 0)
 	if purgeInterval == 0 {
 		purgeInterval = time.Minute
 	}

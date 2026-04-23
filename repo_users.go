@@ -173,12 +173,12 @@ func (a *users) ResetPassword(ctx context.Context, id uuid.UUID, passwordHash st
 }
 
 func (a *users) ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error {
-	res, err := a.Repository.RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, id.String())
+	res, err := a.RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, id.String())
 	if err != nil {
 		return err
 	}
 
-	if res == nil || len(res) == 0 {
+	if len(res) == 0 {
 		return repository.NewRecordNotFound().
 			WithMetadata(map[string]any{
 				"id": id.String(),
@@ -226,7 +226,7 @@ func (a *users) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *Use
 	now := time.Now()
 	record.LoginAttemptAt = &now
 
-	_, err := a.Repository.UpdateTx(ctx, tx, record, criteria...)
+	_, err := a.UpdateTx(ctx, tx, record, criteria...)
 
 	return err
 }
@@ -244,7 +244,7 @@ func (a *users) UpsertTx(ctx context.Context, tx bun.IDB, record *User, criteria
 	user, err := a.Repository.GetByIdentifierTx(ctx, tx, identifier)
 	if err == nil {
 		record.ID = user.ID
-		return a.Repository.UpdateTx(ctx, tx, record, criteria...)
+		return a.UpdateTx(ctx, tx, record, criteria...)
 	}
 
 	if !repository.IsRecordNotFound(err) {
@@ -270,7 +270,7 @@ func (a *users) UpdateStatusTx(ctx context.Context, tx bun.IDB, id uuid.UUID, st
 		}
 	}
 
-	return a.Repository.UpdateTx(ctx, tx, record, repository.UpdateByID(id.String()))
+	return a.UpdateTx(ctx, tx, record, repository.UpdateByID(id.String()))
 }
 
 func (a *users) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *User) (*User, error) {

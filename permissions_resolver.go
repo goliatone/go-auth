@@ -95,10 +95,7 @@ func NewCachedPermissionsResolver(cfg CachedPermissionsResolverConfig) *CachedPe
 	if store == nil {
 		store = NewInMemoryPermissionCacheStore(InMemoryPermissionCacheStoreConfig{})
 	}
-	ttl := cfg.TTL
-	if ttl < 0 {
-		ttl = 0
-	}
+	ttl := max(cfg.TTL, 0)
 	return &CachedPermissionsResolver{
 		resolver:       cfg.Resolver,
 		keyFunc:        keyFn,

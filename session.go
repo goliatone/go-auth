@@ -129,16 +129,24 @@ func (s *SessionObject) IsAtLeast(minRole UserRole) bool {
 
 // getGlobalRole retrieves the global role from session data with fallback to guest
 func (s *SessionObject) getGlobalRole() UserRole {
-	if s.Data != nil {
-		if roleData, exists := s.Data["role"]; exists {
-			if roleStr, ok := roleData.(string); ok {
-				if role, valid := ParseRole(roleStr); valid {
-					return role
-				}
-			}
-		}
+	if s.Data == nil {
+		return RoleGuest
 	}
-	// Default to guest role if no role is found or parsing fails
+
+	roleData, exists := s.Data["role"]
+	if !exists {
+		return RoleGuest
+	}
+
+	roleStr, ok := roleData.(string)
+	if !ok {
+		return RoleGuest
+	}
+
+	if role, valid := ParseRole(roleStr); valid {
+		return role
+	}
+
 	return RoleGuest
 }
 
