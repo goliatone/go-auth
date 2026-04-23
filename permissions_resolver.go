@@ -379,68 +379,17 @@ func DefaultPermissionsCacheKeyFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
 		return "", false
 	}
-	userID := ""
-	role := ""
-	tenantID := ""
-	orgID := ""
 
-	if claims, ok := GetClaims(ctx); ok && claims != nil {
-		userID = strings.TrimSpace(claims.UserID())
-		role = strings.TrimSpace(claims.Role())
-		if carrier, ok := claims.(claimsMetadataCarrier); ok && carrier != nil {
-			meta := carrier.ClaimsMetadata()
-			if tenantID == "" {
-				tenantID = firstMetadataString(meta, tenantMetadataKeys)
-			}
-			if orgID == "" {
-				orgID = firstMetadataString(meta, organizationMetadataKeys)
-			}
-		}
-	}
-	if actor, ok := ActorFromContext(ctx); ok && actor != nil {
-		if userID == "" {
-			userID = firstNonEmptyStrings(strings.TrimSpace(actor.ActorID), strings.TrimSpace(actor.Subject))
-		}
-		if role == "" {
-			role = strings.TrimSpace(actor.Role)
-		}
-		if tenantID == "" {
-			tenantID = strings.TrimSpace(actor.TenantID)
-		}
-		if orgID == "" {
-			orgID = strings.TrimSpace(actor.OrganizationID)
-		}
-	}
-	if userID == "" {
+	claims, hasClaims := GetClaims(ctx)
+	parts := permissionCacheKeyParts{}
+	parts.applyClaimsIdentity(claims, hasClaims)
+	parts.applyActorIdentity(ctx)
+	if parts.userID == "" {
 		return "", false
 	}
 
-	impersonatorID := ""
-	isImpersonated := false
-	sessionID := ""
-	if actor, ok := ActorFromContext(ctx); ok && actor != nil {
-		impersonatorID = strings.TrimSpace(actor.ImpersonatorID)
-		isImpersonated = actor.IsImpersonated || impersonatorID != ""
-		if sessionID == "" {
-			sessionID = firstMetadataString(actor.Metadata, []string{"session_id"})
-		}
-	}
-
-	claims, hasClaims := GetClaims(ctx)
-	if hasClaims && claims != nil {
-		if carrier, ok := claims.(claimsMetadataCarrier); ok && carrier != nil {
-			meta := carrier.ClaimsMetadata()
-			if impersonatorID == "" {
-				impersonatorID = firstMetadataString(meta, impersonatorMetadataKeys)
-			}
-			if !isImpersonated {
-				isImpersonated = firstMetadataBool(meta, impersonatedFlagKeys) || impersonatorID != ""
-			}
-			if sessionID == "" {
-				sessionID = firstMetadataString(meta, []string{"session_id"})
-			}
-		}
-	}
+	parts.applyActorDiscriminators(ctx)
+	parts.applyClaimsDiscriminators(claims, hasClaims)
 
 	version := PermissionsVersionFromContext(ctx)
 	tokenID := ""
@@ -453,24 +402,101 @@ func DefaultPermissionsCacheKeyFromContext(ctx context.Context) (string, bool) {
 		scopeMarker = strings.Join(scopeSet, ",")
 	}
 
-	hasDiscriminator := version != "" || tokenID != "" || sessionID != "" || impersonatorID != "" || isImpersonated || scopeMarker != ""
+	hasDiscriminator := version != "" || tokenID != "" || parts.sessionID != "" || parts.impersonatorID != "" || parts.isImpersonated || scopeMarker != ""
 	if !hasDiscriminator {
 		return "", false
 	}
 
-	parts := []string{
-		strings.TrimSpace(userID),
-		strings.TrimSpace(role),
-		strings.TrimSpace(tenantID),
-		strings.TrimSpace(orgID),
+	keyParts := []string{
+		strings.TrimSpace(parts.userID),
+		strings.TrimSpace(parts.role),
+		strings.TrimSpace(parts.tenantID),
+		strings.TrimSpace(parts.orgID),
 		strings.TrimSpace(version),
 		tokenID,
-		impersonatorID,
-		strconv.FormatBool(isImpersonated),
-		sessionID,
+		parts.impersonatorID,
+		strconv.FormatBool(parts.isImpersonated),
+		parts.sessionID,
 		scopeMarker,
 	}
-	return composeStableCacheKey(parts...), true
+	return composeStableCacheKey(keyParts...), true
+}
+
+type permissionCacheKeyParts struct {
+	userID         string
+	role           string
+	tenantID       string
+	orgID          string
+	impersonatorID string
+	isImpersonated bool
+	sessionID      string
+}
+
+func (p *permissionCacheKeyParts) applyClaimsIdentity(claims AuthClaims, ok bool) {
+	if !ok || claims == nil {
+		return
+	}
+
+	p.userID = strings.TrimSpace(claims.UserID())
+	p.role = strings.TrimSpace(claims.Role())
+	if carrier, ok := claims.(claimsMetadataCarrier); ok && carrier != nil {
+		meta := carrier.ClaimsMetadata()
+		p.tenantID = firstMetadataString(meta, tenantMetadataKeys)
+		p.orgID = firstMetadataString(meta, organizationMetadataKeys)
+	}
+}
+
+func (p *permissionCacheKeyParts) applyActorIdentity(ctx context.Context) {
+	actor, ok := ActorFromContext(ctx)
+	if !ok || actor == nil {
+		return
+	}
+
+	if p.userID == "" {
+		p.userID = firstNonEmptyStrings(strings.TrimSpace(actor.ActorID), strings.TrimSpace(actor.Subject))
+	}
+	if p.role == "" {
+		p.role = strings.TrimSpace(actor.Role)
+	}
+	if p.tenantID == "" {
+		p.tenantID = strings.TrimSpace(actor.TenantID)
+	}
+	if p.orgID == "" {
+		p.orgID = strings.TrimSpace(actor.OrganizationID)
+	}
+}
+
+func (p *permissionCacheKeyParts) applyActorDiscriminators(ctx context.Context) {
+	actor, ok := ActorFromContext(ctx)
+	if !ok || actor == nil {
+		return
+	}
+
+	p.impersonatorID = strings.TrimSpace(actor.ImpersonatorID)
+	p.isImpersonated = actor.IsImpersonated || p.impersonatorID != ""
+	p.sessionID = firstMetadataString(actor.Metadata, []string{"session_id"})
+}
+
+func (p *permissionCacheKeyParts) applyClaimsDiscriminators(claims AuthClaims, ok bool) {
+	if !ok || claims == nil {
+		return
+	}
+
+	carrier, ok := claims.(claimsMetadataCarrier)
+	if !ok || carrier == nil {
+		return
+	}
+
+	meta := carrier.ClaimsMetadata()
+	if p.impersonatorID == "" {
+		p.impersonatorID = firstMetadataString(meta, impersonatorMetadataKeys)
+	}
+	if !p.isImpersonated {
+		p.isImpersonated = firstMetadataBool(meta, impersonatedFlagKeys) || p.impersonatorID != ""
+	}
+	if p.sessionID == "" {
+		p.sessionID = firstMetadataString(meta, []string{"session_id"})
+	}
 }
 
 func firstMetadataString(metadata map[string]any, keys []string) string {

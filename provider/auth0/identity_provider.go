@@ -82,19 +82,12 @@ func (p *IdentityProvider) FindIdentityByIdentifier(ctx context.Context, identif
 		return nil, auth.ErrIdentityNotFound
 	}
 
-	if p.identifierStore != nil && p.localUsers != nil {
-		userID, err := p.identifierStore.FindUserID(ctx, IdentifierProviderAuth0, identifier)
-		if err == nil && userID != "" {
-			localUser, localErr := p.localUsers.GetByIdentifier(ctx, userID)
-			if localErr == nil && localUser != nil {
-				return auth.NewIdentityFromUser(localUser), nil
-			}
-			if localErr != nil && !repository.IsRecordNotFound(localErr) && localErr != sql.ErrNoRows {
-				return nil, fmt.Errorf("auth0: failed to resolve local user: %w", localErr)
-			}
-		} else if err != nil && !repository.IsRecordNotFound(err) && err != sql.ErrNoRows {
-			return nil, fmt.Errorf("auth0: failed to resolve identifier: %w", err)
-		}
+	localIdentity, found, err := p.findLocalIdentityByIdentifier(ctx, identifier)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return localIdentity, nil
 	}
 
 	auth0User, err := p.mgmt.User.Read(ctx, identifier)
@@ -109,6 +102,36 @@ func (p *IdentityProvider) FindIdentityByIdentifier(ctx context.Context, identif
 	}
 
 	return user, nil
+}
+
+func (p *IdentityProvider) findLocalIdentityByIdentifier(ctx context.Context, identifier string) (auth.Identity, bool, error) {
+	if p.identifierStore == nil || p.localUsers == nil {
+		return nil, false, nil
+	}
+
+	userID, err := p.identifierStore.FindUserID(ctx, IdentifierProviderAuth0, identifier)
+	if err != nil {
+		if repository.IsRecordNotFound(err) || err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("auth0: failed to resolve identifier: %w", err)
+	}
+	if userID == "" {
+		return nil, false, nil
+	}
+
+	localUser, err := p.localUsers.GetByIdentifier(ctx, userID)
+	if err != nil {
+		if repository.IsRecordNotFound(err) || err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("auth0: failed to resolve local user: %w", err)
+	}
+	if localUser == nil {
+		return nil, false, nil
+	}
+
+	return auth.NewIdentityFromUser(localUser), true, nil
 }
 
 // VerifyIdentity is not supported for Auth0 provider (Auth0 handles authentication).
@@ -167,15 +190,8 @@ func (p *IdentityProvider) syncToLocal(ctx context.Context, identity *Auth0Ident
 		return nil, nil
 	}
 
-	if p.identifierStore != nil && identity.id != "" {
-		localID, err := p.identifierStore.FindUserID(ctx, IdentifierProviderAuth0, identity.id)
-		if err == nil && localID != "" {
-			if parsed, parseErr := uuid.Parse(localID); parseErr == nil {
-				localUser.ID = parsed
-			}
-		} else if err != nil && !repository.IsRecordNotFound(err) && err != sql.ErrNoRows {
-			return nil, err
-		}
+	if err := p.applyExistingLocalID(ctx, identity.id, localUser); err != nil {
+		return nil, err
 	}
 
 	if localUser.Email == "" && localUser.ID == uuid.Nil {
@@ -192,6 +208,32 @@ func (p *IdentityProvider) syncToLocal(ctx context.Context, identity *Auth0Ident
 	}
 
 	return localUser, nil
+}
+
+func (p *IdentityProvider) applyExistingLocalID(ctx context.Context, auth0ID string, localUser *auth.User) error {
+	if p.identifierStore == nil || auth0ID == "" {
+		return nil
+	}
+
+	localID, err := p.identifierStore.FindUserID(ctx, IdentifierProviderAuth0, auth0ID)
+	if err != nil {
+		if repository.IsRecordNotFound(err) || err == sql.ErrNoRows {
+			return nil
+		}
+		return err
+	}
+
+	if localID == "" {
+		return nil
+	}
+
+	parsed, err := uuid.Parse(localID)
+	if err != nil {
+		return nil
+	}
+
+	localUser.ID = parsed
+	return nil
 }
 
 func mapIdentityToUser(identity *Auth0Identity) *auth.User {

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	TextCodeInvalidCreds               = "INVALID_CREDENTIALS"
+	TextCodeInvalidCreds               = "INVALID_CREDENTIALS" // #nosec G101 -- Error text code, not a credential.
 	TextCodeTooManyAttempts            = "TOO_MANY_ATTEMPTS"
 	TextCodeSessionNotFound            = "SESSION_NOT_FOUND"
 	TextCodeSessionDecodeError         = "SESSION_DECODE_ERROR"
@@ -15,7 +15,7 @@ const (
 	TextCodeDataParseError             = "DATA_PARSE_ERROR"
 	TextCodeEmptyPassword              = "EMPTY_PASSWORD_NOT_ALLOWED"
 	TextCodeTokenExpired               = "TOKEN_EXPIRED"
-	TextCodeTokenMalformed             = "TOKEN_MALFORMED"
+	TextCodeTokenMalformed             = "TOKEN_MALFORMED" // #nosec G101 -- Error text code, not a credential.
 	TextCodeTokenTooLarge              = "TOKEN_TOO_LARGE"
 	TextCodeImmutableClaim             = "IMMUTABLE_CLAIM_MUTATION"
 	TextCodeAccountSuspended           = "ACCOUNT_SUSPENDED"
