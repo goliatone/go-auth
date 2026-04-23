@@ -52,3 +52,15 @@ func (u UserIdentity) Status() UserStatus {
 	}
 	return u.user.Status
 }
+
+// Metadata returns a copy of user metadata that is safe for auth decorators.
+func (u UserIdentity) Metadata() map[string]any {
+	if u.user == nil || len(u.user.Metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(u.user.Metadata))
+	for key, value := range u.user.Metadata {
+		out[key] = value
+	}
+	return out
+}
