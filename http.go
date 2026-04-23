@@ -36,7 +36,6 @@ func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims
 type RouteAuthenticator struct {
 	auth                   Authenticator
 	cfg                    Config
-	registry               AccountRegistrerer
 	cookieDuration         time.Duration
 	extendedCookieDuration time.Duration
 	authCookieTemplate     router.Cookie
@@ -429,7 +428,7 @@ func browserCSRFSessionKeyResolver(c router.Context) (string, bool) {
 }
 
 func authCookieNameFromTokenLookup(cfg Config) string {
-	for _, part := range strings.Split(cfg.GetTokenLookup(), ",") {
+	for part := range strings.SplitSeq(cfg.GetTokenLookup(), ",") {
 		part = strings.TrimSpace(part)
 		if after, ok := strings.CutPrefix(part, "cookie:"); ok {
 			return strings.TrimSpace(after)

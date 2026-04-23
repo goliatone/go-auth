@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"maps"
 
 	"github.com/goliatone/go-router"
 )
@@ -135,25 +136,27 @@ func ActorContextFromClaims(claims AuthClaims) *ActorContext {
 		}
 	}
 
-	if metaCarrier, ok := claims.(claimsMetadataCarrier); ok {
-		if metadata := metaCarrier.ClaimsMetadata(); len(metadata) > 0 {
-			actor.Metadata = cloneAnyMap(metadata)
-			actor.TenantID = firstString(metadata, tenantMetadataKeys)
-			actor.OrganizationID = firstString(metadata, organizationMetadataKeys)
-			actor.ImpersonatorID = firstString(metadata, impersonatorMetadataKeys)
-			if actor.ImpersonatorID != "" {
-				actor.IsImpersonated = true
-			}
-			for _, key := range impersonatedFlagKeys {
-				if flag, ok := metadata[key].(bool); ok && flag {
-					actor.IsImpersonated = true
-					break
-				}
-			}
-		}
-	}
+	applyClaimsMetadata(actor, claims)
 
 	return actor
+}
+
+func applyClaimsMetadata(actor *ActorContext, claims AuthClaims) {
+	metaCarrier, ok := claims.(claimsMetadataCarrier)
+	if !ok {
+		return
+	}
+
+	metadata := metaCarrier.ClaimsMetadata()
+	if len(metadata) == 0 {
+		return
+	}
+
+	actor.Metadata = cloneAnyMap(metadata)
+	actor.TenantID = firstString(metadata, tenantMetadataKeys)
+	actor.OrganizationID = firstString(metadata, organizationMetadataKeys)
+	actor.ImpersonatorID = firstString(metadata, impersonatorMetadataKeys)
+	actor.IsImpersonated = actor.ImpersonatorID != "" || firstMetadataBool(metadata, impersonatedFlagKeys)
 }
 
 func cloneStringMap(src map[string]string) map[string]string {
@@ -161,9 +164,7 @@ func cloneStringMap(src map[string]string) map[string]string {
 		return nil
 	}
 	dst := make(map[string]string, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 
@@ -172,9 +173,7 @@ func cloneAnyMap(src map[string]any) map[string]any {
 		return nil
 	}
 	dst := make(map[string]any, len(src))
-	for k, v := range src {
-		dst[k] = v
-	}
+	maps.Copy(dst, src)
 	return dst
 }
 

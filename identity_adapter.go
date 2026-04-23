@@ -1,5 +1,7 @@
 package auth
 
+import "maps"
+
 // UserIdentity adapts a User into the Identity interface for token generation.
 type UserIdentity struct {
 	user *User
@@ -59,8 +61,6 @@ func (u UserIdentity) Metadata() map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(u.user.Metadata))
-	for key, value := range u.user.Metadata {
-		out[key] = value
-	}
+	maps.Copy(out, u.user.Metadata)
 	return out
 }
