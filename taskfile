@@ -349,6 +349,29 @@ function go:fmt:check {
     fi
 }
 
+function _go:fix:module {
+    local go_bin
+    local -a packages=()
+
+    go_bin=$(_go:bin) || return 1
+    _go:quality:prepare_env || return 1
+    while IFS= read -r pkg; do
+        if [ -n "${pkg}" ]; then
+            packages+=("${pkg}")
+        fi
+    done < <(_go:packages "$@")
+    if [ "${#packages[@]}" -eq 0 ]; then
+        echo "No Go packages found"
+        return 0
+    fi
+
+    "${go_bin}" fix "${packages[@]}"
+}
+
+function go:fix {
+    _go:run_modules _go:fix:module "$@"
+}
+
 function _go:test:module {
     local go_bin
     local -a packages=()
@@ -647,6 +670,8 @@ function go:quality:pr {
 }
 
 function go:quality:all {
+    go:fix "$@" || return 1
+    go:fmt || return 1
     go:fmt:check || return 1
     go:test "$@" || return 1
     go:race "$@" || return 1
