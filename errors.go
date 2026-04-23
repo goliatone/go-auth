@@ -25,6 +25,7 @@ const (
 	TextCodeSignupDisabled             = "SIGNUP_DISABLED"
 	TextCodePasswordResetDisabled      = "PASSWORD_RESET_DISABLED"
 	TextCodePermissionResolverRequired = "PERMISSION_RESOLVER_REQUIRED"
+	TextCodeTemporaryPasswordExpired   = "TEMPORARY_PASSWORD_EXPIRED"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -121,6 +122,11 @@ var ErrPasswordResetDisabled = errors.New("password reset is currently disabled"
 var ErrPermissionResolverRequired = errors.New("permission resolver is required in strict mode", errors.CategoryValidation).
 	WithTextCode(TextCodePermissionResolverRequired).
 	WithCode(errors.CodeBadRequest)
+
+// ErrTemporaryPasswordExpired is returned when a temporary bootstrap password is no longer valid.
+var ErrTemporaryPasswordExpired = errors.New("temporary password expired", errors.CategoryAuth).
+	WithTextCode(TextCodeTemporaryPasswordExpired).
+	WithCode(errors.CodeForbidden)
 
 func IsTokenExpiredError(err error) bool {
 	if err == nil {

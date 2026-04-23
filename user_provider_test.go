@@ -263,6 +263,67 @@ func TestUserProviderRejectsInactiveStatuses(t *testing.T) {
 	}
 }
 
+func TestUserProviderTemporaryPassword(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("allows active temporary password and exposes metadata", func(t *testing.T) {
+		tracker := new(MockUserTracker)
+		provider := auth.NewUserProvider(tracker)
+		passwordHash, _ := auth.HashPassword("temporary-secret")
+		expiresAt := time.Now().Add(time.Hour).UTC()
+		user := &auth.User{
+			ID:           uuid.New(),
+			Username:     "bootstrap",
+			Email:        "bootstrap@example.com",
+			PasswordHash: passwordHash,
+			Role:         auth.RoleAdmin,
+			Status:       auth.UserStatusActive,
+			Metadata: map[string]any{
+				auth.TemporaryPasswordMetadataKey:          true,
+				auth.PasswordChangeRequiredMetadataKey:     true,
+				auth.TemporaryPasswordExpiresAtMetadataKey: expiresAt.Format(time.RFC3339Nano),
+			},
+		}
+
+		tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+		tracker.On("TrackSucccessfulLogin", ctx, user).Return(nil).Once()
+
+		identity, err := provider.VerifyIdentity(ctx, user.Email, "temporary-secret")
+		assert.NoError(t, err)
+		assert.NotNil(t, identity)
+		metaCarrier, ok := identity.(interface{ Metadata() map[string]any })
+		assert.True(t, ok)
+		assert.Equal(t, true, metaCarrier.Metadata()[auth.PasswordChangeRequiredMetadataKey])
+		tracker.AssertExpectations(t)
+	})
+
+	t.Run("rejects expired temporary password after password match", func(t *testing.T) {
+		tracker := new(MockUserTracker)
+		provider := auth.NewUserProvider(tracker)
+		passwordHash, _ := auth.HashPassword("temporary-secret")
+		user := &auth.User{
+			ID:           uuid.New(),
+			Username:     "bootstrap",
+			Email:        "bootstrap-expired@example.com",
+			PasswordHash: passwordHash,
+			Role:         auth.RoleAdmin,
+			Status:       auth.UserStatusActive,
+			Metadata: map[string]any{
+				auth.TemporaryPasswordMetadataKey:          true,
+				auth.PasswordChangeRequiredMetadataKey:     true,
+				auth.TemporaryPasswordExpiresAtMetadataKey: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano),
+			},
+		}
+
+		tracker.On("GetByIdentifier", ctx, user.Email).Return(user, nil).Once()
+
+		identity, err := provider.VerifyIdentity(ctx, user.Email, "temporary-secret")
+		assert.ErrorIs(t, err, auth.ErrTemporaryPasswordExpired)
+		assert.Nil(t, identity)
+		tracker.AssertExpectations(t)
+	})
+}
+
 func TestUserProviderValidation(t *testing.T) {
 	mockTracker := new(MockUserTracker)
 
