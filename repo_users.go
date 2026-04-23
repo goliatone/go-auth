@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
+// #nosec G101 -- SQL updates a password hash but does not embed credentials.
 var ResetUserPasswordSQL = `UPDATE "users" AS "usr"
 SET
 	"is_email_verified" = TRUE,

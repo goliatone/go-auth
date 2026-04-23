@@ -127,8 +127,8 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 		}
 
 		r := MarkPasswordAsReseted(reset.ID)
-		if _, err := h.repo.PasswordResets().UpdateTx(ctx, tx, r); err != nil {
-			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update password reset status")
+		if _, updateErr := h.repo.PasswordResets().UpdateTx(ctx, tx, r); updateErr != nil {
+			return goerrors.Wrap(updateErr, goerrors.CategoryInternal, "failed to update password reset status")
 		}
 
 		return nil

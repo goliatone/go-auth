@@ -6,7 +6,7 @@ const (
 	TextCodeProviderNotFound  = "social_provider_not_found"
 	TextCodeInvalidState      = "social_invalid_state"
 	TextCodeStateExpired      = "social_state_expired"
-	TextCodeTokenExchangeFail = "social_token_exchange_failed"
+	TextCodeTokenExchangeFail = "social_token_exchange_failed" // #nosec G101 -- Error text code, not a credential.
 	TextCodeUserInfoFail      = "social_user_info_failed"
 	TextCodeEmailNotVerified  = "social_email_not_verified"
 	TextCodeEmailExists       = "social_email_exists"

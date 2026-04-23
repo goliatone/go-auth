@@ -90,70 +90,26 @@ type DefaultLinkingStrategy struct {
 
 // ResolveUser implements LinkingStrategy.
 func (s *DefaultLinkingStrategy) ResolveUser(ctx context.Context, lc LinkingContext) (*LinkingResult, error) {
-	if lc.Profile == nil {
-		return nil, ErrUserInfoFailed
-	}
-	if lc.AccountRepo == nil || lc.UserRepo == nil {
-		return nil, ErrLinkingNotAllowed
+	if err := s.validateContext(lc); err != nil {
+		return nil, err
 	}
 
-	profile := lc.Profile
-
-	if s.RequireEmailVerified && !profile.EmailVerified {
-		return nil, ErrEmailNotVerified
-	}
-
-	existing, err := lc.AccountRepo.FindByProviderID(ctx, profile.Provider, profile.ProviderUserID)
-	if err == nil && existing != nil {
-		user, userErr := lc.UserRepo.GetByIdentifier(ctx, existing.UserID)
-		if userErr != nil {
-			return nil, fmt.Errorf("failed to find linked user: %w", userErr)
-		}
-		return &LinkingResult{User: user, IsNewUser: false}, nil
-	}
-	if err != nil && !repository.IsRecordNotFound(err) && err != sql.ErrNoRows {
-		return nil, fmt.Errorf("failed to find linked account: %w", err)
+	result, found, err := s.findLinkedUser(ctx, lc)
+	if err != nil || found {
+		return result, err
 	}
 
 	if lc.Action == ActionLink && lc.LinkUserID != "" {
-		if !s.AllowLinking {
-			return nil, ErrLinkingNotAllowed
-		}
-
-		user, userErr := lc.UserRepo.GetByIdentifier(ctx, lc.LinkUserID)
-		if userErr != nil {
-			return nil, fmt.Errorf("failed to find user to link: %w", userErr)
-		}
-
-		if s.OnAccountLinked != nil {
-			if linkErr := s.OnAccountLinked(ctx, user, profile); linkErr != nil {
-				return nil, linkErr
-			}
-		}
-
-		return &LinkingResult{User: user, IsNewUser: false, Linked: true}, nil
+		return s.linkRequestedUser(ctx, lc)
 	}
 
 	if lc.Mode == LinkModeExplicitOnly {
 		return nil, ErrLinkingNotAllowed
 	}
 
-	if profile.Email != "" && lc.Mode != LinkModeRejectUnknown {
-		user, userErr := lc.UserRepo.GetByIdentifier(ctx, profile.Email)
-		if userErr == nil && user != nil {
-			if s.AllowLinking {
-				if s.OnAccountLinked != nil {
-					if linkErr := s.OnAccountLinked(ctx, user, profile); linkErr != nil {
-						return nil, linkErr
-					}
-				}
-				return &LinkingResult{User: user, IsNewUser: false, Linked: true}, nil
-			}
-			return nil, ErrEmailAlreadyExists
-		}
-		if userErr != nil && !repository.IsRecordNotFound(userErr) {
-			return nil, fmt.Errorf("failed to find user by email: %w", userErr)
-		}
+	result, found, err = s.findUserByEmail(ctx, lc)
+	if err != nil || found {
+		return result, err
 	}
 
 	if lc.Mode == LinkModeEmailMatch || lc.Mode == LinkModeRejectUnknown {
@@ -164,8 +120,93 @@ func (s *DefaultLinkingStrategy) ResolveUser(ctx context.Context, lc LinkingCont
 		return nil, ErrSignupNotAllowed
 	}
 
-	newUser := s.createUserFromProfile(profile)
+	return s.createNewUser(ctx, lc)
+}
 
+func (s *DefaultLinkingStrategy) validateContext(lc LinkingContext) error {
+	if lc.Profile == nil {
+		return ErrUserInfoFailed
+	}
+	if lc.AccountRepo == nil || lc.UserRepo == nil {
+		return ErrLinkingNotAllowed
+	}
+	if s.RequireEmailVerified && !lc.Profile.EmailVerified {
+		return ErrEmailNotVerified
+	}
+	return nil
+}
+
+func (s *DefaultLinkingStrategy) findLinkedUser(ctx context.Context, lc LinkingContext) (*LinkingResult, bool, error) {
+	profile := lc.Profile
+	existing, err := lc.AccountRepo.FindByProviderID(ctx, profile.Provider, profile.ProviderUserID)
+	if err != nil {
+		if repository.IsRecordNotFound(err) || err == sql.ErrNoRows {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("failed to find linked account: %w", err)
+	}
+	if existing == nil {
+		return nil, false, nil
+	}
+
+	user, err := lc.UserRepo.GetByIdentifier(ctx, existing.UserID)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to find linked user: %w", err)
+	}
+	return &LinkingResult{User: user, IsNewUser: false}, true, nil
+}
+
+func (s *DefaultLinkingStrategy) linkRequestedUser(ctx context.Context, lc LinkingContext) (*LinkingResult, error) {
+	if !s.AllowLinking {
+		return nil, ErrLinkingNotAllowed
+	}
+
+	user, err := lc.UserRepo.GetByIdentifier(ctx, lc.LinkUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find user to link: %w", err)
+	}
+	if err := s.notifyAccountLinked(ctx, user, lc.Profile); err != nil {
+		return nil, err
+	}
+	return &LinkingResult{User: user, IsNewUser: false, Linked: true}, nil
+}
+
+func (s *DefaultLinkingStrategy) findUserByEmail(ctx context.Context, lc LinkingContext) (*LinkingResult, bool, error) {
+	profile := lc.Profile
+	if profile.Email == "" || lc.Mode == LinkModeRejectUnknown {
+		return nil, false, nil
+	}
+
+	user, err := lc.UserRepo.GetByIdentifier(ctx, profile.Email)
+	if err != nil {
+		if repository.IsRecordNotFound(err) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("failed to find user by email: %w", err)
+	}
+	if user == nil {
+		return nil, false, nil
+	}
+
+	if !s.AllowLinking {
+		return nil, false, ErrEmailAlreadyExists
+	}
+	if err := s.notifyAccountLinked(ctx, user, profile); err != nil {
+		return nil, false, err
+	}
+	return &LinkingResult{User: user, IsNewUser: false, Linked: true}, true, nil
+}
+
+func (s *DefaultLinkingStrategy) notifyAccountLinked(ctx context.Context, user *auth.User, profile *SocialProfile) error {
+	if s.OnAccountLinked == nil {
+		return nil
+	}
+	return s.OnAccountLinked(ctx, user, profile)
+}
+
+func (s *DefaultLinkingStrategy) createNewUser(ctx context.Context, lc LinkingContext) (*LinkingResult, error) {
+	profile := lc.Profile
+	newUser := s.createUserFromProfile(profile)
 	created, err := lc.UserRepo.Create(ctx, newUser)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)

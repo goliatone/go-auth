@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultAuthURL   = "https://github.com/login/oauth/authorize"
-	defaultTokenURL  = "https://github.com/login/oauth/access_token"
+	defaultTokenURL  = "https://github.com/login/oauth/access_token" // #nosec G101 -- OAuth token endpoint URL, not a credential.
 	defaultUserURL   = "https://api.github.com/user"
 	defaultEmailsURL = "https://api.github.com/user/emails"
 )

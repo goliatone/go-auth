@@ -214,38 +214,9 @@ func (sa *SocialAuthenticator) CompleteAuth(
 	code string,
 	stateToken string,
 ) (*AuthResult, error) {
-	if sa.stateManager == nil {
-		return nil, ErrInvalidState
-	}
-
-	state, err := sa.stateManager.Decode(stateToken)
+	state, provider, err := sa.resolveCallback(ctx, providerName, stateToken)
 	if err != nil {
-		if errors.Is(err, ErrStateExpired) {
-			return nil, ErrStateExpired
-		}
-		return nil, fmt.Errorf("%w: %v", ErrInvalidState, err)
-	}
-
-	if state.Provider != providerName {
-		return nil, fmt.Errorf("%w: provider mismatch", ErrInvalidState)
-	}
-
-	if time.Now().Unix() > state.ExpiresAt {
-		return nil, ErrStateExpired
-	}
-
-	provider, ok := sa.providers[providerName]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerName)
-	}
-
-	if state.Action == ActionSignup {
-		if guardErr := guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
-			guard.WithDisabledError(ErrSignupNotAllowed),
-			guard.WithErrorMapper(normalizeFeatureGateError),
-		); guardErr != nil {
-			return nil, guardErr
-		}
+		return nil, err
 	}
 
 	token, err := provider.Exchange(ctx, code, WithCodeVerifier(state.CodeVerifier))
@@ -262,65 +233,19 @@ func (sa *SocialAuthenticator) CompleteAuth(
 		return nil, ErrLinkingNotAllowed
 	}
 
-	result, err := sa.linkingStrategy.ResolveUser(ctx, LinkingContext{
-		Profile:     profile,
-		Action:      state.Action,
-		LinkUserID:  state.LinkUserID,
-		AccountRepo: sa.accountRepo,
-		UserRepo:    sa.userRepo,
-	})
+	result, identity, err := sa.resolveSocialIdentity(ctx, state, profile)
 	if err != nil {
 		return nil, err
 	}
-	if result == nil || result.User == nil {
-		return nil, auth.ErrIdentityNotFound
+
+	if saveErr := sa.saveSocialAccount(ctx, result, profile, providerName, token); saveErr != nil {
+		return nil, saveErr
 	}
 
-	identity := auth.NewIdentityFromUser(result.User)
-	if identity == nil {
-		return nil, auth.ErrIdentityNotFound
+	resourceRoles, err := sa.socialResourceRoles(ctx, identity)
+	if err != nil {
+		return nil, err
 	}
-
-	if activeErr := ensureIdentityActive(identity); activeErr != nil {
-		return nil, activeErr
-	}
-
-	var expiresAt *time.Time
-	if token != nil && !token.ExpiresAt.IsZero() {
-		expiresAt = &token.ExpiresAt
-	}
-	account := &SocialAccount{
-		UserID:         result.User.ID.String(),
-		Provider:       providerName,
-		ProviderUserID: profile.ProviderUserID,
-		Email:          profile.Email,
-		Name:           profile.Name,
-		Username:       profile.Username,
-		AvatarURL:      profile.AvatarURL,
-	}
-	if token != nil {
-		account.AccessToken = token.AccessToken
-		account.RefreshToken = token.RefreshToken
-		account.TokenExpiresAt = expiresAt
-		account.ProfileData = profile.Raw
-	}
-
-	if sa.accountRepo == nil {
-		return nil, ErrLinkingNotAllowed
-	}
-	if upsertErr := sa.accountRepo.Upsert(ctx, account); upsertErr != nil {
-		return nil, fmt.Errorf("failed to save social account: %w", upsertErr)
-	}
-
-	resourceRoles := map[string]string{}
-	if sa.roleProvider != nil {
-		roles, rolesErr := sa.roleProvider.FindResourceRoles(ctx, identity)
-		if rolesErr != nil {
-			return nil, rolesErr
-		}
-		resourceRoles = roles
-	}
-
 	jwtToken, err := sa.tokenService.Generate(identity, resourceRoles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
@@ -349,6 +274,116 @@ func (sa *SocialAuthenticator) CompleteAuth(
 		Profile:     profile,
 		RedirectURL: state.RedirectURL,
 	}, nil
+}
+
+func (sa *SocialAuthenticator) resolveCallback(ctx context.Context, providerName, stateToken string) (*OAuthState, SocialProvider, error) {
+	if sa.stateManager == nil {
+		return nil, nil, ErrInvalidState
+	}
+
+	state, err := sa.stateManager.Decode(stateToken)
+	if err != nil {
+		if errors.Is(err, ErrStateExpired) {
+			return nil, nil, ErrStateExpired
+		}
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidState, err)
+	}
+
+	if state.Provider != providerName {
+		return nil, nil, fmt.Errorf("%w: provider mismatch", ErrInvalidState)
+	}
+	if time.Now().Unix() > state.ExpiresAt {
+		return nil, nil, ErrStateExpired
+	}
+	if err := sa.requireSignupFeature(ctx, state); err != nil {
+		return nil, nil, err
+	}
+
+	provider, ok := sa.providers[providerName]
+	if !ok {
+		return nil, nil, fmt.Errorf("%w: %s", ErrProviderNotFound, providerName)
+	}
+	return state, provider, nil
+}
+
+func (sa *SocialAuthenticator) requireSignupFeature(ctx context.Context, state *OAuthState) error {
+	if state.Action != ActionSignup {
+		return nil
+	}
+
+	return guard.Require(ctx, sa.featureGate, gate.FeatureUsersSignup,
+		guard.WithDisabledError(ErrSignupNotAllowed),
+		guard.WithErrorMapper(normalizeFeatureGateError),
+	)
+}
+
+func (sa *SocialAuthenticator) resolveSocialIdentity(ctx context.Context, state *OAuthState, profile *SocialProfile) (*LinkingResult, auth.Identity, error) {
+	result, err := sa.linkingStrategy.ResolveUser(ctx, LinkingContext{
+		Profile:     profile,
+		Action:      state.Action,
+		LinkUserID:  state.LinkUserID,
+		AccountRepo: sa.accountRepo,
+		UserRepo:    sa.userRepo,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if result == nil || result.User == nil {
+		return nil, nil, auth.ErrIdentityNotFound
+	}
+
+	identity := auth.NewIdentityFromUser(result.User)
+	if identity == nil {
+		return nil, nil, auth.ErrIdentityNotFound
+	}
+
+	if err := ensureIdentityActive(identity); err != nil {
+		return nil, nil, err
+	}
+
+	return result, identity, nil
+}
+
+func (sa *SocialAuthenticator) saveSocialAccount(ctx context.Context, result *LinkingResult, profile *SocialProfile, providerName string, token *Token) error {
+	if sa.accountRepo == nil {
+		return ErrLinkingNotAllowed
+	}
+
+	account := newSocialAccount(result, profile, providerName, token)
+	if err := sa.accountRepo.Upsert(ctx, account); err != nil {
+		return fmt.Errorf("failed to save social account: %w", err)
+	}
+	return nil
+}
+
+func newSocialAccount(result *LinkingResult, profile *SocialProfile, providerName string, token *Token) *SocialAccount {
+	account := &SocialAccount{
+		UserID:         result.User.ID.String(),
+		Provider:       providerName,
+		ProviderUserID: profile.ProviderUserID,
+		Email:          profile.Email,
+		Name:           profile.Name,
+		Username:       profile.Username,
+		AvatarURL:      profile.AvatarURL,
+	}
+	if token == nil {
+		return account
+	}
+
+	account.AccessToken = token.AccessToken
+	account.RefreshToken = token.RefreshToken
+	account.ProfileData = profile.Raw
+	if !token.ExpiresAt.IsZero() {
+		account.TokenExpiresAt = &token.ExpiresAt
+	}
+	return account
+}
+
+func (sa *SocialAuthenticator) socialResourceRoles(ctx context.Context, identity auth.Identity) (map[string]string, error) {
+	if sa.roleProvider == nil {
+		return map[string]string{}, nil
+	}
+	return sa.roleProvider.FindResourceRoles(ctx, identity)
 }
 
 // ListProviders returns all registered providers.
