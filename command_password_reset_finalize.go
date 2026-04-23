@@ -121,8 +121,11 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 			return goerrors.New("password reset record is not associated with a user", goerrors.CategoryInternal)
 		}
 
-		_, err = h.repo.Users().RawTx(ctx, tx, ResetUserPasswordSQL, passwordHash, reset.UserID.String())
-		if err != nil {
+		resetRepo, ok := h.repo.Users().(TemporaryPasswordResetRepository)
+		if !ok {
+			return goerrors.New("users repository does not support temporary password reset cleanup", goerrors.CategoryInternal)
+		}
+		if err = resetRepo.ResetPasswordAndClearTemporaryPasswordTx(ctx, tx, *reset.UserID, passwordHash); err != nil {
 			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
 		}
 
