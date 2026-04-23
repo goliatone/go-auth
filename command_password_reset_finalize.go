@@ -104,7 +104,8 @@ func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Conte
 		return nil, err
 	}
 
-	if err := h.validatePasswordReset(reset); err != nil {
+	err = h.validatePasswordReset(reset)
+	if err != nil {
 		return nil, err
 	}
 
@@ -113,11 +114,13 @@ func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Conte
 		return nil, err
 	}
 
-	if err := h.updateResetUserPassword(ctx, tx, reset, passwordHash); err != nil {
+	err = h.updateResetUserPassword(ctx, tx, reset, passwordHash)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := h.markPasswordResetComplete(ctx, tx, reset.ID); err != nil {
+	err = h.markPasswordResetComplete(ctx, tx, reset.ID)
+	if err != nil {
 		return nil, err
 	}
 
