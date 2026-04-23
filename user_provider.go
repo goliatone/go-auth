@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"time"
 
 	"github.com/goliatone/go-errors"
 )
@@ -102,6 +103,10 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 		return nil, ErrMismatchedHashAndPassword
 	}
 
+	if state := TemporaryPasswordStateFromMetadata(user.Metadata); state.Expired(time.Now()) {
+		return nil, ErrTemporaryPasswordExpired
+	}
+
 	// reset the login_attempts counter and login_attempt_at
 	if err := u.store.TrackSucccessfulLogin(ctx, user); err != nil {
 		u.logger.Error("failed to track successful login", "error", err)
@@ -117,6 +122,7 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 		username: user.Username,
 		role:     string(user.Role),
 		status:   user.Status,
+		metadata: cloneUserMetadata(user.Metadata),
 	}
 
 	return aid, nil
@@ -142,6 +148,7 @@ func (u UserProvider) FindIdentityByIdentifier(ctx context.Context, identfier st
 		username: user.Username,
 		role:     string(user.Role),
 		status:   user.Status,
+		metadata: cloneUserMetadata(user.Metadata),
 	}
 
 	return aid, nil
@@ -154,6 +161,7 @@ type authIdentity struct {
 	email    string
 	role     string
 	status   UserStatus
+	metadata map[string]any
 }
 
 func (a authIdentity) ID() string {
@@ -179,7 +187,22 @@ func (a authIdentity) Status() UserStatus {
 	return a.status
 }
 
+func (a authIdentity) Metadata() map[string]any {
+	return cloneUserMetadata(a.metadata)
+}
+
 var _ Identity = authIdentity{}
+
+func cloneUserMetadata(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
 
 func defaultValidator(u *User) error {
 	switch u.Role {
