@@ -1,5 +1,30 @@
 # Changelog
 
+# [0.41.0](https://github.com/goliatone/go-auth/compare/v0.40.0...v0.41.0) - (2026-04-23)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.41.0 ([a4ed7d3](https://github.com/goliatone/go-auth/commit/a4ed7d39b14c05dc3ffca2d2f1460376913d311b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Password expired error ([ca2b7bf](https://github.com/goliatone/go-auth/commit/ca2b7bfce6ebc5fe7e6da07620a0d28d12e65969))  - (goliatone)
+- User meta ([db00a49](https://github.com/goliatone/go-auth/commit/db00a49757f45001f1b6cf15c959c4f92129bab2))  - (goliatone)
+- Expose meta ([2349774](https://github.com/goliatone/go-auth/commit/234977455472fc7c9183bff529a785dcea8c359c))  - (goliatone)
+- Temporary password support ([0960a79](https://github.com/goliatone/go-auth/commit/0960a79e72fcc7b947793ead9b49bdbcd36cb0c2))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.40.0 ([0368e4f](https://github.com/goliatone/go-auth/commit/0368e4fdf241d0dc33d6356d855c18764c8beff1))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Code quality ([74c8f41](https://github.com/goliatone/go-auth/commit/74c8f41608416d7b2894b91f9bf917e88af463ed))  - (goliatone)
+- Update test ([bb1fac0](https://github.com/goliatone/go-auth/commit/bb1fac0d69e0797cc69ea4c24274d788641f7fe1))  - (goliatone)
+- Linters to tasks ([ce35f0b](https://github.com/goliatone/go-auth/commit/ce35f0bcbbbccd3342d8e9a1020440f0fb7c1399))  - (goliatone)
+- Update examples ([268a869](https://github.com/goliatone/go-auth/commit/268a869e0fac73ad89e7a772f10a076dc94aac0a))  - (goliatone)
+- Update readme ([9fecb89](https://github.com/goliatone/go-auth/commit/9fecb899d2722977d972cbc27f9f908e6f874bb1))  - (goliatone)
+
 # [0.40.0](https://github.com/goliatone/go-auth/compare/v0.39.0...v0.40.0) - (2026-04-01)
 
 ## <!-- 1 -->🐛 Bug Fixes
