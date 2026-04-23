@@ -291,6 +291,14 @@ func (m *MockUsers) GetByID(ctx context.Context, id string, criteria ...reposito
 	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
 }
 
+func (m *MockUsers) GetByIDTx(ctx context.Context, tx bun.IDB, id string, criteria ...repository.SelectCriteria) (*auth.User, error) {
+	mockArgs := m.Called(ctx, tx, id, criteria)
+	if mockArgs.Get(0) == nil {
+		return nil, mockArgs.Error(1)
+	}
+	return mockArgs.Get(0).(*auth.User), mockArgs.Error(1)
+}
+
 func (m *MockUsers) GetByIdentifier(ctx context.Context, identifier string, criteria ...repository.SelectCriteria) (*auth.User, error) {
 	mockArgs := m.Called(ctx, identifier)
 	if mockArgs.Get(0) == nil {
