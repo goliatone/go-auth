@@ -6,6 +6,7 @@ import (
 
 	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-featuregate/gate"
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -74,76 +75,14 @@ func (h *FinalizePasswordResetHandler) Execute(ctx context.Context, event Finali
 }
 
 func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event FinalizePasswordResetMesasge) error {
-	reset := &PasswordReset{}
-
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
-	var err error
-
-	err = h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// find a password reset by token/id
-		reset, err = h.repo.PasswordResets().GetByID(ctx, event.Session)
-		if err != nil {
-			if goerrors.IsNotFound(err) {
-				return goerrors.New("invalid or expired password reset token", goerrors.CategoryNotFound).
-					WithCode(goerrors.CodeNotFound)
-			}
-			return goerrors.Wrap(err, goerrors.CategoryInternal, "could not retrieve password reset request")
-		}
-
-		//make sure it was not used
-		if reset.Status != ResetRequestedStatus {
-			return goerrors.New("password reset token has already been used", goerrors.CategoryConflict).
-				WithTextCode("TOKEN_ALREADY_USED")
-		}
-
-		if reset.CreatedAt == nil {
-			return goerrors.New("password reset record is missing creation date", goerrors.CategoryInternal)
-		}
-
-		expired, thresholdErr := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
-		if thresholdErr != nil {
-			return goerrors.Wrap(thresholdErr, goerrors.CategoryInternal, "failed to check token expiration period")
-		}
-
-		if expired {
-			return goerrors.New("password reset token has expired", goerrors.CategoryValidation).
-				WithTextCode(TextCodeTokenExpired)
-		}
-
-		passwordHash, hashErr := HashPassword(event.Password)
-		if hashErr != nil {
-			return goerrors.Wrap(hashErr, goerrors.CategoryValidation, "invalid new password provided")
-		}
-
-		if reset.UserID == nil {
-			return goerrors.New("password reset record is not associated with a user", goerrors.CategoryInternal)
-		}
-
-		usersRepo := h.repo.Users()
-		user, userErr := usersRepo.GetByIDTx(ctx, tx, reset.UserID.String())
-		if userErr != nil {
-			return goerrors.Wrap(userErr, goerrors.CategoryInternal, "failed to load reset user")
-		}
-		if HasTemporaryPasswordMetadata(user.Metadata) {
-			resetRepo, ok := usersRepo.(TemporaryPasswordResetRepository)
-			if !ok {
-				return goerrors.New("users repository does not support temporary password reset cleanup", goerrors.CategoryInternal)
-			}
-			if err = resetRepo.ResetPasswordAndClearTemporaryPasswordTx(ctx, tx, *reset.UserID, passwordHash); err != nil {
-				return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
-			}
-		} else if err = usersRepo.ResetPasswordTx(ctx, tx, *reset.UserID, passwordHash); err != nil {
-			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
-		}
-
-		r := MarkPasswordAsReseted(reset.ID)
-		if _, updateErr := h.repo.PasswordResets().UpdateTx(ctx, tx, r); updateErr != nil {
-			return goerrors.Wrap(updateErr, goerrors.CategoryInternal, "failed to update password reset status")
-		}
-
-		return nil
+	var reset *PasswordReset
+	err := h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var txErr error
+		reset, txErr = h.finalizePasswordResetTx(ctx, tx, event)
+		return txErr
 	})
 
 	if err != nil {
@@ -156,6 +95,117 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 
 	h.recordActivity(ctx, reset)
 
+	return nil
+}
+
+func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Context, tx bun.Tx, event FinalizePasswordResetMesasge) (*PasswordReset, error) {
+	reset, err := h.loadPendingPasswordReset(ctx, event.Session)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.validatePasswordReset(reset); err != nil {
+		return nil, err
+	}
+
+	passwordHash, err := h.hashPassword(event.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.updateResetUserPassword(ctx, tx, reset, passwordHash); err != nil {
+		return nil, err
+	}
+
+	if err := h.markPasswordResetComplete(ctx, tx, reset.ID); err != nil {
+		return nil, err
+	}
+
+	return reset, nil
+}
+
+func (h *FinalizePasswordResetHandler) loadPendingPasswordReset(ctx context.Context, session string) (*PasswordReset, error) {
+	reset, err := h.repo.PasswordResets().GetByID(ctx, session)
+	if err != nil {
+		if goerrors.IsNotFound(err) {
+			return nil, goerrors.New("invalid or expired password reset token", goerrors.CategoryNotFound).
+				WithCode(goerrors.CodeNotFound)
+		}
+		return nil, goerrors.Wrap(err, goerrors.CategoryInternal, "could not retrieve password reset request")
+	}
+
+	return reset, nil
+}
+
+func (h *FinalizePasswordResetHandler) validatePasswordReset(reset *PasswordReset) error {
+	if reset.Status != ResetRequestedStatus {
+		return goerrors.New("password reset token has already been used", goerrors.CategoryConflict).
+			WithTextCode("TOKEN_ALREADY_USED")
+	}
+
+	if reset.CreatedAt == nil {
+		return goerrors.New("password reset record is missing creation date", goerrors.CategoryInternal)
+	}
+
+	expired, err := IsOutsideThresholdPeriod(*reset.CreatedAt, "24h")
+	if err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to check token expiration period")
+	}
+
+	if expired {
+		return goerrors.New("password reset token has expired", goerrors.CategoryValidation).
+			WithTextCode(TextCodeTokenExpired)
+	}
+
+	return nil
+}
+
+func (h *FinalizePasswordResetHandler) hashPassword(password string) (string, error) {
+	passwordHash, err := HashPassword(password)
+	if err != nil {
+		return "", goerrors.Wrap(err, goerrors.CategoryValidation, "invalid new password provided")
+	}
+	return passwordHash, nil
+}
+
+func (h *FinalizePasswordResetHandler) updateResetUserPassword(ctx context.Context, tx bun.Tx, reset *PasswordReset, passwordHash string) error {
+	if reset.UserID == nil {
+		return goerrors.New("password reset record is not associated with a user", goerrors.CategoryInternal)
+	}
+
+	usersRepo := h.repo.Users()
+	user, err := usersRepo.GetByIDTx(ctx, tx, reset.UserID.String())
+	if err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to load reset user")
+	}
+
+	if HasTemporaryPasswordMetadata(user.Metadata) {
+		resetRepo, ok := usersRepo.(TemporaryPasswordResetRepository)
+		if !ok {
+			return goerrors.New("users repository does not support temporary password reset cleanup", goerrors.CategoryInternal)
+		}
+		return h.resetTemporaryPasswordTx(ctx, tx, resetRepo, *reset.UserID, passwordHash)
+	}
+
+	if err := usersRepo.ResetPasswordTx(ctx, tx, *reset.UserID, passwordHash); err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
+	}
+
+	return nil
+}
+
+func (h *FinalizePasswordResetHandler) resetTemporaryPasswordTx(ctx context.Context, tx bun.Tx, repo TemporaryPasswordResetRepository, userID uuid.UUID, passwordHash string) error {
+	if err := repo.ResetPasswordAndClearTemporaryPasswordTx(ctx, tx, userID, passwordHash); err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update user password in database")
+	}
+	return nil
+}
+
+func (h *FinalizePasswordResetHandler) markPasswordResetComplete(ctx context.Context, tx bun.Tx, resetID uuid.UUID) error {
+	record := MarkPasswordAsReseted(resetID)
+	if _, err := h.repo.PasswordResets().UpdateTx(ctx, tx, record); err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update password reset status")
+	}
 	return nil
 }
 
