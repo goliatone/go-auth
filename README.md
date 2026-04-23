@@ -105,6 +105,17 @@ func main() {
 }
 ```
 
+### Temporary bootstrap passwords
+
+`go-auth` recognizes temporary password metadata on local users:
+
+- `password_temporary`
+- `password_change_required`
+- `password_temporary_issued_at`
+- `password_temporary_expires_at`
+
+`UserProvider.VerifyIdentity` rejects a matching password when `password_temporary=true` and the expiry is in the past. Before expiry, login succeeds so the host can redirect the user to a password-change flow. Add `auth.TemporaryPasswordClaimsDecorator()` to copy compact password-change hints into JWT/session metadata.
+
 ### Enhanced Resource Level Permissions
 
 ```go
