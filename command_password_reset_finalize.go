@@ -112,9 +112,9 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 				WithTextCode(TextCodeTokenExpired)
 		}
 
-		passwordHash, err := HashPassword(event.Password)
-		if err != nil {
-			return goerrors.Wrap(err, goerrors.CategoryValidation, "invalid new password provided")
+		passwordHash, hashErr := HashPassword(event.Password)
+		if hashErr != nil {
+			return goerrors.Wrap(hashErr, goerrors.CategoryValidation, "invalid new password provided")
 		}
 
 		if reset.UserID == nil {

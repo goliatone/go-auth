@@ -20,13 +20,13 @@ type immutableClaimsSnapshot struct {
 
 func captureImmutableClaims(claims *JWTClaims) immutableClaimsSnapshot {
 	var audienceCopy []string
-	if len(claims.RegisteredClaims.Audience) > 0 {
-		audienceCopy = append(audienceCopy, claims.RegisteredClaims.Audience...)
+	if len(claims.Audience) > 0 {
+		audienceCopy = append(audienceCopy, claims.Audience...)
 	}
 
 	snap := immutableClaimsSnapshot{
 		subject:  claims.RegisteredClaims.Subject,
-		issuer:   claims.RegisteredClaims.Issuer,
+		issuer:   claims.Issuer,
 		uid:      claims.UID,
 		audience: audienceCopy,
 	}
@@ -36,8 +36,8 @@ func captureImmutableClaims(claims *JWTClaims) immutableClaimsSnapshot {
 		snap.hasIssuedAt = true
 	}
 
-	if claims.RegisteredClaims.ExpiresAt != nil {
-		snap.expiresAt = claims.RegisteredClaims.ExpiresAt.Time
+	if claims.ExpiresAt != nil {
+		snap.expiresAt = claims.ExpiresAt.Time
 		snap.hasExpires = true
 	}
 
@@ -49,7 +49,7 @@ func (snap immutableClaimsSnapshot) validate(claims *JWTClaims) error {
 		return immutableClaimViolation("sub")
 	}
 
-	if claims.RegisteredClaims.Issuer != snap.issuer {
+	if claims.Issuer != snap.issuer {
 		return immutableClaimViolation("iss")
 	}
 
@@ -57,7 +57,7 @@ func (snap immutableClaimsSnapshot) validate(claims *JWTClaims) error {
 		return immutableClaimViolation("uid")
 	}
 
-	if !audienceEqual(claims.RegisteredClaims.Audience, snap.audience) {
+	if !audienceEqual(claims.Audience, snap.audience) {
 		return immutableClaimViolation("aud")
 	}
 
@@ -65,7 +65,7 @@ func (snap immutableClaimsSnapshot) validate(claims *JWTClaims) error {
 		return err
 	}
 
-	if err := compareNumericDate(claims.RegisteredClaims.ExpiresAt, snap.expiresAt, snap.hasExpires, "exp"); err != nil {
+	if err := compareNumericDate(claims.ExpiresAt, snap.expiresAt, snap.hasExpires, "exp"); err != nil {
 		return err
 	}
 
@@ -80,7 +80,7 @@ func compareNumericDate(date *jwt.NumericDate, expected time.Time, expectedSet b
 		return nil
 	}
 
-	if date == nil || !date.Time.Equal(expected) {
+	if date == nil || !date.Equal(expected) {
 		return immutableClaimViolation(field)
 	}
 
