@@ -1,5 +1,31 @@
 # Changelog
 
+# [0.42.0](https://github.com/goliatone/go-auth/compare/v0.41.0...v0.42.0) - (2026-04-23)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Finalize password reset use tx ([51b8204](https://github.com/goliatone/go-auth/commit/51b820457b736dfd3a9d16fb57d0f14b33d1d965))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.42.0 ([2019a10](https://github.com/goliatone/go-auth/commit/2019a103916564f8b0760674b806d18cf1e0358a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Has temporary password metadata helper ([8a878d3](https://github.com/goliatone/go-auth/commit/8a878d3c558aed00560ebfafebb7c450e26b7006))  - (goliatone)
+- Clear temp password ops ([42965ae](https://github.com/goliatone/go-auth/commit/42965ae7bb59f9c676645c8ffdff6c5d8b1c1177))  - (goliatone)
+- Clear temp password ([e7a15ac](https://github.com/goliatone/go-auth/commit/e7a15ac9e649da9542acee368679ff5f69d6aff8))  - (goliatone)
+- Temporary password reset ([58c34af](https://github.com/goliatone/go-auth/commit/58c34afa7e7744510dd24aba9a6235a2a171312d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.41.0 ([34771d2](https://github.com/goliatone/go-auth/commit/34771d2fa65e6ce1fa106a5eebc9fb0446f9a75b))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update readme ([5d3bbde](https://github.com/goliatone/go-auth/commit/5d3bbde246feaacdad423e5bcbc0aa565ddbcb9b))  - (goliatone)
+- Update test ([9cf004d](https://github.com/goliatone/go-auth/commit/9cf004d708842aaad8dccebd6d6d713682b6aacc))  - (goliatone)
+
 # [0.41.0](https://github.com/goliatone/go-auth/compare/v0.40.0...v0.41.0) - (2026-04-23)
 
 ## <!-- 13 -->📦 Bumps
