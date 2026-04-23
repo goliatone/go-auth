@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/fs"
+	"maps"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -42,16 +43,13 @@ func TestSegmentedTracksMatchFullMigrationTree(t *testing.T) {
 	}
 
 	for _, dialect := range dialects {
-		dialect := dialect
 		t.Run(dialect.name, func(t *testing.T) {
 			fullFiles := mustReadMigrationFiles(t, auth.GetMigrationsFS(), dialect.path)
 			coreFiles := mustReadMigrationFiles(t, auth.GetCoreMigrationsFS(), dialect.path)
 			extraFiles := mustReadMigrationFiles(t, auth.GetAuthExtrasMigrationsFS(), dialect.path)
 
 			merged := make(map[string]string, len(coreFiles)+len(extraFiles))
-			for name, content := range coreFiles {
-				merged[name] = content
-			}
+			maps.Copy(merged, coreFiles)
 			for name, content := range extraFiles {
 				if _, exists := merged[name]; exists {
 					t.Fatalf("duplicate segmented migration %q in %s track", name, dialect.name)
@@ -234,8 +232,8 @@ func splitSQLStatements(sqlText string) []string {
 	parts := strings.Split(sqlText, "---bun:split")
 	statements := make([]string, 0, len(parts)*2)
 	for _, part := range parts {
-		chunks := strings.Split(part, ";")
-		for _, chunk := range chunks {
+		chunks := strings.SplitSeq(part, ";")
+		for chunk := range chunks {
 			stmt := strings.TrimSpace(chunk)
 			if stmt == "" {
 				continue

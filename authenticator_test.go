@@ -87,9 +87,9 @@ func TestLogin(t *testing.T) {
 		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
 		assert.Equal(t, identity.ID(), claims.Subject())
-		assert.Equal(t, "test-issuer", claims.RegisteredClaims.Issuer)
-		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.RegisteredClaims.Audience)
-		assert.NotEmpty(t, claims.RegisteredClaims.ID)
+		assert.Equal(t, "test-issuer", claims.Issuer)
+		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.Audience)
+		assert.NotEmpty(t, claims.ID)
 
 		// Verify role is directly in the claims
 		assert.Equal(t, "admin", claims.UserRole)
@@ -180,8 +180,8 @@ func TestImpersonate(t *testing.T) {
 		claims, ok := parsedToken.Claims.(*auth.JWTClaims)
 		assert.True(t, ok)
 		assert.Equal(t, identity.ID(), claims.Subject())
-		assert.Equal(t, "test-issuer", claims.RegisteredClaims.Issuer)
-		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.RegisteredClaims.Audience)
+		assert.Equal(t, "test-issuer", claims.Issuer)
+		assert.Equal(t, jwt.ClaimStrings{"test:audience"}, claims.Audience)
 
 		// Verify role is directly in the claims
 		assert.Equal(t, "admin", claims.UserRole)

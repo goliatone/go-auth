@@ -467,10 +467,10 @@ func TestMintScopedToken(t *testing.T) {
 		jwtClaims, ok := claims.(*auth.JWTClaims)
 		assert.True(t, ok)
 		assert.Equal(t, opts.Scopes, jwtClaims.Scopes)
-		assert.NotEmpty(t, jwtClaims.RegisteredClaims.ID)
-		assert.Equal(t, issuer, jwtClaims.RegisteredClaims.Issuer)
-		assert.Equal(t, audience, jwtClaims.RegisteredClaims.Audience)
-		assert.True(t, expiresAt.Equal(jwtClaims.RegisteredClaims.ExpiresAt.Time))
+		assert.NotEmpty(t, jwtClaims.ID)
+		assert.Equal(t, issuer, jwtClaims.Issuer)
+		assert.Equal(t, audience, jwtClaims.Audience)
+		assert.True(t, expiresAt.Equal(jwtClaims.ExpiresAt.Time))
 
 		identity.AssertExpectations(t)
 	})
@@ -497,7 +497,7 @@ func TestMintScopedToken(t *testing.T) {
 
 		jwtClaims, ok := claims.(*auth.JWTClaims)
 		assert.True(t, ok)
-		assert.True(t, expiresAt.Equal(jwtClaims.RegisteredClaims.ExpiresAt.Time))
+		assert.True(t, expiresAt.Equal(jwtClaims.ExpiresAt.Time))
 
 		identity.AssertExpectations(t)
 	})

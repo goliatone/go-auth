@@ -167,8 +167,8 @@ func TestLoggerContractAliasesAndResolve(t *testing.T) {
 	base := defaultLogger()
 	require.NotNil(t, base)
 
-	var logger Logger = base
-	var provider LoggerProvider = glog.ProviderFromLogger(base)
+	logger := base
+	provider := glog.ProviderFromLogger(base)
 
 	resolvedProvider, resolvedLogger := ResolveLogger("auth.test", provider, logger)
 	require.NotNil(t, resolvedProvider)

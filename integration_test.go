@@ -73,7 +73,7 @@ func TestLifecycleActivityAndClaimsIntegration(t *testing.T) {
 	require.ErrorIs(t, err, auth.ErrUserSuspended)
 	require.Empty(t, token)
 
-	user, err = stateMachine.Transition(ctx, auth.ActorRef{ID: "system"}, user, auth.UserStatusActive)
+	_, err = stateMachine.Transition(ctx, auth.ActorRef{ID: "system"}, user, auth.UserStatusActive)
 	require.NoError(t, err)
 
 	identityActive := identitySuspended

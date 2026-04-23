@@ -266,75 +266,6 @@ func TestSessionFromAuthClaims(t *testing.T) {
 	})
 }
 
-// Helper function to create a test authenticator
-func createTestAuthenticator(_ *testing.T) auth.Authenticator {
-	// Create a mock identity provider
-	provider := &mockIdentityProvider{}
-
-	// Create config with minimal settings
-	cfg := &mockConfig{
-		signingKey: "test-signing-key",
-		tokenExp:   24,
-		audience:   []string{"test:audience"},
-		issuer:     "test-issuer",
-	}
-
-	return auth.NewAuthenticator(provider, cfg)
-}
-
-// Mock implementations for testing
-
-type mockIdentityProvider struct{}
-
-func (m *mockIdentityProvider) VerifyIdentity(ctx context.Context, identifier, password string) (auth.Identity, error) {
-	return &mockIdentity{
-		id:       uuid.New().String(),
-		username: "testuser",
-		email:    "test@example.com",
-		role:     "admin",
-	}, nil
-}
-
-func (m *mockIdentityProvider) FindIdentityByIdentifier(ctx context.Context, identifier string) (auth.Identity, error) {
-	return &mockIdentity{
-		id:       identifier,
-		username: "testuser",
-		email:    "test@example.com",
-		role:     "admin",
-	}, nil
-}
-
-type mockIdentity struct {
-	id       string
-	username string
-	email    string
-	role     string
-}
-
-func (m *mockIdentity) ID() string       { return m.id }
-func (m *mockIdentity) Username() string { return m.username }
-func (m *mockIdentity) Email() string    { return m.email }
-func (m *mockIdentity) Role() string     { return m.role }
-
-type mockConfig struct {
-	signingKey string
-	tokenExp   int
-	audience   []string
-	issuer     string
-}
-
-func (m *mockConfig) GetSigningKey() string           { return m.signingKey }
-func (m *mockConfig) GetSigningMethod() string        { return "HS256" }
-func (m *mockConfig) GetContextKey() string           { return "jwt" }
-func (m *mockConfig) GetTokenExpiration() int         { return m.tokenExp }
-func (m *mockConfig) GetExtendedTokenDuration() int   { return m.tokenExp * 2 }
-func (m *mockConfig) GetTokenLookup() string          { return "header:Authorization" }
-func (m *mockConfig) GetAuthScheme() string           { return "Bearer" }
-func (m *mockConfig) GetIssuer() string               { return m.issuer }
-func (m *mockConfig) GetAudience() []string           { return m.audience }
-func (m *mockConfig) GetRejectedRouteKey() string     { return "rejected_route" }
-func (m *mockConfig) GetRejectedRouteDefault() string { return "/login" }
-
 // Test helper function to access the unexported sessionFromAuthClaims function
 func testSessionFromAuthClaims(claims auth.AuthClaims) (*auth.SessionObject, error) {
 	// Since sessionFromAuthClaims is unexported, we need to access it through package internals
@@ -364,8 +295,8 @@ func testSessionFromAuthClaims(claims auth.AuthClaims) (*auth.SessionObject, err
 	// Convert audience from jwt.ClaimStrings to []string
 	var audience []string
 	if jwtClaims, ok := claims.(*auth.JWTClaims); ok {
-		if jwtClaims.RegisteredClaims.Audience != nil {
-			for _, aud := range jwtClaims.RegisteredClaims.Audience {
+		if jwtClaims.Audience != nil {
+			for _, aud := range jwtClaims.Audience {
 				audience = append(audience, aud)
 			}
 		}
@@ -377,8 +308,8 @@ func testSessionFromAuthClaims(claims auth.AuthClaims) (*auth.SessionObject, err
 	// Get issuer from claims
 	issuer := ""
 	if jwtClaims, ok := claims.(*auth.JWTClaims); ok {
-		if jwtClaims.RegisteredClaims.Issuer != "" {
-			issuer = jwtClaims.RegisteredClaims.Issuer
+		if jwtClaims.Issuer != "" {
+			issuer = jwtClaims.Issuer
 		}
 	}
 	if issuer == "" {

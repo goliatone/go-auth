@@ -31,9 +31,9 @@ func TestNoLegacySelfRegistrationKey(t *testing.T) {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
 		}
 		if bytes.Contains(data, []byte(key)) {
 			matches = append(matches, path)

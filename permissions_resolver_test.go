@@ -27,7 +27,7 @@ func TestCachedPermissionsResolverCachesAndDedupes(t *testing.T) {
 	const workers = 8
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			defer wg.Done()
 			perms, err := resolver.ResolvePermissions(context.Background())
@@ -74,7 +74,7 @@ func TestWithResolvedPermissionsCacheResolvesOncePerContext(t *testing.T) {
 	})
 
 	ctx := WithResolvedPermissionsCache(context.Background())
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		perms, err := resolver.ResolvePermissions(ctx)
 		if err != nil {
 			t.Fatalf("resolve permissions: %v", err)

@@ -231,8 +231,8 @@ func newTestJWKS(t *testing.T) (*rsa.PrivateKey, []byte, string) {
 		"use": "sig",
 		"alg": "RS256",
 		"kid": kid,
-		"n":   base64.RawURLEncoding.EncodeToString(privateKey.PublicKey.N.Bytes()),
-		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(privateKey.PublicKey.E)).Bytes()),
+		"n":   base64.RawURLEncoding.EncodeToString(privateKey.N.Bytes()),
+		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(privateKey.E)).Bytes()),
 	}
 
 	jwks := map[string]any{

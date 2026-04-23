@@ -105,7 +105,7 @@ func TestStatelessTokenExpiration(t *testing.T) {
 func TestShortSecureKeyPanics(t *testing.T) {
 	require.Panics(t, func() {
 		handler := New(Config{SecureKey: []byte("short")})(func(ctx router.Context) error { return nil })
-		handler(newMockContextWithBase("GET"))
+		_ = handler(newMockContextWithBase("GET"))
 	})
 }
 

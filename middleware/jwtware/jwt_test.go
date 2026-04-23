@@ -14,6 +14,8 @@ import (
 	"github.com/goliatone/go-auth/middleware/jwtware"
 )
 
+type testContextKey string
+
 // MockAuthClaims implements jwtware.AuthClaims for testing
 type MockAuthClaims struct {
 	mock.Mock
@@ -772,7 +774,7 @@ func TestJWTWare_ContextEnricher_Propagation(t *testing.T) {
 	})
 
 	// Create a mock context enricher that adds a known value to the context
-	const testKey = "test-claims-key"
+	const testKey testContextKey = "test-claims-key"
 	const testValue = "enriched-claims-value"
 
 	contextEnricher := func(c context.Context, claims jwtware.AuthClaims) context.Context {
@@ -879,8 +881,8 @@ func TestJWTWare_ContextEnricher_Called_With_Correct_Claims(t *testing.T) {
 	var receivedClaims jwtware.AuthClaims
 	contextEnricher := func(c context.Context, claims jwtware.AuthClaims) context.Context {
 		receivedClaims = claims
-		return context.WithValue(c, "verified", true)
-	}
+			return context.WithValue(c, testContextKey("verified"), true)
+		}
 
 	cfg := jwtware.Config{
 		SigningKey: jwtware.SigningKey{
