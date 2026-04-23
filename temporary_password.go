@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -41,13 +42,33 @@ func TemporaryPasswordStateFromMetadata(metadata map[string]any) TemporaryPasswo
 
 // Expired reports whether the temporary password is past its expiry at the provided time.
 func (s TemporaryPasswordState) Expired(now time.Time) bool {
-	if !s.Temporary || s.ExpiresAt.IsZero() {
+	if !s.Temporary {
 		return false
+	}
+	if s.ExpiresAt.IsZero() {
+		return true
 	}
 	if now.IsZero() {
 		now = time.Now()
 	}
 	return !now.Before(s.ExpiresAt)
+}
+
+// ClearTemporaryPasswordMetadata removes temporary-password state from a cloned metadata map.
+func ClearTemporaryPasswordMetadata(metadata map[string]any) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	maps.Copy(out, metadata)
+	delete(out, TemporaryPasswordMetadataKey)
+	delete(out, PasswordChangeRequiredMetadataKey)
+	delete(out, TemporaryPasswordIssuedAtMetadataKey)
+	delete(out, TemporaryPasswordExpiresAtMetadataKey)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // TemporaryPasswordClaimsDecorator copies compact temporary-password hints into JWT metadata.
