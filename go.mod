@@ -10,11 +10,11 @@ require (
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/goliatone/go-errors v0.10.0
-	github.com/goliatone/go-featuregate v0.6.0
+	github.com/goliatone/go-featuregate v0.6.1
 	github.com/goliatone/go-logger v0.8.0
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.15.1
-	github.com/goliatone/go-router v0.55.0
+	github.com/goliatone/go-router v0.57.0
 	github.com/goliatone/hashid v0.2.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
@@ -26,10 +26,6 @@ require (
 	golang.org/x/sync v0.19.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
-
-replace github.com/goliatone/go-featuregate => ../go-featuregate
-
-replace github.com/goliatone/go-router => ../go-router
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
