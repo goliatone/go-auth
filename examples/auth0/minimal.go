@@ -19,7 +19,7 @@ type MinimalConfig struct {
 // ExampleMinimalSetup wires Auth0 JWT validation into an authenticator.
 func ExampleMinimalSetup(db *bun.DB, cfg MinimalConfig) (*auth.Auther, *auth.RouteAuthenticator, *auth0.TokenValidator, error) {
 	repoManager := repository.NewRepositoryManager(db)
-	userProvider := auth.NewUserProvider(repoManager.Users())
+	userProvider := auth.NewUserProvider(userTracker{users: repoManager.Users()})
 
 	authenticator := auth.NewAuthenticator(userProvider, cfg.Auth)
 

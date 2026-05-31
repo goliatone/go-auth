@@ -25,7 +25,7 @@ type SyncConfig struct {
 // ExampleSyncSetup wires Auth0 validation with local user sync helpers.
 func ExampleSyncSetup(ctx context.Context, db *bun.DB, cfg SyncConfig) (*auth.Auther, *auth.RouteAuthenticator, *auth0sync.Service, *auth0sync.ManagementClient, error) {
 	repoManager := repository.NewRepositoryManager(db)
-	userProvider := auth.NewUserProvider(repoManager.Users())
+	userProvider := auth.NewUserProvider(userTracker{users: repoManager.Users()})
 
 	authenticator := auth.NewAuthenticator(userProvider, cfg.Auth)
 

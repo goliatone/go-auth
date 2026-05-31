@@ -8,7 +8,6 @@ import (
 	"github.com/goliatone/go-auth/social"
 	"github.com/goliatone/go-auth/social/providers/github"
 	"github.com/goliatone/go-auth/social/providers/google"
-	"github.com/goliatone/go-router"
 	"github.com/uptrace/bun"
 )
 
@@ -25,12 +24,12 @@ type SocialExampleConfig struct {
 }
 
 // ExampleSocialLoginSetup wires local auth with social login and HTTP routes.
-func ExampleSocialLoginSetup(db *bun.DB, group router.Group, cfg SocialExampleConfig) (*auth.Auther, *social.SocialAuthenticator, *social.HTTPController) {
+func ExampleSocialLoginSetup(db *bun.DB, group social.RouteRegistrar, cfg SocialExampleConfig) (*auth.Auther, *social.SocialAuthenticator, *social.HTTPController) {
 	repoManager := repository.NewRepositoryManager(db)
 	userRepo := repoManager.Users()
 	socialRepo := repository.NewSocialAccountRepository(db)
 
-	localProvider := auth.NewUserProvider(userRepo)
+	localProvider := auth.NewUserProvider(userTracker{users: userRepo})
 	authenticator := auth.NewAuthenticator(localProvider, cfg.Auth)
 
 	stateEncKey, _ := base64.StdEncoding.DecodeString(cfg.StateEncryptionKey)
