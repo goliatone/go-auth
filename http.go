@@ -49,6 +49,12 @@ type RouteAuthenticator struct {
 
 type HTTPAuthenticatorOption func(*RouteAuthenticator) error
 
+type AuthCookieOption func(*authCookieOptions)
+
+type authCookieOptions struct {
+	duration time.Duration
+}
+
 type BrowserProtectionConfig struct {
 	AuthCookieName string
 	CSRF           csrf.Config
@@ -146,6 +152,52 @@ func (a *RouteAuthenticator) AuthCookieName() string {
 		return ""
 	}
 	return strings.TrimSpace(a.cfg.GetContextKey())
+}
+
+// WithAuthCookieDuration overrides the default session-cookie duration used by
+// SetAuthCookie for externally authenticated browser flows.
+func WithAuthCookieDuration(duration time.Duration) AuthCookieOption {
+	return func(opts *authCookieOptions) {
+		if opts == nil || duration <= 0 {
+			return
+		}
+		opts.duration = duration
+	}
+}
+
+// WithExtendedAuthCookieDuration uses the configured extended session duration
+// when SetAuthCookie writes a session cookie.
+func WithExtendedAuthCookieDuration() AuthCookieOption {
+	return func(opts *authCookieOptions) {
+		if opts == nil {
+			return
+		}
+		opts.duration = 0
+	}
+}
+
+// SetAuthCookie writes the normal go-auth browser session cookie for a token
+// minted outside the password-login handler, such as an OIDC SSO callback.
+func (a *RouteAuthenticator) SetAuthCookie(ctx router.Context, token string, opts ...AuthCookieOption) error {
+	if a == nil || ctx == nil {
+		return ErrUnableToFindSession
+	}
+	if strings.TrimSpace(token) == "" {
+		return ErrUnableToDecodeSession
+	}
+
+	options := authCookieOptions{duration: a.cookieDuration}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
+	}
+	if options.duration <= 0 {
+		options.duration = a.extendedCookieDuration
+	}
+
+	a.setCookieToken(ctx, token, options.duration)
+	return nil
 }
 
 func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router.Context, error) error) router.MiddlewareFunc {
