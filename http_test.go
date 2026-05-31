@@ -63,6 +63,34 @@ func TestRouteAuthenticator_Login(t *testing.T) {
 	mockCtx.AssertExpectations(t)
 }
 
+func TestRouteAuthenticator_SetAuthCookie(t *testing.T) {
+	mockAuth := new(MockAuthenticator)
+	mockConfig := new(MockConfig)
+	mockCtx := router.NewMockContext()
+
+	mockConfig.On("GetTokenExpiration").Return(24)
+	mockConfig.On("GetExtendedTokenDuration").Return(48)
+	mockConfig.On("GetContextKey").Return("jwt")
+
+	mockCtx.On("Cookie", mock.MatchedBy(func(c *router.Cookie) bool {
+		return c.Name == "jwt" &&
+			c.Value == "sso.jwt.token" &&
+			c.Path == "/" &&
+			c.HTTPOnly &&
+			c.Expires.After(time.Now().Add(29*time.Minute)) &&
+			c.Expires.Before(time.Now().Add(31*time.Minute))
+	})).Return()
+
+	httpAuth, err := auth.NewHTTPAuthenticator(mockAuth, mockConfig)
+	require.NoError(t, err)
+
+	err = httpAuth.SetAuthCookie(mockCtx, "sso.jwt.token", auth.WithAuthCookieDuration(30*time.Minute))
+	require.NoError(t, err)
+
+	mockConfig.AssertExpectations(t)
+	mockCtx.AssertExpectations(t)
+}
+
 func TestRouteAuthenticator_LoginError(t *testing.T) {
 	mockAuth := new(MockAuthenticator)
 	mockConfig := new(MockConfig)

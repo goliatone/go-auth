@@ -148,3 +148,35 @@ func TestNormalizeActorFallbackChain(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSSOEvents(t *testing.T) {
+	t.Parallel()
+
+	events := []auth.ActivityEventType{
+		auth.ActivityEventSSOLoginSuccess,
+		auth.ActivityEventSSOLoginFailure,
+		auth.ActivityEventSSOLinkAutomatic,
+		auth.ActivityEventSSOLinkManual,
+		auth.ActivityEventSSOLinkRejected,
+		auth.ActivityEventSSOUnlink,
+		auth.ActivityEventSSOLogout,
+	}
+
+	for _, eventType := range events {
+		t.Run(string(eventType), func(t *testing.T) {
+			t.Parallel()
+
+			out := activitymap.Normalize(auth.ActivityEvent{
+				EventType: eventType,
+				UserID:    "user-1",
+				Metadata:  map[string]any{"provider": "oidc"},
+			})
+			if out.Verb != string(eventType) {
+				t.Fatalf("expected verb %q, got %q", eventType, out.Verb)
+			}
+			if out.Metadata["provider"] != "oidc" {
+				t.Fatalf("expected provider metadata, got %+v", out.Metadata)
+			}
+		})
+	}
+}
