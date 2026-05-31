@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -221,9 +222,7 @@ func (l *DefaultIdentityLinker) emitWithMetadata(ctx context.Context, eventType 
 		"subject":  identity.Subject,
 		"action":   action,
 	}
-	for k, v := range extra {
-		metadata[k] = v
-	}
+	maps.Copy(metadata, extra)
 	if err != nil {
 		metadata["error"] = err.Error()
 	}

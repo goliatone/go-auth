@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math/big"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -121,9 +123,7 @@ func (c *jwksCache) fetch(ctx context.Context) (map[string]jwk, error) {
 
 func cloneJWKMap(in map[string]jwk) map[string]jwk {
 	out := make(map[string]jwk, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
+	maps.Copy(out, in)
 	return out
 }
 
@@ -156,10 +156,5 @@ func (k jwk) allowsSigning() bool {
 	if len(k.KeyOps) == 0 {
 		return true
 	}
-	for _, op := range k.KeyOps {
-		if op == "verify" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(k.KeyOps, "verify")
 }

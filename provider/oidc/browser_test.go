@@ -314,9 +314,9 @@ type testIdentity struct {
 	email string
 }
 
-func (i testIdentity) ID() string                       { return i.id }
-func (i testIdentity) Username() string                 { return i.email }
-func (i testIdentity) Email() string                    { return i.email }
-func (i testIdentity) Role() string                     { return string(auth.RoleMember) }
-func (i testIdentity) Status() auth.UserStatus          { return auth.UserStatusActive }
-func (i testIdentity) Metadata() map[string]interface{} { return nil }
+func (i testIdentity) ID() string               { return i.id }
+func (i testIdentity) Username() string         { return i.email }
+func (i testIdentity) Email() string            { return i.email }
+func (i testIdentity) Role() string             { return string(auth.RoleMember) }
+func (i testIdentity) Status() auth.UserStatus  { return auth.UserStatusActive }
+func (i testIdentity) Metadata() map[string]any { return nil }
