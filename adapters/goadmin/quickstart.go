@@ -35,6 +35,8 @@ type QuickstartConfig struct {
 	ActivitySink         auth.ActivitySink
 	ManualLinker         ManualLinker
 	LogoutRedirect       LogoutRedirectResolver
+	ClaimPermissions     *ClaimPermissionConfig
+	HostPermissions      PermissionResolverFunc
 	AuthorizerConfig     admin.GoAuthAuthorizerConfig
 	AuthenticatorOptions []admin.GoAuthAuthenticatorOption
 	RegisterAuthUI       RegisterAuthUIFunc
@@ -102,7 +104,21 @@ func SetupSSO(cfg QuickstartConfig) (QuickstartResult, error) {
 	}
 	cfg.Admin.WithAuth(authenticator, cfg.AdminAuthConfig)
 
-	authorizer := admin.NewGoAuthAuthorizer(cfg.AuthorizerConfig)
+	authorizerConfig := cfg.AuthorizerConfig
+	resolvers := []PermissionResolverFunc{}
+	if cfg.ClaimPermissions != nil {
+		resolvers = append(resolvers, ClaimPermissionResolverFunc(*cfg.ClaimPermissions))
+	}
+	if cfg.HostPermissions != nil {
+		resolvers = append(resolvers, cfg.HostPermissions)
+	}
+	if authorizerConfig.ResolvePermissions != nil {
+		resolvers = append(resolvers, authorizerConfig.ResolvePermissions)
+	}
+	if len(resolvers) > 0 {
+		authorizerConfig.ResolvePermissions = ComposePermissionResolvers(resolvers...)
+	}
+	authorizer := admin.NewGoAuthAuthorizer(authorizerConfig)
 	cfg.Admin.WithAuthorizer(authorizer)
 
 	handlers, err := NewHandlers(HandlerConfig{
