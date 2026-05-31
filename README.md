@@ -255,6 +255,10 @@ Social OAuth account links use `social_accounts`. Browser SSO provider-subject
 links use `user_identifiers`. Keep those tables distinct unless your host
 implements an explicit migration or lookup bridge.
 
+Generic OIDC browser SSO lives in `provider/oidc`; go-admin integration lives
+in the nested `adapters/goadmin` module. See `docs/OIDC.md` for setup and
+operational troubleshooting.
+
 ### Auth0 Integration (Optional)
 
 Auth0 support is opt-in and uses `provider/auth0` for JWT validation and claims
