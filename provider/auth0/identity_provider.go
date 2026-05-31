@@ -18,6 +18,10 @@ const (
 	IdentifierProviderAuth0 = "auth0"
 )
 
+// IdentifierStore is kept as a compatibility alias for Auth0 callers.
+// New code should depend on auth.IdentifierStore directly.
+type IdentifierStore = auth.IdentifierStore
+
 // IdentityProviderConfig configures the Auth0 identity provider.
 type IdentityProviderConfig struct {
 	// ManagementDomain is the Auth0 management API domain.
@@ -33,16 +37,10 @@ type IdentityProviderConfig struct {
 	LocalUsers auth.Users
 
 	// IdentifierStore maps external identifiers to local users (new table).
-	IdentifierStore IdentifierStore
+	IdentifierStore auth.IdentifierStore
 
 	// SyncOnFetch enables automatic local sync when fetching users.
 	SyncOnFetch bool
-}
-
-// IdentifierStore maps external identifiers (Auth0, Slack, etc) to a user.
-type IdentifierStore interface {
-	FindUserID(ctx context.Context, provider, identifier string) (string, error)
-	Upsert(ctx context.Context, userID, provider, identifier string) error
 }
 
 // IdentityProvider implements auth.IdentityProvider backed by Auth0.
@@ -50,7 +48,7 @@ type IdentityProvider struct {
 	config          IdentityProviderConfig
 	mgmt            *management.Management
 	localUsers      auth.Users
-	identifierStore IdentifierStore
+	identifierStore auth.IdentifierStore
 }
 
 // NewIdentityProvider creates an Auth0-backed identity provider.

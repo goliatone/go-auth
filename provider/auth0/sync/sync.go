@@ -19,7 +19,7 @@ type UserMapper func(ctx context.Context, user *management.User) (*auth.User, er
 // Config configures the Auth0 sync service.
 type Config struct {
 	Users           auth.Users
-	IdentifierStore auth0.IdentifierStore
+	IdentifierStore auth.IdentifierStore
 	Provider        string
 	UserMapper      UserMapper
 }
@@ -27,7 +27,7 @@ type Config struct {
 // Service synchronizes Auth0 users into the local store.
 type Service struct {
 	users           auth.Users
-	identifierStore auth0.IdentifierStore
+	identifierStore auth.IdentifierStore
 	provider        string
 	userMapper      UserMapper
 }
