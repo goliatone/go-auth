@@ -1,5 +1,35 @@
 # Changelog
 
+# [0.44.0](https://github.com/goliatone/go-auth/compare/v0.43.0...v0.44.0) - (2026-05-31)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.44.0 ([c90d22d](https://github.com/goliatone/go-auth/commit/c90d22dd9766b3125b940966da80c3945a0112f0))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Dleete to identifier store ([de6c80e](https://github.com/goliatone/go-auth/commit/de6c80e7ff49bc48aff24d2bb16f64852e6d350d))  - (goliatone)
+- Unlink command ([e0398f1](https://github.com/goliatone/go-auth/commit/e0398f102286ec0921bb7aafe4d47d548e1a2e46))  - (goliatone)
+- Go-admin adapters updated ([e49b54a](https://github.com/goliatone/go-auth/commit/e49b54a53b75d9238e554dab309480603fa5ecaa))  - (goliatone)
+- Perm resolvers ([9b4138b](https://github.com/goliatone/go-auth/commit/9b4138bb2d66847e095e1b95b671723f7bb1935b))  - (goliatone)
+- Permissions ([6c7e855](https://github.com/goliatone/go-auth/commit/6c7e85550d65c02a796d170120f3d52ec724b430))  - (goliatone)
+- Oidc provider ([f54a58b](https://github.com/goliatone/go-auth/commit/f54a58b539d1defb9dfd936e30ade3490a3bb086))  - (goliatone)
+- Identifiers store ([67be47a](https://github.com/goliatone/go-auth/commit/67be47a96135e0c1e36d6bd44bfccba829bd30e1))  - (goliatone)
+- Identifier store ([83bb6a8](https://github.com/goliatone/go-auth/commit/83bb6a8f487738559bd126c95bf3e4ab946e76a4))  - (goliatone)
+- Go-admin adapter ([83a5482](https://github.com/goliatone/go-auth/commit/83a548201700e6a0c199b834ffb745761b463df9))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.43.0 ([d133c26](https://github.com/goliatone/go-auth/commit/d133c2654b70373586c8d6c8459a8ad383b56bf7))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([415fe1d](https://github.com/goliatone/go-auth/commit/415fe1d2c33eb669eaabb6cbe1b62517a3aca557))  - (goliatone)
+- Update docs ([d786e44](https://github.com/goliatone/go-auth/commit/d786e44c53a49d5ccd1b2c7972a9b8bfabeb5410))  - (goliatone)
+- Update examples ([e469355](https://github.com/goliatone/go-auth/commit/e469355f28a0f336d112e338a94ebd2150ba65a6))  - (goliatone)
+- Update readme ([aac8d21](https://github.com/goliatone/go-auth/commit/aac8d21c65a7bdc1d88bc31a5ece0d01599fc1e6))  - (goliatone)
+- Update deps ([37f9f07](https://github.com/goliatone/go-auth/commit/37f9f07a03ee11e727903ac1a607aa71ec2f5a3a))  - (goliatone)
+
 # [0.43.0](https://github.com/goliatone/go-auth/compare/v0.42.0...v0.43.0) - (2026-04-23)
 
 ## <!-- 1 -->🐛 Bug Fixes
