@@ -3,12 +3,14 @@ module github.com/goliatone/go-auth/adapters/goadmin
 go 1.26.2
 
 require (
-	github.com/goliatone/go-admin v0.81.1
-	github.com/goliatone/go-admin/quickstart v0.0.0-00010101000000-000000000000
+	github.com/goliatone/go-admin v0.82.0
+	github.com/goliatone/go-admin/quickstart v0.82.0
 	github.com/goliatone/go-auth v0.43.0
 	github.com/goliatone/go-router v0.59.0
 	github.com/stretchr/testify v1.11.1
 )
+
+replace github.com/goliatone/go-auth => ../..
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -210,9 +212,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.46.1 // indirect
 )
-
-replace github.com/goliatone/go-admin => ../../../go-admin
-
-replace github.com/goliatone/go-admin/quickstart => ../../../go-admin/quickstart
-
-replace github.com/goliatone/go-auth => ../..

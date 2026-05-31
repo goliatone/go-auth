@@ -25,6 +25,8 @@ Minimum inputs:
 - `Auther` or `IdentityProvider`: existing go-auth authenticator or provider.
 - `Browser`: OIDC browser authenticator.
 - `ProviderEntries` or `ProviderConfigs` plus `ProviderLoginURL`.
+- `ManualLinkVerifier` when `ManualLinker` is configured.
+- `ManualUnlinker` when protected account unlinking should be enabled.
 
 `SetupSSO` creates or reuses `RouteAuthenticator`, registers
 `admin.GoAuthAuthenticator`, registers `admin.GoAuthAuthorizer`, registers the
@@ -51,6 +53,18 @@ Provider-list endpoint leaks too much:
 Return only key, label, login URL, icon metadata, and disabled reason. Client
 secrets, tokens, discovery documents, and raw provider config must stay server
 side.
+
+Manual account link returns not configured or forbidden:
+Manual linking is fail-closed. If a host configures `ManualLinker`, it must also
+configure `ManualLinkVerifier`. The verifier must prove that the authenticated
+admin user may link the requested provider subject, for example by completing a
+provider callback or checking a host-owned proof record. The adapter rejects the
+link before calling `ManualLinker` when proof is missing, mismatched, or denied.
+
+Manual account unlink returns not configured:
+Configure `ManualUnlinker` to remove a verified provider-subject mapping for the
+authenticated admin user. Hosts can implement it with the provider-neutral
+`auth.IdentifierStore.Delete` contract.
 
 Custom admin permission denied:
 Map IdP permission, role, or group claims with `NewClaimPermissionResolver`,

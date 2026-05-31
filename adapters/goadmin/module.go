@@ -16,6 +16,7 @@ const (
 	RouteBeginLogin   = "sso.begin"
 	RouteCallback     = "sso.callback"
 	RouteLink         = "sso.link"
+	RouteUnlink       = "sso.unlink"
 	RouteLogout       = "sso.logout"
 )
 
@@ -30,6 +31,7 @@ type Handlers struct {
 	BeginLogin   router.HandlerFunc
 	Callback     router.HandlerFunc
 	Link         router.HandlerFunc
+	Unlink       router.HandlerFunc
 	Logout       router.HandlerFunc
 }
 
@@ -74,6 +76,7 @@ func (m *Module) RouteContract() routing.ModuleContract {
 			RouteBeginLogin:   "/login/:provider",
 			RouteCallback:     "/callback/:provider",
 			RouteLink:         "/link/:provider",
+			RouteUnlink:       "/unlink/:provider",
 			RouteLogout:       "/logout/:provider",
 		},
 	}
@@ -99,6 +102,9 @@ func (m *Module) Register(ctx admin.ModuleContext) error {
 		return err
 	}
 	if err := registerPost(ctx.ProtectedRouter, ctx, RouteLink, handlers.Link); err != nil {
+		return err
+	}
+	if err := registerPost(ctx.ProtectedRouter, ctx, RouteUnlink, handlers.Unlink); err != nil {
 		return err
 	}
 	if err := registerPost(ctx.ProtectedRouter, ctx, RouteLogout, handlers.Logout); err != nil {
@@ -131,6 +137,7 @@ func defaultHandlers() Handlers {
 		BeginLogin:   notConfiguredHandler,
 		Callback:     notConfiguredHandler,
 		Link:         notConfiguredHandler,
+		Unlink:       notConfiguredHandler,
 		Logout:       notConfiguredHandler,
 	}
 }
@@ -148,6 +155,9 @@ func mergeHandlers(base, override Handlers) Handlers {
 	}
 	if override.Link != nil {
 		out.Link = override.Link
+	}
+	if override.Unlink != nil {
+		out.Unlink = override.Unlink
 	}
 	if override.Logout != nil {
 		out.Logout = override.Logout

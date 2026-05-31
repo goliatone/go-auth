@@ -33,6 +33,24 @@ type ManualLinker interface {
 	Link(ctx context.Context, userID string, providerKey string, subject string) error
 }
 
+// ManualUnlinker optionally handles protected account-unlink requests.
+type ManualUnlinker interface {
+	Unlink(ctx context.Context, userID string, providerKey string, subject string) error
+}
+
+// ManualLinkProof captures a verified provider-subject link target.
+type ManualLinkProof struct {
+	ProviderKey string
+	Subject     string
+	Metadata    map[string]any
+}
+
+// ManualLinkProofVerifier verifies that the current request may link the
+// provider subject before ManualLinker persists it.
+type ManualLinkProofVerifier interface {
+	VerifyManualLink(ctx context.Context, userID string, providerKey string, subject string) (ManualLinkProof, error)
+}
+
 // LogoutRedirectResolver returns an optional IdP logout redirect target.
 type LogoutRedirectResolver func(providerKey string) string
 
@@ -43,6 +61,8 @@ type HandlerConfig struct {
 	RouteAuthenticator     CookieAuthenticator
 	ActivitySink           ActivityRecorder
 	ManualLinker           ManualLinker
+	ManualLinkVerifier     ManualLinkProofVerifier
+	ManualUnlinker         ManualUnlinker
 	LogoutRedirect         LogoutRedirectResolver
 	DefaultLogoutRedirect  string
 	ExtendedSessionCookies bool
@@ -56,12 +76,17 @@ func NewHandlers(cfg HandlerConfig) (Handlers, error) {
 	if cfg.RouteAuthenticator == nil {
 		return Handlers{}, fmt.Errorf("go-auth route authenticator is required")
 	}
+	if cfg.ManualLinker != nil && cfg.ManualLinkVerifier == nil {
+		return Handlers{}, fmt.Errorf("go-auth manual link proof verifier is required when manual linker is configured")
+	}
 	runtime := handlerRuntime{
 		providers:             sanitizeProviderInfo(cfg.Providers),
 		browser:               cfg.Browser,
 		routeAuth:             cfg.RouteAuthenticator,
 		activitySink:          cfg.ActivitySink,
 		manualLinker:          cfg.ManualLinker,
+		manualLinkVerifier:    cfg.ManualLinkVerifier,
+		manualUnlinker:        cfg.ManualUnlinker,
 		logoutRedirect:        cfg.LogoutRedirect,
 		defaultLogoutRedirect: cfg.DefaultLogoutRedirect,
 		extendedCookies:       cfg.ExtendedSessionCookies,
@@ -74,6 +99,7 @@ func NewHandlers(cfg HandlerConfig) (Handlers, error) {
 		BeginLogin:   runtime.beginLogin,
 		Callback:     runtime.callback,
 		Link:         runtime.link,
+		Unlink:       runtime.unlink,
 		Logout:       runtime.logout,
 	}, nil
 }
@@ -84,6 +110,8 @@ type handlerRuntime struct {
 	routeAuth             CookieAuthenticator
 	activitySink          ActivityRecorder
 	manualLinker          ManualLinker
+	manualLinkVerifier    ManualLinkProofVerifier
+	manualUnlinker        ManualUnlinker
 	logoutRedirect        LogoutRedirectResolver
 	defaultLogoutRedirect string
 	extendedCookies       bool
@@ -165,14 +193,70 @@ func (h handlerRuntime) link(c router.Context) error {
 	if subject == "" {
 		return safeHandlerError(c, http.StatusBadRequest, "subject is required")
 	}
-	if err := h.manualLinker.Link(c.Context(), userID, providerKey, subject); err != nil {
+	proof, err := h.manualLinkVerifier.VerifyManualLink(c.Context(), userID, providerKey, subject)
+	if err != nil {
 		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
 			"provider": providerKey,
+			"stage":    "verify",
 			"error":    err.Error(),
 		})
 		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
 	}
-	h.record(c.Context(), auth.ActivityEventSSOLinkManual, userID, map[string]any{
+	verifiedProvider := strings.TrimSpace(proof.ProviderKey)
+	if verifiedProvider == "" || !strings.EqualFold(verifiedProvider, providerKey) {
+		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
+			"provider": providerKey,
+			"stage":    "verify",
+			"error":    "verified provider mismatch",
+		})
+		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
+	}
+	verifiedSubject := strings.TrimSpace(proof.Subject)
+	if verifiedSubject == "" || verifiedSubject != subject {
+		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
+			"provider": providerKey,
+			"stage":    "verify",
+			"error":    "verified subject mismatch",
+		})
+		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
+	}
+	if err := h.manualLinker.Link(c.Context(), userID, verifiedProvider, verifiedSubject); err != nil {
+		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
+			"provider": verifiedProvider,
+			"error":    err.Error(),
+		})
+		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
+	}
+	metadata := cloneMap(proof.Metadata)
+	metadata["provider"] = verifiedProvider
+	metadata["subject"] = verifiedSubject
+	metadata["verified"] = true
+	h.record(c.Context(), auth.ActivityEventSSOLinkManual, userID, metadata)
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h handlerRuntime) unlink(c router.Context) error {
+	if h.manualUnlinker == nil {
+		return safeHandlerError(c, http.StatusNotImplemented, "sso account unlinking is not configured")
+	}
+	userID := userIDFromContext(c.Context())
+	if userID == "" {
+		return safeHandlerError(c, http.StatusUnauthorized, "authenticated user is required")
+	}
+	providerKey := providerKeyFromContext(c)
+	subject := strings.TrimSpace(c.FormValue("subject", c.Query("subject")))
+	if subject == "" {
+		return safeHandlerError(c, http.StatusBadRequest, "subject is required")
+	}
+	if err := h.manualUnlinker.Unlink(c.Context(), userID, providerKey, subject); err != nil {
+		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
+			"provider": providerKey,
+			"stage":    "unlink",
+			"error":    err.Error(),
+		})
+		return safeHandlerError(c, http.StatusForbidden, "sso account unlink failed")
+	}
+	h.record(c.Context(), auth.ActivityEventSSOUnlink, userID, map[string]any{
 		"provider": providerKey,
 		"subject":  subject,
 	})

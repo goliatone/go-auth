@@ -34,6 +34,8 @@ type QuickstartConfig struct {
 	TokenValidators      []auth.TokenValidator
 	ActivitySink         auth.ActivitySink
 	ManualLinker         ManualLinker
+	ManualLinkVerifier   ManualLinkProofVerifier
+	ManualUnlinker       ManualUnlinker
 	LogoutRedirect       LogoutRedirectResolver
 	ClaimPermissions     *ClaimPermissionConfig
 	HostPermissions      PermissionResolverFunc
@@ -127,6 +129,8 @@ func SetupSSO(cfg QuickstartConfig) (QuickstartResult, error) {
 		RouteAuthenticator:     routeAuth,
 		ActivitySink:           cfg.ActivitySink,
 		ManualLinker:           cfg.ManualLinker,
+		ManualLinkVerifier:     cfg.ManualLinkVerifier,
+		ManualUnlinker:         cfg.ManualUnlinker,
 		LogoutRedirect:         cfg.LogoutRedirect,
 		ExtendedSessionCookies: cfg.ExtendedCookies,
 	})
