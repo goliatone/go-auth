@@ -2,6 +2,7 @@ package goadmin
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/goliatone/go-admin/admin"
@@ -96,5 +97,39 @@ func TestSSOMetadataFromContextExposesTenantAndOrganization(t *testing.T) {
 	metadata := SSOMetadataFromContext(ctx)
 	if metadata["tenant_id"] != "tenant-1" || metadata["organization_id"] != "org-1" {
 		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
+}
+
+func TestComposePermissionResolversCombinesIdPAndLocalPolicy(t *testing.T) {
+	resolver := ComposePermissionResolvers(
+		func(context.Context) ([]string, error) { return []string{"admin.reports.publish"}, nil },
+		func(context.Context) ([]string, error) { return []string{"admin.billing.approve"}, nil },
+	)
+
+	perms, err := resolver(context.Background())
+	if err != nil {
+		t.Fatalf("resolver: %v", err)
+	}
+	want := map[string]bool{"admin.billing.approve": true, "admin.reports.publish": true}
+	for _, perm := range perms {
+		delete(want, perm)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing composed permissions: %#v from %#v", want, perms)
+	}
+}
+
+func TestComposePermissionResolversReturnsFailureForDeny(t *testing.T) {
+	resolver := ComposePermissionResolvers(
+		func(context.Context) ([]string, error) { return []string{"admin.reports.publish"}, nil },
+		func(context.Context) ([]string, error) { return nil, errors.New("local policy unavailable") },
+	)
+	authorizer := admin.NewGoAuthAuthorizer(admin.GoAuthAuthorizerConfig{
+		ResolvePermissions: resolver,
+	})
+	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{UID: "user-1"})
+
+	if authorizer.Can(ctx, "admin.reports.publish", "") {
+		t.Fatal("expected resolver failure to deny custom permission")
 	}
 }

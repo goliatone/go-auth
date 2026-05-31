@@ -114,6 +114,42 @@ func TestSetupSSOReturnsWiredComponentsAndAuthUIOptions(t *testing.T) {
 	}
 }
 
+func TestSetupSSOWiresComposedPermissionResolver(t *testing.T) {
+	adm, err := admin.New(admin.Config{}, admin.Dependencies{})
+	if err != nil {
+		t.Fatalf("admin.New: %v", err)
+	}
+	cfg := testAuthConfig{}
+	result, err := SetupSSO(QuickstartConfig{
+		Admin:      adm,
+		AuthConfig: cfg,
+		Auther:     auth.NewAuthenticator(fakeIdentityProvider{}, cfg),
+		Browser:    stubBrowserFlow{},
+		ProviderEntries: []oidc.ProviderInfo{
+			{Key: "auth0", Label: "Auth0", LoginURL: "/sso/login/auth0"},
+		},
+		ClaimPermissions: &ClaimPermissionConfig{
+			PermissionMap: map[string]string{"reports:publish": "admin.reports.publish"},
+		},
+		HostPermissions: func(context.Context) ([]string, error) {
+			return []string{"admin.billing.approve"}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("SetupSSO: %v", err)
+	}
+	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{
+		UID:      "user-1",
+		Metadata: map[string]any{"permissions": []string{"reports:publish"}},
+	})
+	if !result.Authorizer.Can(ctx, "admin.reports.publish", "") {
+		t.Fatal("expected IdP mapped permission")
+	}
+	if !result.Authorizer.Can(ctx, "admin.billing.approve", "") {
+		t.Fatal("expected host local permission")
+	}
+}
+
 type testAuthConfig struct{}
 
 func (testAuthConfig) GetSigningKey() string           { return "01234567890123456789012345678901" }
