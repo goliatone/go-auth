@@ -251,6 +251,10 @@ Routes registered by the controller:
 See `docs/SOCIAL_LOGIN.md` for linking policies, migration guidance, and security notes.
 Example wiring lives in `examples/extensions/social_login.go`.
 
+Social OAuth account links use `social_accounts`. Browser SSO provider-subject
+links use `user_identifiers`. Keep those tables distinct unless your host
+implements an explicit migration or lookup bridge.
+
 ### Auth0 Integration (Optional)
 
 Auth0 support is opt-in and uses `provider/auth0` for JWT validation and claims
@@ -277,8 +281,9 @@ composite := auth.NewMultiTokenValidator(auth0Validator, authenticator.TokenServ
 authenticator = authenticator.WithTokenValidator(composite)
 ```
 
-For sync (local mirroring), use `provider/auth0/sync` with an IdentifierStore.
-See `docs/AUTH0.md` and `examples/auth0/` for full examples.
+For sync (local mirroring), use `provider/auth0/sync` with
+`auth.IdentifierStore`. See `docs/AUTH0.md` and `examples/auth0/` for full
+examples.
 
 Auth0 validation errors normalize to `ErrTokenExpired` / `ErrTokenMalformed`
 with `provider=auth0` metadata. Use `HasUserUUID(session)` before calling
@@ -933,8 +938,10 @@ CREATE INDEX idx_social_accounts_provider ON social_accounts(provider, provider_
 
 ### Auth0 Identifiers Table (Optional Sync Track)
 
-Auth0 sync adds a `user_identifiers` mapping table and optional external ID
-columns on `users`. Migrations ship in `data/sql/migrations` and
+SSO and Auth0 sync use the provider-neutral `user_identifiers` mapping table.
+The canonical lookup key is `(provider, identifier)`, where `identifier` is the
+provider subject. Optional external ID columns on `users` are legacy enrichment,
+not the primary SSO lookup path. Migrations ship in `data/sql/migrations` and
 `data/sql/migrations/sqlite`:
 
 - `20240701090000_auth0_identifiers.up.sql`
