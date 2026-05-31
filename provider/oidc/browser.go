@@ -25,33 +25,94 @@ type BrowserAuthenticator struct {
 	stateTTL               time.Duration
 }
 
+type browserAuthenticatorDependencies struct {
+	stateStore      StateStore
+	tokenExchanger  TokenExchanger
+	userInfoFetcher UserInfoFetcher
+	clock           func() time.Time
+	defaultRedirect string
+	stateTTL        time.Duration
+}
+
 func NewBrowserAuthenticator(cfg BrowserAuthenticatorConfig) (*BrowserAuthenticator, error) {
+	deps, err := browserAuthenticatorDependenciesFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	providers, err := browserProviderMap(cfg.Providers)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BrowserAuthenticator{
+		providers:              providers,
+		stateStore:             deps.stateStore,
+		tokenExchanger:         deps.tokenExchanger,
+		userInfoFetcher:        deps.userInfoFetcher,
+		identityLinker:         cfg.IdentityLinker,
+		tokenIssuer:            cfg.TokenIssuer,
+		defaultRedirect:        deps.defaultRedirect,
+		allowedRedirectOrigins: originSet(cfg.AllowedRedirectOrigins),
+		clock:                  deps.clock,
+		stateTTL:               deps.stateTTL,
+	}, nil
+}
+
+func browserAuthenticatorDependenciesFromConfig(cfg BrowserAuthenticatorConfig) (browserAuthenticatorDependencies, error) {
 	clock := cfg.Clock
 	if clock == nil {
 		clock = time.Now
 	}
+
 	stateStore := cfg.StateStore
 	if stateStore == nil {
 		stateStore = NewMemoryStateStore(clock)
 	}
+
 	tokenExchanger := cfg.TokenExchanger
 	if tokenExchanger == nil {
 		tokenExchanger = HTTPTokenExchanger{}
 	}
+
 	userInfoFetcher := cfg.UserInfoFetcher
 	if userInfoFetcher == nil {
 		userInfoFetcher = HTTPUserInfoFetcher{}
 	}
+
 	defaultRedirect := strings.TrimSpace(cfg.DefaultRedirect)
 	if defaultRedirect == "" {
 		defaultRedirect = "/"
 	}
 	if _, err := SafeRedirect(defaultRedirect, "/", cfg.AllowedRedirectOrigins); err != nil {
-		return nil, err
+		return browserAuthenticatorDependencies{}, err
 	}
 
-	providers := make(map[string]*Provider, len(cfg.Providers))
-	for _, provider := range cfg.Providers {
+	if cfg.IdentityLinker == nil {
+		return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identity_linker"})
+	}
+	if cfg.TokenIssuer == nil {
+		return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "token_issuer"})
+	}
+
+	stateTTL := cfg.StateTTL
+	if stateTTL <= 0 {
+		stateTTL = 10 * time.Minute
+	}
+
+	return browserAuthenticatorDependencies{
+		stateStore:      stateStore,
+		tokenExchanger:  tokenExchanger,
+		userInfoFetcher: userInfoFetcher,
+		clock:           clock,
+		defaultRedirect: defaultRedirect,
+		stateTTL:        stateTTL,
+	}, nil
+}
+
+func browserProviderMap(providerList []*Provider) (map[string]*Provider, error) {
+	providers := make(map[string]*Provider, len(providerList))
+	for _, provider := range providerList {
 		if provider == nil {
 			continue
 		}
@@ -62,48 +123,29 @@ func NewBrowserAuthenticator(cfg BrowserAuthenticatorConfig) (*BrowserAuthentica
 		if _, exists := providers[key]; exists {
 			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.key", "cause": "duplicate provider key"})
 		}
-		if provider.Validator == nil {
-			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.validator"})
-		}
-		if strings.TrimSpace(provider.Metadata.Issuer) == "" {
-			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.issuer"})
-		}
-		if strings.TrimSpace(provider.Metadata.AuthorizationEndpoint) == "" {
-			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.authorization_endpoint"})
-		}
-		if strings.TrimSpace(provider.Metadata.TokenEndpoint) == "" {
-			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.token_endpoint"})
-		}
-		if strings.TrimSpace(provider.Metadata.JWKSURI) == "" {
-			return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.jwks_uri"})
+		if err := validateBrowserProvider(key, provider); err != nil {
+			return nil, err
 		}
 		providers[key] = provider
 	}
+	return providers, nil
+}
 
-	if cfg.IdentityLinker == nil {
-		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identity_linker"})
+func validateBrowserProvider(key string, provider *Provider) error {
+	switch {
+	case provider.Validator == nil:
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.validator"})
+	case strings.TrimSpace(provider.Metadata.Issuer) == "":
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.issuer"})
+	case strings.TrimSpace(provider.Metadata.AuthorizationEndpoint) == "":
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.authorization_endpoint"})
+	case strings.TrimSpace(provider.Metadata.TokenEndpoint) == "":
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.token_endpoint"})
+	case strings.TrimSpace(provider.Metadata.JWKSURI) == "":
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.metadata.jwks_uri"})
+	default:
+		return nil
 	}
-	if cfg.TokenIssuer == nil {
-		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "token_issuer"})
-	}
-
-	stateTTL := cfg.StateTTL
-	if stateTTL <= 0 {
-		stateTTL = 10 * time.Minute
-	}
-
-	return &BrowserAuthenticator{
-		providers:              providers,
-		stateStore:             stateStore,
-		tokenExchanger:         tokenExchanger,
-		userInfoFetcher:        userInfoFetcher,
-		identityLinker:         cfg.IdentityLinker,
-		tokenIssuer:            cfg.TokenIssuer,
-		defaultRedirect:        defaultRedirect,
-		allowedRedirectOrigins: originSet(cfg.AllowedRedirectOrigins),
-		clock:                  clock,
-		stateTTL:               stateTTL,
-	}, nil
 }
 
 func (a *BrowserAuthenticator) BeginLogin(ctx context.Context, req AuthorizationRequest) (AuthorizationResponse, error) {
@@ -131,14 +173,15 @@ func (a *BrowserAuthenticator) BeginLogin(ctx context.Context, req Authorization
 	}
 
 	expiresAt := a.clock().Add(a.stateTTL)
-	if err := a.stateStore.Save(ctx, StateRecord{
+	err = a.stateStore.Save(ctx, StateRecord{
 		State:        state,
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ProviderKey:  provider.Config.Key,
 		RedirectTo:   redirectTo,
 		ExpiresAt:    expiresAt,
-	}); err != nil {
+	})
+	if err != nil {
 		return AuthorizationResponse{}, err
 	}
 
@@ -158,22 +201,9 @@ func (a *BrowserAuthenticator) BeginLogin(ctx context.Context, req Authorization
 }
 
 func (a *BrowserAuthenticator) CompleteCallback(ctx context.Context, req CallbackRequest) (BrowserSessionResult, error) {
-	if strings.TrimSpace(req.Code) == "" {
-		return BrowserSessionResult{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"field": "code"})
-	}
-	if strings.TrimSpace(req.State) == "" {
-		return BrowserSessionResult{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"field": "state"})
-	}
-
-	record, err := a.stateStore.Consume(ctx, req.State)
+	record, err := a.consumeCallbackState(ctx, req)
 	if err != nil {
 		return BrowserSessionResult{}, err
-	}
-	if !record.ExpiresAt.IsZero() && !a.clock().Before(record.ExpiresAt) {
-		return BrowserSessionResult{}, cloneWithProvider(ErrInvalidState, record.ProviderKey, map[string]any{"cause": "state expired"})
-	}
-	if req.ProviderKey != "" && normalizeProviderKey(req.ProviderKey) != normalizeProviderKey(record.ProviderKey) {
-		return BrowserSessionResult{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"cause": "provider mismatch"})
 	}
 
 	provider, err := a.provider(record.ProviderKey)
@@ -181,33 +211,76 @@ func (a *BrowserAuthenticator) CompleteCallback(ctx context.Context, req Callbac
 		return BrowserSessionResult{}, err
 	}
 
-	redirectTarget := record.RedirectTo
-	if req.RedirectTo != "" {
-		callbackRedirect, err := a.safeRedirect(req.RedirectTo)
-		if err != nil {
-			return BrowserSessionResult{}, err
-		}
-		if callbackRedirect != record.RedirectTo {
-			return BrowserSessionResult{}, cloneWithProvider(ErrInvalidState, record.ProviderKey, map[string]any{"cause": "redirect mismatch"})
-		}
+	redirectTarget, err := a.callbackRedirectTarget(record, req)
+	if err != nil {
+		return BrowserSessionResult{}, err
 	}
 
+	identity, mappedClaims, err := a.callbackIdentity(ctx, provider, record, req)
+	if err != nil {
+		return BrowserSessionResult{}, err
+	}
+
+	localIdentity, decision, err := a.resolveLocalIdentity(ctx, identity)
+	if err != nil {
+		return BrowserSessionResult{}, err
+	}
+
+	return a.buildSessionResult(provider, redirectTarget, identity, mappedClaims, localIdentity, decision)
+}
+
+func (a *BrowserAuthenticator) consumeCallbackState(ctx context.Context, req CallbackRequest) (StateRecord, error) {
+	if strings.TrimSpace(req.Code) == "" {
+		return StateRecord{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"field": "code"})
+	}
+	if strings.TrimSpace(req.State) == "" {
+		return StateRecord{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"field": "state"})
+	}
+
+	record, err := a.stateStore.Consume(ctx, req.State)
+	if err != nil {
+		return StateRecord{}, err
+	}
+	if !record.ExpiresAt.IsZero() && !a.clock().Before(record.ExpiresAt) {
+		return StateRecord{}, cloneWithProvider(ErrInvalidState, record.ProviderKey, map[string]any{"cause": "state expired"})
+	}
+	if req.ProviderKey != "" && normalizeProviderKey(req.ProviderKey) != normalizeProviderKey(record.ProviderKey) {
+		return StateRecord{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"cause": "provider mismatch"})
+	}
+	return record, nil
+}
+
+func (a *BrowserAuthenticator) callbackRedirectTarget(record StateRecord, req CallbackRequest) (string, error) {
+	if req.RedirectTo == "" {
+		return record.RedirectTo, nil
+	}
+	callbackRedirect, err := a.safeRedirect(req.RedirectTo)
+	if err != nil {
+		return "", err
+	}
+	if callbackRedirect != record.RedirectTo {
+		return "", cloneWithProvider(ErrInvalidState, record.ProviderKey, map[string]any{"cause": "redirect mismatch"})
+	}
+	return record.RedirectTo, nil
+}
+
+func (a *BrowserAuthenticator) callbackIdentity(ctx context.Context, provider *Provider, record StateRecord, req CallbackRequest) (ExternalIdentity, *auth.JWTClaims, error) {
 	tokenResponse, err := a.tokenExchanger.Exchange(ctx, provider.Config, provider.Metadata, req.Code, record.CodeVerifier)
 	if err != nil {
-		return BrowserSessionResult{}, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": err.Error()})
+		return ExternalIdentity{}, nil, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": err.Error()})
 	}
 	if strings.TrimSpace(tokenResponse.IDToken) == "" {
-		return BrowserSessionResult{}, cloneWithProvider(ErrInvalidIDToken, provider.Config.Key, map[string]any{"cause": "missing id_token"})
+		return ExternalIdentity{}, nil, cloneWithProvider(ErrInvalidIDToken, provider.Config.Key, map[string]any{"cause": "missing id_token"})
 	}
 
 	claims, err := provider.Validator.ValidateIDToken(ctx, tokenResponse.IDToken, record.Nonce)
 	if err != nil {
-		return BrowserSessionResult{}, err
+		return ExternalIdentity{}, nil, err
 	}
 
 	userInfo, err := a.fetchUserInfo(ctx, provider, tokenResponse)
 	if err != nil {
-		return BrowserSessionResult{}, err
+		return ExternalIdentity{}, nil, err
 	}
 
 	mapper := provider.Config.ClaimMapper
@@ -216,17 +289,23 @@ func (a *BrowserAuthenticator) CompleteCallback(ctx context.Context, req Callbac
 	}
 	identity, mappedClaims, err := mapper.MapClaims(ctx, provider.Config, claims, userInfo)
 	if err != nil {
-		return BrowserSessionResult{}, err
+		return ExternalIdentity{}, nil, err
 	}
+	return identity, mappedClaims, nil
+}
 
+func (a *BrowserAuthenticator) resolveLocalIdentity(ctx context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
 	localIdentity, decision, err := a.identityLinker.Resolve(ctx, identity)
 	if err != nil {
-		return BrowserSessionResult{}, err
+		return nil, decision, err
 	}
 	if localIdentity == nil {
-		return BrowserSessionResult{}, auth.ErrIdentityNotFound
+		return nil, decision, auth.ErrIdentityNotFound
 	}
+	return localIdentity, decision, nil
+}
 
+func (a *BrowserAuthenticator) buildSessionResult(provider *Provider, redirectTarget string, identity ExternalIdentity, mappedClaims *auth.JWTClaims, localIdentity auth.Identity, decision LinkingDecision) (BrowserSessionResult, error) {
 	resourceRoles := identity.ResourceRoles
 	if len(resourceRoles) == 0 && mappedClaims != nil {
 		resourceRoles = mappedClaims.Resources

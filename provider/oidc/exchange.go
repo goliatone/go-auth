@@ -41,7 +41,7 @@ func (f HTTPUserInfoFetcher) FetchUserInfo(ctx context.Context, provider Provide
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer closeBody(res.Body)
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("userinfo request failed with status %d", res.StatusCode)
 	}
@@ -79,7 +79,7 @@ func (e HTTPTokenExchanger) Exchange(ctx context.Context, provider ProviderConfi
 	if err != nil {
 		return TokenResponse{}, err
 	}
-	defer res.Body.Close()
+	defer closeBody(res.Body)
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return TokenResponse{}, ErrTokenExchangeFailed
 	}

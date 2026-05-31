@@ -102,7 +102,7 @@ func (c *jwksCache) fetch(ctx context.Context) (map[string]jwk, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer closeBody(res.Body)
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("jwks fetch failed with status %d", res.StatusCode)
 	}
