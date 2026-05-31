@@ -89,4 +89,23 @@ func (s *IdentifierStore) Upsert(ctx context.Context, userID, provider, identifi
 	return err
 }
 
+func (s *IdentifierStore) Delete(ctx context.Context, userID, provider, identifier string) error {
+	provider = strings.TrimSpace(provider)
+	identifier = strings.TrimSpace(identifier)
+	if provider == "" || identifier == "" {
+		return fmt.Errorf("identifier store: provider and identifier are required")
+	}
+
+	parsedID, err := uuid.Parse(strings.TrimSpace(userID))
+	if err != nil {
+		return fmt.Errorf("identifier store: invalid user ID: %w", err)
+	}
+
+	_, err = s.db.NewDelete().
+		Model((*IdentifierModel)(nil)).
+		Where("user_id = ? AND provider = ? AND identifier = ?", parsedID, provider, identifier).
+		Exec(ctx)
+	return err
+}
+
 var _ auth.IdentifierStore = (*IdentifierStore)(nil)
