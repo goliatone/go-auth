@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/goliatone/go-admin/admin"
 	auth "github.com/goliatone/go-auth"
 )
 
@@ -36,6 +37,9 @@ type ClaimPermissionResolver struct {
 	cfg ClaimPermissionConfig
 }
 
+// PermissionResolverFunc resolves effective go-admin permissions.
+type PermissionResolverFunc = admin.PermissionResolverFunc
+
 // NewClaimPermissionResolver builds a resolver suitable for
 // admin.GoAuthAuthorizerConfig.ResolvePermissions.
 func NewClaimPermissionResolver(cfg ClaimPermissionConfig) *ClaimPermissionResolver {
@@ -46,6 +50,35 @@ func NewClaimPermissionResolver(cfg ClaimPermissionConfig) *ClaimPermissionResol
 	cfg.RolePermissions = normalizePermissionMap(cfg.RolePermissions)
 	cfg.GroupPermissions = normalizePermissionMap(cfg.GroupPermissions)
 	return &ClaimPermissionResolver{cfg: cfg}
+}
+
+// ClaimPermissionResolverFunc returns ResolvePermissions as a function.
+func ClaimPermissionResolverFunc(cfg ClaimPermissionConfig) PermissionResolverFunc {
+	return NewClaimPermissionResolver(cfg).ResolvePermissions
+}
+
+// ComposePermissionResolvers combines IdP and host-local permission policies.
+// Any resolver failure is returned so go-admin denies custom permissions.
+func ComposePermissionResolvers(resolvers ...PermissionResolverFunc) PermissionResolverFunc {
+	filtered := make([]PermissionResolverFunc, 0, len(resolvers))
+	for _, resolver := range resolvers {
+		if resolver != nil {
+			filtered = append(filtered, resolver)
+		}
+	}
+	return func(ctx context.Context) ([]string, error) {
+		combined := map[string]struct{}{}
+		for _, resolver := range filtered {
+			permissions, err := resolver(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, permission := range compactStrings(permissions) {
+				combined[permission] = struct{}{}
+			}
+		}
+		return sortedPermissions(combined), nil
+	}
 }
 
 // ResolvePermissions resolves permissions for the current request context.
