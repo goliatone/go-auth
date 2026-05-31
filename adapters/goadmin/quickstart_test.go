@@ -31,6 +31,29 @@ func TestResolveProviderEntriesRejectsUnsafeLoginURL(t *testing.T) {
 	}
 }
 
+func TestResolveProviderEntriesRejectsAllDisabledStaticEntries(t *testing.T) {
+	_, err := resolveProviderEntries(nil, []oidc.ProviderInfo{
+		{Key: "auth0", Label: "Auth0", LoginURL: "/sso/login/auth0", DisabledReason: "maintenance"},
+		{Key: "okta", Label: "Okta", LoginURL: "/sso/login/okta", DisabledReason: "not available"},
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "at least one SSO provider must be enabled") {
+		t.Fatalf("expected enabled-provider error, got %v", err)
+	}
+}
+
+func TestResolveProviderEntriesAllowsMixedEnabledAndDisabledStaticEntries(t *testing.T) {
+	entries, err := resolveProviderEntries(nil, []oidc.ProviderInfo{
+		{Key: "auth0", Label: "Auth0", LoginURL: "/sso/login/auth0"},
+		{Key: "okta", Label: "Okta", LoginURL: "/sso/login/okta", DisabledReason: "not available"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("resolveProviderEntries: %v", err)
+	}
+	if len(entries) != 2 || entries[0].DisabledReason != "" || entries[1].DisabledReason == "" {
+		t.Fatalf("unexpected entries: %#v", entries)
+	}
+}
+
 func TestResolveProviderEntriesRejectsPartialProviderConfig(t *testing.T) {
 	_, err := resolveProviderEntries([]oidc.ProviderConfig{{Key: "auth0", RedirectURL: "http://app.example/callback"}}, nil, StaticProviderLoginURLBuilder("/admin/sso"))
 	if err == nil || !strings.Contains(err.Error(), "client ID") {

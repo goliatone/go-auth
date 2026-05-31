@@ -13,7 +13,7 @@ func TestModuleRouteContractDeclaresBrowserSSOUIRoutes(t *testing.T) {
 	if contract.Slug != ModuleID {
 		t.Fatalf("slug = %q, want %q", contract.Slug, ModuleID)
 	}
-	for _, key := range []string{RouteProviderList, RouteBeginLogin, RouteCallback, RouteLink, RouteLogout} {
+	for _, key := range []string{RouteProviderList, RouteBeginLogin, RouteCallback, RouteLink, RouteUnlink, RouteLogout} {
 		if contract.UIRoutes[key] == "" {
 			t.Fatalf("expected UI route %q in contract", key)
 		}
@@ -44,9 +44,11 @@ func TestModuleRegisterUsesPublicAndProtectedRouters(t *testing.T) {
 	assertRoute(t, publicRouter, "GET", "/admin/sso/login/:provider")
 	assertRoute(t, publicRouter, "GET", "/admin/sso/callback/:provider")
 	assertNoRoute(t, publicRouter, "POST", "/admin/sso/link/:provider")
+	assertNoRoute(t, publicRouter, "POST", "/admin/sso/unlink/:provider")
 	assertNoRoute(t, publicRouter, "POST", "/admin/sso/logout/:provider")
 
 	assertRoute(t, protectedRouter, "POST", "/admin/sso/link/:provider")
+	assertRoute(t, protectedRouter, "POST", "/admin/sso/unlink/:provider")
 	assertRoute(t, protectedRouter, "POST", "/admin/sso/logout/:provider")
 	assertNoRoute(t, protectedRouter, "GET", "/admin/sso/login/:provider")
 	assertNoRoute(t, protectedRouter, "GET", "/admin/sso/callback/:provider")

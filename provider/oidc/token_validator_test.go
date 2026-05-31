@@ -91,6 +91,23 @@ func TestTokenValidatorValidateIDTokenDefaultsAudienceToClientID(t *testing.T) {
 	}
 }
 
+func TestTokenValidatorValidateIDTokenRequiresIssuedAt(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	key := mustRSAKey(t)
+	issuer := "https://issuer.example/"
+	validator := newTestValidator(t, issuer, []jwk{rsaJWK("kid-1", key.PublicKey, "RS256", "sig", nil)}, now)
+
+	missingIssuedAt := signToken(t, key, "kid-1", jwt.MapClaims{
+		"iss": issuer,
+		"sub": "user-1",
+		"aud": "client",
+		"exp": now.Add(time.Hour).Unix(),
+	})
+	if _, err := validator.ValidateIDToken(context.Background(), missingIssuedAt, ""); !isInvalidOIDCToken(err) {
+		t.Fatalf("expected missing iat to fail ID-token validation, got %v", err)
+	}
+}
+
 func TestTokenValidatorRejectsMalformedWithFallbackError(t *testing.T) {
 	validator := newTestValidator(t, "https://issuer.example/", nil, time.Now())
 	_, err := validator.Validate("not-a-jwt")
@@ -216,6 +233,44 @@ func TestTokenValidatorRejectsAlgorithmsAndKeyUse(t *testing.T) {
 			t.Fatalf("expected invalid token error, got %v", err)
 		}
 	})
+}
+
+func TestTokenValidatorRejectsUnsupportedConfiguredAlgorithmAtSetup(t *testing.T) {
+	key := mustRSAKey(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwk{rsaJWK("kid-1", key.PublicKey, "RS256", "sig", nil)}})
+	}))
+	defer server.Close()
+
+	provider := testProviderConfig("https://issuer.example/")
+	provider.AllowedAlgorithms = []string{"ES256"}
+	_, err := NewTokenValidator(context.Background(), provider, DiscoveryMetadata{
+		Issuer:     "https://issuer.example/",
+		JWKSURI:    server.URL,
+		Algorithms: []string{"ES256"},
+	}, WithValidatorHTTPClient(server.Client()))
+	if err == nil || !strings.Contains(err.Error(), "configuration") {
+		t.Fatalf("expected unsupported configured algorithm setup error, got %v", err)
+	}
+}
+
+func TestTokenValidatorRejectsDiscoveryWithNoSupportedAlgorithmsAtSetup(t *testing.T) {
+	key := mustRSAKey(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwk{rsaJWK("kid-1", key.PublicKey, "RS256", "sig", nil)}})
+	}))
+	defer server.Close()
+
+	provider := testProviderConfig("https://issuer.example/")
+	provider.AllowedAlgorithms = nil
+	_, err := NewTokenValidator(context.Background(), provider, DiscoveryMetadata{
+		Issuer:     "https://issuer.example/",
+		JWKSURI:    server.URL,
+		Algorithms: []string{"ES256"},
+	}, WithValidatorHTTPClient(server.Client()))
+	if err == nil || !strings.Contains(err.Error(), "configuration") {
+		t.Fatalf("expected unsupported discovery algorithm setup error, got %v", err)
+	}
 }
 
 func TestTokenValidatorRefreshesJWKSForRotation(t *testing.T) {

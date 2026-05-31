@@ -131,6 +131,22 @@ func TestIdentityLinkerManualLinkAndUnlinkEvents(t *testing.T) {
 	}
 }
 
+func TestIdentityLinkerUnlinkDeletesIdentifierAndEmitsEvent(t *testing.T) {
+	linker, ids, _, sink := newTestLinker(t, linkerFixtures{})
+	userID := uuid.NewString()
+	identity := externalIdentity("subject-1", "person@example.com", true)
+
+	if err := linker.Unlink(context.Background(), userID, identity); err != nil {
+		t.Fatalf("Unlink returned error: %v", err)
+	}
+	if len(ids.deletes) != 1 || ids.deletes[0] != userID+"|oidc|subject-1" {
+		t.Fatalf("expected identifier delete, got %+v", ids.deletes)
+	}
+	if len(sink.events) != 1 || sink.events[0].EventType != auth.ActivityEventSSOUnlink {
+		t.Fatalf("expected unlink event, got %+v", sink.events)
+	}
+}
+
 type linkerFixtures struct {
 	allowSignup   bool
 	emailFallback EmailFallbackPolicy
@@ -191,6 +207,7 @@ func testUser(email string) *auth.User {
 type fakeIdentifierStore struct {
 	subjects map[string]string
 	upserts  []string
+	deletes  []string
 }
 
 func (s *fakeIdentifierStore) FindUserID(_ context.Context, provider, identifier string) (string, error) {
@@ -206,6 +223,11 @@ func (s *fakeIdentifierStore) FindUserID(_ context.Context, provider, identifier
 
 func (s *fakeIdentifierStore) Upsert(_ context.Context, userID, provider, identifier string) error {
 	s.upserts = append(s.upserts, userID+"|"+provider+"|"+identifier)
+	return nil
+}
+
+func (s *fakeIdentifierStore) Delete(_ context.Context, userID, provider, identifier string) error {
+	s.deletes = append(s.deletes, userID+"|"+provider+"|"+identifier)
 	return nil
 }
 

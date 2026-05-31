@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	auth "github.com/goliatone/go-auth"
@@ -148,10 +149,16 @@ func TestCallbackRecordsSafeFailureWithoutCookie(t *testing.T) {
 
 func TestProtectedLinkRequiresSessionClaimsAndCallsManualLinker(t *testing.T) {
 	linker := &spyManualLinker{}
+	verifier := &spyManualLinkVerifier{proof: ManualLinkProof{
+		ProviderKey: "auth0",
+		Subject:     "sub-1",
+		Metadata:    map[string]any{"method": "callback"},
+	}}
 	handlers, err := NewHandlers(HandlerConfig{
 		Browser:            stubBrowserFlow{},
 		RouteAuthenticator: &spyCookieAuthenticator{},
 		ManualLinker:       linker,
+		ManualLinkVerifier: verifier,
 	})
 	if err != nil {
 		t.Fatalf("NewHandlers: %v", err)
@@ -168,8 +175,118 @@ func TestProtectedLinkRequiresSessionClaimsAndCallsManualLinker(t *testing.T) {
 	if err := handlers.Link(c); err != nil {
 		t.Fatalf("Link: %v", err)
 	}
+	if verifier.userID != "user-1" || verifier.provider != "auth0" || verifier.subject != "sub-1" {
+		t.Fatalf("unexpected verifier call: %#v", verifier)
+	}
 	if linker.userID != "user-1" || linker.provider != "auth0" || linker.subject != "sub-1" {
 		t.Fatalf("unexpected link call: %#v", linker)
+	}
+	c.AssertExpectations(t)
+}
+
+func TestNewHandlersRejectsManualLinkerWithoutVerifier(t *testing.T) {
+	_, err := NewHandlers(HandlerConfig{
+		Browser:            stubBrowserFlow{},
+		RouteAuthenticator: &spyCookieAuthenticator{},
+		ManualLinker:       &spyManualLinker{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "proof verifier") {
+		t.Fatalf("expected proof verifier error, got %v", err)
+	}
+}
+
+func TestProtectedLinkRejectsUnverifiedSubject(t *testing.T) {
+	linker := &spyManualLinker{}
+	verifier := &spyManualLinkVerifier{err: errors.New("subject proof failed")}
+	handlers, err := NewHandlers(HandlerConfig{
+		Browser:            stubBrowserFlow{},
+		RouteAuthenticator: &spyCookieAuthenticator{},
+		ManualLinker:       linker,
+		ManualLinkVerifier: verifier,
+	})
+	if err != nil {
+		t.Fatalf("NewHandlers: %v", err)
+	}
+
+	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{UID: "user-1"})
+	c := router.NewMockContext()
+	c.ParamsM["provider"] = "auth0"
+	c.QueriesM["subject"] = "sub-1"
+	c.On("Context").Return(ctx)
+	c.On("FormValue", "subject", "sub-1").Return("sub-1")
+	c.On("JSON", http.StatusForbidden, map[string]string{"error": "sso account link failed"}).Return(nil)
+
+	if err := handlers.Link(c); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	if linker.userID != "" || linker.provider != "" || linker.subject != "" {
+		t.Fatalf("did not expect link call: %#v", linker)
+	}
+	c.AssertExpectations(t)
+}
+
+func TestProtectedLinkRejectsMismatchedProof(t *testing.T) {
+	linker := &spyManualLinker{}
+	verifier := &spyManualLinkVerifier{proof: ManualLinkProof{
+		ProviderKey: "okta",
+		Subject:     "sub-1",
+	}}
+	handlers, err := NewHandlers(HandlerConfig{
+		Browser:            stubBrowserFlow{},
+		RouteAuthenticator: &spyCookieAuthenticator{},
+		ManualLinker:       linker,
+		ManualLinkVerifier: verifier,
+	})
+	if err != nil {
+		t.Fatalf("NewHandlers: %v", err)
+	}
+
+	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{UID: "user-1"})
+	c := router.NewMockContext()
+	c.ParamsM["provider"] = "auth0"
+	c.QueriesM["subject"] = "sub-1"
+	c.On("Context").Return(ctx)
+	c.On("FormValue", "subject", "sub-1").Return("sub-1")
+	c.On("JSON", http.StatusForbidden, map[string]string{"error": "sso account link failed"}).Return(nil)
+
+	if err := handlers.Link(c); err != nil {
+		t.Fatalf("Link: %v", err)
+	}
+	if linker.userID != "" || linker.provider != "" || linker.subject != "" {
+		t.Fatalf("did not expect link call: %#v", linker)
+	}
+	c.AssertExpectations(t)
+}
+
+func TestProtectedUnlinkRequiresSessionClaimsAndCallsManualUnlinker(t *testing.T) {
+	unlinker := &spyManualUnlinker{}
+	activity := &recordingActivitySink{}
+	handlers, err := NewHandlers(HandlerConfig{
+		Browser:            stubBrowserFlow{},
+		RouteAuthenticator: &spyCookieAuthenticator{},
+		ManualUnlinker:     unlinker,
+		ActivitySink:       activity,
+	})
+	if err != nil {
+		t.Fatalf("NewHandlers: %v", err)
+	}
+
+	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{UID: "user-1"})
+	c := router.NewMockContext()
+	c.ParamsM["provider"] = "auth0"
+	c.QueriesM["subject"] = "sub-1"
+	c.On("Context").Return(ctx)
+	c.On("FormValue", "subject", "sub-1").Return("sub-1")
+	c.On("NoContent", http.StatusNoContent).Return(nil)
+
+	if err := handlers.Unlink(c); err != nil {
+		t.Fatalf("Unlink: %v", err)
+	}
+	if unlinker.userID != "user-1" || unlinker.provider != "auth0" || unlinker.subject != "sub-1" {
+		t.Fatalf("unexpected unlink call: %#v", unlinker)
+	}
+	if len(activity.events) != 1 || activity.events[0].EventType != auth.ActivityEventSSOUnlink {
+		t.Fatalf("expected unlink activity, got %#v", activity.events)
 	}
 	c.AssertExpectations(t)
 }
@@ -257,4 +374,35 @@ func (s *spyManualLinker) Link(_ context.Context, userID string, providerKey str
 	s.provider = providerKey
 	s.subject = subject
 	return nil
+}
+
+type spyManualUnlinker struct {
+	userID   string
+	provider string
+	subject  string
+}
+
+func (s *spyManualUnlinker) Unlink(_ context.Context, userID string, providerKey string, subject string) error {
+	s.userID = userID
+	s.provider = providerKey
+	s.subject = subject
+	return nil
+}
+
+type spyManualLinkVerifier struct {
+	userID   string
+	provider string
+	subject  string
+	proof    ManualLinkProof
+	err      error
+}
+
+func (s *spyManualLinkVerifier) VerifyManualLink(_ context.Context, userID string, providerKey string, subject string) (ManualLinkProof, error) {
+	s.userID = userID
+	s.provider = providerKey
+	s.subject = subject
+	if s.err != nil {
+		return ManualLinkProof{}, s.err
+	}
+	return s.proof, nil
 }

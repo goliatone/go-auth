@@ -96,3 +96,23 @@ func TestIdentifierStoreFindUserIDNotFound(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, repository.IsRecordNotFound(err))
 }
+
+func TestIdentifierStoreDelete(t *testing.T) {
+	store, bunDB, cleanup := setupIdentifierStore(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	userID := uuid.New().String()
+	_, err := bunDB.Exec("INSERT INTO users (id) VALUES (?)", userID)
+	require.NoError(t, err)
+
+	err = store.Upsert(ctx, userID, "auth0", "auth0|user-123")
+	require.NoError(t, err)
+
+	err = store.Delete(ctx, userID, "auth0", "auth0|user-123")
+	require.NoError(t, err)
+
+	_, err = store.FindUserID(ctx, "auth0", "auth0|user-123")
+	require.Error(t, err)
+	assert.True(t, repository.IsRecordNotFound(err))
+}
