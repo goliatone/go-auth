@@ -6,4 +6,5 @@ import "context"
 type IdentifierStore interface {
 	FindUserID(ctx context.Context, provider, identifier string) (string, error)
 	Upsert(ctx context.Context, userID, provider, identifier string) error
+	Delete(ctx context.Context, userID, provider, identifier string) error
 }
