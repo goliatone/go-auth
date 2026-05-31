@@ -156,6 +156,24 @@ func (l *DefaultIdentityLinker) RecordManualLink(ctx context.Context, userID str
 	l.emitWithMetadata(ctx, auth.ActivityEventSSOLinkManual, userID, identity, "manual_link", nil, metadata)
 }
 
+func (l *DefaultIdentityLinker) Unlink(ctx context.Context, userID string, identity ExternalIdentity) error {
+	if l == nil || l.identifiers == nil {
+		return ErrLinkingRejected
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" || strings.TrimSpace(identity.Provider) == "" || strings.TrimSpace(identity.Subject) == "" {
+		err := cloneWithProvider(ErrLinkingRejected, identity.Provider, map[string]any{"cause": "user, provider, and subject are required"})
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, userID, identity, LinkActionRejected, err)
+		return err
+	}
+	if err := l.identifiers.Delete(ctx, userID, identity.Provider, identity.Subject); err != nil {
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, userID, identity, LinkActionRejected, err)
+		return err
+	}
+	l.RecordUnlink(ctx, userID, identity, nil)
+	return nil
+}
+
 func (l *DefaultIdentityLinker) RecordUnlink(ctx context.Context, userID string, identity ExternalIdentity, metadata map[string]any) {
 	l.emitWithMetadata(ctx, auth.ActivityEventSSOUnlink, userID, identity, "unlink", nil, metadata)
 }
