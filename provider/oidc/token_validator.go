@@ -78,6 +78,14 @@ func NewTokenValidator(ctx context.Context, provider ProviderConfig, metadata Di
 	if _, ok := algSet["none"]; ok {
 		delete(algSet, "none")
 	}
+	if err := rejectUnsupportedConfiguredAlgorithms(provider, algSet); err != nil {
+		return nil, err
+	}
+	for alg := range algSet {
+		if !supportedSigningAlgorithm(alg) {
+			delete(algSet, alg)
+		}
+	}
 	if len(algSet) == 0 {
 		return nil, cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{"field": "allowed_algorithms"})
 	}
@@ -114,10 +122,22 @@ func (v *TokenValidator) ValidateIDToken(ctx context.Context, rawIDToken string,
 	if v == nil {
 		return nil, auth.ErrTokenMalformed
 	}
+	var (
+		claims jwt.MapClaims
+		err    error
+	)
 	if ctx != nil {
-		return v.validateMapClaims(ctx, rawIDToken, nonce, v.idTokenAudience())
+		claims, err = v.validateMapClaims(ctx, rawIDToken, nonce, v.idTokenAudience())
+	} else {
+		claims, err = v.validateMapClaims(context.Background(), rawIDToken, nonce, v.idTokenAudience())
 	}
-	return v.validateMapClaims(context.Background(), rawIDToken, nonce, v.idTokenAudience())
+	if err != nil {
+		return nil, err
+	}
+	if iat, err := claims.GetIssuedAt(); err != nil || iat == nil {
+		return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "iat claim is required"})
+	}
+	return claims, nil
 }
 
 func (v *TokenValidator) validateMapClaims(ctx context.Context, tokenString string, nonce string, audience []string) (jwt.MapClaims, error) {
@@ -153,6 +173,12 @@ func (v *TokenValidator) validateMapClaims(ctx context.Context, tokenString stri
 		if tokenNonce != nonce {
 			return nil, cloneWithProvider(ErrInvalidNonce, v.provider.Key, nil)
 		}
+	}
+	if _, ok := claims["iat"]; !ok {
+		return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "issued-at is required"})
+	}
+	if issuedAt, err := claims.GetIssuedAt(); err != nil || issuedAt == nil {
+		return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "issued-at is required"})
 	}
 
 	return claims, nil
@@ -261,6 +287,26 @@ func allowedAlgorithmSet(provider ProviderConfig, metadata DiscoveryMetadata) ma
 		}
 	}
 	return out
+}
+
+func rejectUnsupportedConfiguredAlgorithms(provider ProviderConfig, algSet map[string]struct{}) error {
+	if len(provider.AllowedAlgorithms) == 0 {
+		return nil
+	}
+	for alg := range algSet {
+		if !supportedSigningAlgorithm(alg) {
+			return cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{
+				"field": "allowed_algorithms",
+				"alg":   alg,
+				"cause": "unsupported signing algorithm",
+			})
+		}
+	}
+	return nil
+}
+
+func supportedSigningAlgorithm(alg string) bool {
+	return strings.HasPrefix(alg, "RS") || strings.HasPrefix(alg, "PS")
 }
 
 func mapTokenClaimsToAuth(claims jwt.MapClaims) *auth.JWTClaims {
