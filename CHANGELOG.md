@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.44.1](https://github.com/goliatone/go-auth/compare/v0.44.0...v0.44.1) - (2026-05-31)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Code quality ([2a33ce2](https://github.com/goliatone/go-auth/commit/2a33ce284ca7cb4e907fd0acd405d695d598c0f4))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.44.1 ([2c90697](https://github.com/goliatone/go-auth/commit/2c90697669c21b06072686798eae18615d2123b3))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Http helpers ([55dd4b4](https://github.com/goliatone/go-auth/commit/55dd4b44e9883a29ac7777a42b7862bae1be3c10))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.44.0 ([09c8f95](https://github.com/goliatone/go-auth/commit/09c8f9515418828e082edaa22023e934e6e8364c))  - (goliatone)
+
 # [0.44.0](https://github.com/goliatone/go-auth/compare/v0.43.0...v0.44.0) - (2026-05-31)
 
 ## <!-- 13 -->📦 Bumps
