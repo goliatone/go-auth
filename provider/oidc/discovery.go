@@ -74,7 +74,7 @@ func Discover(ctx context.Context, provider ProviderConfig, client *http.Client)
 	if err != nil {
 		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": err.Error()})
 	}
-	defer res.Body.Close()
+	defer closeBody(res.Body)
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"status": res.StatusCode})

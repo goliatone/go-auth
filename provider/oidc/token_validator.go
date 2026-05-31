@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	stderrors "errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -75,9 +74,7 @@ func NewTokenValidator(ctx context.Context, provider ProviderConfig, metadata Di
 	}
 
 	algSet := allowedAlgorithmSet(provider, metadata)
-	if _, ok := algSet["none"]; ok {
-		delete(algSet, "none")
-	}
+	delete(algSet, "none")
 	if err := rejectUnsupportedConfiguredAlgorithms(provider, algSet); err != nil {
 		return nil, err
 	}
@@ -361,7 +358,3 @@ type IDTokenValidator interface {
 }
 
 var _ auth.TokenValidator = (*TokenValidator)(nil)
-
-func terminalOIDCError(providerKey, cause string) error {
-	return cloneWithProvider(ErrInvalidIDToken, providerKey, map[string]any{"cause": fmt.Sprintf("%s", cause)})
-}

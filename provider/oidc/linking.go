@@ -71,50 +71,49 @@ func (l *DefaultIdentityLinker) Resolve(ctx context.Context, identity ExternalId
 		return nil, LinkingDecision{Action: LinkActionRejected}, err
 	}
 
-	userID, err := l.identifiers.FindUserID(ctx, provider, subject)
-	if err == nil && strings.TrimSpace(userID) != "" {
-		user, err := l.users.GetByIdentifier(ctx, userID)
-		if err != nil {
-			if isNotFound(err) {
-				err = duplicateSubjectError(provider, subject)
-			}
-			l.emit(ctx, auth.ActivityEventSSOLinkRejected, userID, identity, LinkActionRejected, err)
-			return nil, LinkingDecision{Action: LinkActionRejected, UserID: userID}, err
-		}
-		decision := LinkingDecision{Action: LinkActionExisting, UserID: user.ID.String()}
-		return auth.NewIdentityFromUser(user), decision, nil
-	}
-	if err != nil && !isNotFound(err) {
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
-		return nil, LinkingDecision{Action: LinkActionRejected}, err
-	}
-
-	if user, decision, linked, err := l.tryEmailFallback(ctx, identity); err != nil || linked {
+	user, decision, found, err := l.resolveSubject(ctx, identity, provider, subject)
+	if err != nil || found {
 		if err != nil {
 			return nil, decision, err
 		}
 		return auth.NewIdentityFromUser(user), decision, nil
 	}
 
-	if !l.allowSignup {
-		err := auth.ErrSignupDisabled
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
-		return nil, LinkingDecision{Action: LinkActionRejected}, err
+	user, decision, found, err = l.tryEmailFallback(ctx, identity)
+	if err != nil || found {
+		if err != nil {
+			return nil, decision, err
+		}
+		return auth.NewIdentityFromUser(user), decision, nil
 	}
 
-	user := l.userFromIdentity(identity)
-	created, err := l.users.Create(ctx, user)
+	return l.createLinkedUser(ctx, identity, provider, subject)
+}
+
+func (l *DefaultIdentityLinker) resolveSubject(ctx context.Context, identity ExternalIdentity, provider string, subject string) (*auth.User, LinkingDecision, bool, error) {
+	userID, err := l.identifiers.FindUserID(ctx, provider, subject)
 	if err != nil {
+		if isNotFound(err) {
+			return nil, LinkingDecision{}, false, nil
+		}
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
-		return nil, LinkingDecision{Action: LinkActionRejected}, err
+		return nil, LinkingDecision{Action: LinkActionRejected}, false, err
 	}
-	if err := l.identifiers.Upsert(ctx, created.ID.String(), provider, subject); err != nil {
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, created.ID.String(), identity, LinkActionRejected, err)
-		return nil, LinkingDecision{Action: LinkActionRejected, UserID: created.ID.String()}, err
+	if strings.TrimSpace(userID) == "" {
+		return nil, LinkingDecision{}, false, nil
 	}
-	decision := LinkingDecision{Action: LinkActionCreated, UserID: created.ID.String()}
-	l.emit(ctx, auth.ActivityEventSSOLinkAutomatic, created.ID.String(), identity, LinkActionCreated, nil)
-	return auth.NewIdentityFromUser(created), decision, nil
+
+	user, err := l.users.GetByIdentifier(ctx, userID)
+	if err != nil {
+		if isNotFound(err) {
+			err = duplicateSubjectError(provider, subject)
+		}
+		decision := LinkingDecision{Action: LinkActionRejected, UserID: userID}
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, userID, identity, LinkActionRejected, err)
+		return nil, decision, false, err
+	}
+	decision := LinkingDecision{Action: LinkActionExisting, UserID: user.ID.String()}
+	return user, decision, true, nil
 }
 
 func (l *DefaultIdentityLinker) tryEmailFallback(ctx context.Context, identity ExternalIdentity) (*auth.User, LinkingDecision, bool, error) {
@@ -143,14 +142,38 @@ func (l *DefaultIdentityLinker) tryEmailFallback(ctx context.Context, identity E
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, err)
 		return nil, decision, false, err
 	}
-	if err := l.identifiers.Upsert(ctx, user.ID.String(), identity.Provider, identity.Subject); err != nil {
+	upsertErr := l.identifiers.Upsert(ctx, user.ID.String(), identity.Provider, identity.Subject)
+	if upsertErr != nil {
 		decision := LinkingDecision{Action: LinkActionRejected, UserID: user.ID.String()}
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, err)
-		return nil, decision, false, err
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, upsertErr)
+		return nil, decision, false, upsertErr
 	}
 	decision := LinkingDecision{Action: LinkActionEmailFallback, UserID: user.ID.String()}
 	l.emit(ctx, auth.ActivityEventSSOLinkAutomatic, user.ID.String(), identity, LinkActionEmailFallback, nil)
 	return user, decision, true, nil
+}
+
+func (l *DefaultIdentityLinker) createLinkedUser(ctx context.Context, identity ExternalIdentity, provider string, subject string) (auth.Identity, LinkingDecision, error) {
+	if !l.allowSignup {
+		err := auth.ErrSignupDisabled
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
+		return nil, LinkingDecision{Action: LinkActionRejected}, err
+	}
+
+	user := l.userFromIdentity(identity)
+	created, err := l.users.Create(ctx, user)
+	if err != nil {
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
+		return nil, LinkingDecision{Action: LinkActionRejected}, err
+	}
+	upsertErr := l.identifiers.Upsert(ctx, created.ID.String(), provider, subject)
+	if upsertErr != nil {
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, created.ID.String(), identity, LinkActionRejected, upsertErr)
+		return nil, LinkingDecision{Action: LinkActionRejected, UserID: created.ID.String()}, upsertErr
+	}
+	decision := LinkingDecision{Action: LinkActionCreated, UserID: created.ID.String()}
+	l.emit(ctx, auth.ActivityEventSSOLinkAutomatic, created.ID.String(), identity, LinkActionCreated, nil)
+	return auth.NewIdentityFromUser(created), decision, nil
 }
 
 func (l *DefaultIdentityLinker) RecordManualLink(ctx context.Context, userID string, identity ExternalIdentity, metadata map[string]any) {
