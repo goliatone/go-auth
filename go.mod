@@ -13,7 +13,7 @@ require (
 	github.com/goliatone/go-featuregate v0.6.1
 	github.com/goliatone/go-logger v0.8.0
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.15.1
+	github.com/goliatone/go-repository-bun v0.16.1
 	github.com/goliatone/go-router v0.59.0
 	github.com/goliatone/hashid v0.2.2
 	github.com/google/uuid v1.6.0
