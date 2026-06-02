@@ -12,8 +12,8 @@ const (
 	TextCodeOIDCInvalidState     = "OIDC_INVALID_STATE"
 	TextCodeOIDCInvalidNonce     = "OIDC_INVALID_NONCE"
 	TextCodeOIDCUnsafeRedirect   = "OIDC_UNSAFE_REDIRECT"
-	TextCodeOIDCTokenExchange    = "OIDC_TOKEN_EXCHANGE_FAILED"
-	TextCodeOIDCInvalidIDToken   = "OIDC_INVALID_ID_TOKEN"
+	TextCodeOIDCTokenExchange    = "OIDC_TOKEN_EXCHANGE_FAILED" // #nosec G101 -- Error text code, not a credential.
+	TextCodeOIDCInvalidIDToken   = "OIDC_INVALID_ID_TOKEN"      // #nosec G101 -- Error text code, not a credential.
 	TextCodeOIDCUserInfoFailed   = "OIDC_USERINFO_FAILED"
 	TextCodeOIDCLinkingRejected  = "OIDC_LINKING_REJECTED"
 	TextCodeOIDCDuplicateSubject = "OIDC_DUPLICATE_SUBJECT"
