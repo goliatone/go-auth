@@ -1,12 +1,12 @@
 module github.com/goliatone/go-auth/adapters/goadmin
 
-go 1.26.2
+go 1.26.5
 
 require (
-	github.com/goliatone/go-admin v0.82.0
-	github.com/goliatone/go-admin/quickstart v0.82.0
-	github.com/goliatone/go-auth v0.43.0
-	github.com/goliatone/go-router v0.59.0
+	github.com/goliatone/go-admin v0.121.4
+	github.com/goliatone/go-admin/quickstart v0.121.4
+	github.com/goliatone/go-auth v0.44.1
+	github.com/goliatone/go-router v0.61.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -23,26 +23,25 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.41.0 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.5 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.5 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.16 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.16 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.8.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.16 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.22 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.13 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.12 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.5 // indirect
-	github.com/aws/smithy-go v1.24.0 // indirect
-	github.com/aymerick/douceur v0.2.0 // indirect
+	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chromedp/cdproto v0.0.0-20260405000525-47a8ff65b46a // indirect
 	github.com/chromedp/chromedp v0.15.1 // indirect
@@ -84,43 +83,42 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	github.com/goliatone/go-auth/adapters/featuregate v0.43.0 // indirect
-	github.com/goliatone/go-cms v0.54.1 // indirect
-	github.com/goliatone/go-command v0.19.0 // indirect
+	github.com/goliatone/go-auth/adapters/featuregate v0.44.1 // indirect
+	github.com/goliatone/go-cms v0.60.2 // indirect
+	github.com/goliatone/go-command v0.24.1 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
-	github.com/goliatone/go-config v0.13.0 // indirect
-	github.com/goliatone/go-crud v0.23.0 // indirect
-	github.com/goliatone/go-crud/gql v0.23.0 // indirect
-	github.com/goliatone/go-dashboard v0.12.0 // indirect
-	github.com/goliatone/go-errors v0.10.0 // indirect
-	github.com/goliatone/go-export v0.8.0 // indirect
+	github.com/goliatone/go-config v0.14.0 // indirect
+	github.com/goliatone/go-crud v0.25.0 // indirect
+	github.com/goliatone/go-crud/gql v0.25.0 // indirect
+	github.com/goliatone/go-dashboard v0.14.0 // indirect
+	github.com/goliatone/go-errors v0.12.0 // indirect
+	github.com/goliatone/go-export v0.9.0 // indirect
 	github.com/goliatone/go-export/adapters/template/go-template v0.8.0 // indirect
 	github.com/goliatone/go-featuregate v0.6.1 // indirect
-	github.com/goliatone/go-formgen v0.20.1 // indirect
+	github.com/goliatone/go-formgen v0.31.0 // indirect
 	github.com/goliatone/go-i18n v0.5.0 // indirect
 	github.com/goliatone/go-job v0.19.0 // indirect
-	github.com/goliatone/go-logger v0.8.0 // indirect
-	github.com/goliatone/go-masker v0.1.0 // indirect
+	github.com/goliatone/go-logger v0.9.0 // indirect
+	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-notifications v0.14.0 // indirect
-	github.com/goliatone/go-options v0.7.1 // indirect
+	github.com/goliatone/go-options v0.7.2 // indirect
 	github.com/goliatone/go-persistence-bun v0.16.1 // indirect
 	github.com/goliatone/go-print v0.4.1 // indirect
-	github.com/goliatone/go-repository-bun v0.15.1 // indirect
+	github.com/goliatone/go-repository-bun v0.16.1 // indirect
 	github.com/goliatone/go-repository-cache v0.7.1 // indirect
-	github.com/goliatone/go-search v0.8.0 // indirect
-	github.com/goliatone/go-search/adapters/goadmin v0.8.0 // indirect
+	github.com/goliatone/go-search v0.14.5 // indirect
+	github.com/goliatone/go-search/adapters/goadmin v0.14.5 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/goliatone/go-template v0.3.1 // indirect
 	github.com/goliatone/go-theme v0.3.0 // indirect
 	github.com/goliatone/go-uploader v0.4.0 // indirect
-	github.com/goliatone/go-urlkit v0.6.0 // indirect
-	github.com/goliatone/go-users v0.24.0 // indirect
+	github.com/goliatone/go-urlkit v0.7.0 // indirect
+	github.com/goliatone/go-users v0.24.1 // indirect
 	github.com/goliatone/hashid v0.2.2 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/pprof v0.0.0-20251208000136-3d256cb9ff16 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/css v1.0.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -143,7 +141,6 @@ require (
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mattn/go-runewidth v0.0.21 // indirect
 	github.com/mattn/go-sqlite3 v1.14.34 // indirect
-	github.com/microcosm-cc/bluemonday v1.0.26 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
@@ -189,18 +186,18 @@ require (
 	github.com/xuri/efp v0.0.0-20231025114914-d1ff6096ae53 // indirect
 	github.com/xuri/excelize/v2 v2.8.1 // indirect
 	github.com/xuri/nfp v0.0.0-20230919160717-d98342af3f05 // indirect
-	github.com/yuin/goldmark v1.7.13 // indirect
+	github.com/yuin/goldmark v1.7.17 // indirect
 	go.beyondstorage.io/v5 v5.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
