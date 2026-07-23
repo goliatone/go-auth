@@ -6,11 +6,9 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -34,7 +32,7 @@ func TestDiscoverRejectsIssuerMismatch(t *testing.T) {
 		ClientID:    "client",
 		RedirectURL: "https://app.example/callback",
 	}, server.Client())
-	if err == nil || !strings.Contains(err.Error(), "oidc discovery failed") {
+	if !errorHasTextCode(err, TextCodeOIDCDiscoveryFailed) {
 		t.Fatalf("expected discovery issuer mismatch error, got %v", err)
 	}
 }
@@ -249,7 +247,7 @@ func TestTokenValidatorRejectsUnsupportedConfiguredAlgorithmAtSetup(t *testing.T
 		JWKSURI:    server.URL,
 		Algorithms: []string{"ES256"},
 	}, WithValidatorHTTPClient(server.Client()))
-	if err == nil || !strings.Contains(err.Error(), "configuration") {
+	if !errorHasTextCode(err, TextCodeOIDCInvalidConfig) {
 		t.Fatalf("expected unsupported configured algorithm setup error, got %v", err)
 	}
 }
@@ -268,7 +266,7 @@ func TestTokenValidatorRejectsDiscoveryWithNoSupportedAlgorithmsAtSetup(t *testi
 		JWKSURI:    server.URL,
 		Algorithms: []string{"ES256"},
 	}, WithValidatorHTTPClient(server.Client()))
-	if err == nil || !strings.Contains(err.Error(), "configuration") {
+	if !errorHasTextCode(err, TextCodeOIDCInvalidConfig) {
 		t.Fatalf("expected unsupported discovery algorithm setup error, got %v", err)
 	}
 }
@@ -378,9 +376,5 @@ func isInvalidOIDCToken(err error) bool {
 	if auth.IsMalformedError(err) {
 		return false
 	}
-	var rich interface{ TextCodeValue() string }
-	if errors.As(err, &rich) {
-		return rich.TextCodeValue() == TextCodeOIDCInvalidIDToken
-	}
-	return strings.Contains(err.Error(), "oidc id token is invalid")
+	return errorHasTextCode(err, TextCodeOIDCInvalidIDToken)
 }

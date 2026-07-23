@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -46,7 +45,7 @@ func TestBrowserAuthenticatorRejectsUnsafeRedirects(t *testing.T) {
 		ProviderKey: "test",
 		RedirectTo:  "https://evil.example/admin",
 	})
-	if err == nil || !strings.Contains(err.Error(), "redirect target") {
+	if !errorHasTextCode(err, TextCodeOIDCUnsafeRedirect) {
 		t.Fatalf("expected unsafe redirect error, got %v", err)
 	}
 }
@@ -67,7 +66,7 @@ func TestBrowserAuthenticatorRejectsInvalidProviderSetup(t *testing.T) {
 		}),
 		TokenIssuer: tokenIssuerFunc(func(auth.Identity, map[string]string) (string, error) { return "local-token", nil }),
 	})
-	if err == nil || !strings.Contains(err.Error(), "oidc configuration is invalid") {
+	if !errorHasTextCode(err, TextCodeOIDCInvalidConfig) {
 		t.Fatalf("expected invalid provider setup error, got %v", err)
 	}
 }
@@ -168,7 +167,7 @@ func TestBrowserAuthenticatorCallbackFailures(t *testing.T) {
 	t.Run("missing code", func(t *testing.T) {
 		authenticator, _ := newBrowserTestAuthenticator(t, now, nil)
 		_, err := authenticator.CompleteCallback(context.Background(), CallbackRequest{ProviderKey: "test", State: "state"})
-		if err == nil || !strings.Contains(err.Error(), "state is invalid") {
+		if !errorHasTextCode(err, TextCodeOIDCInvalidState) {
 			t.Fatalf("expected invalid state error, got %v", err)
 		}
 	})
@@ -176,7 +175,7 @@ func TestBrowserAuthenticatorCallbackFailures(t *testing.T) {
 	t.Run("invalid state", func(t *testing.T) {
 		authenticator, _ := newBrowserTestAuthenticator(t, now, nil)
 		_, err := authenticator.CompleteCallback(context.Background(), CallbackRequest{ProviderKey: "test", Code: "code", State: "missing"})
-		if err == nil || !strings.Contains(err.Error(), "state is invalid") {
+		if !errorHasTextCode(err, TextCodeOIDCInvalidState) {
 			t.Fatalf("expected invalid state error, got %v", err)
 		}
 	})
@@ -195,7 +194,7 @@ func TestBrowserAuthenticatorCallbackFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = authenticator.CompleteCallback(context.Background(), CallbackRequest{ProviderKey: "test", Code: "code", State: "state"})
-		if err == nil || !strings.Contains(err.Error(), "state is invalid") {
+		if !errorHasTextCode(err, TextCodeOIDCInvalidState) {
 			t.Fatalf("expected expired state error, got %v", err)
 		}
 	})
@@ -214,7 +213,7 @@ func TestBrowserAuthenticatorCallbackFailures(t *testing.T) {
 			return TokenResponse{IDToken: idToken}, nil
 		})
 		_, err = authenticator.CompleteCallback(context.Background(), CallbackRequest{ProviderKey: "test", Code: "code", State: begin.State})
-		if err == nil || !strings.Contains(err.Error(), "nonce is invalid") {
+		if !errorHasTextCode(err, TextCodeOIDCInvalidNonce) {
 			t.Fatalf("expected nonce error, got %v", err)
 		}
 	})
@@ -240,7 +239,7 @@ func TestBrowserAuthenticatorCallbackFailures(t *testing.T) {
 			State:       begin.State,
 			RedirectTo:  "/other",
 		})
-		if err == nil || !strings.Contains(err.Error(), "state is invalid") {
+		if !errorHasTextCode(err, TextCodeOIDCInvalidState) {
 			t.Fatalf("expected state redirect mismatch error, got %v", err)
 		}
 		if exchanged {

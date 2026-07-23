@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"testing"
 
 	auth "github.com/goliatone/go-auth"
@@ -52,7 +51,7 @@ func TestIdentityLinkerRejectsDisabledSignup(t *testing.T) {
 	linker, _, _, sink := newTestLinker(t, linkerFixtures{})
 
 	_, decision, err := linker.Resolve(context.Background(), externalIdentity("subject-1", "person@example.com", true))
-	if !authErrorContains(err, auth.TextCodeSignupDisabled) || decision.Action != LinkActionRejected {
+	if !errorHasTextCode(err, auth.TextCodeSignupDisabled) || decision.Action != LinkActionRejected {
 		t.Fatalf("expected signup disabled rejection, decision=%+v err=%v", decision, err)
 	}
 	if len(sink.events) != 1 || sink.events[0].EventType != auth.ActivityEventSSOLinkRejected {
@@ -96,7 +95,7 @@ func TestIdentityLinkerRejectsUnverifiedEmailFallback(t *testing.T) {
 	})
 
 	_, decision, err := linker.Resolve(context.Background(), externalIdentity("subject-1", "person@example.com", false))
-	if err == nil || !strings.Contains(err.Error(), "linking was rejected") || decision.Action != LinkActionRejected {
+	if !errorHasTextCode(err, TextCodeOIDCLinkingRejected) || decision.Action != LinkActionRejected {
 		t.Fatalf("expected unverified fallback rejection, decision=%+v err=%v", decision, err)
 	}
 	if len(sink.events) != 1 || sink.events[0].EventType != auth.ActivityEventSSOLinkRejected {
@@ -110,7 +109,7 @@ func TestIdentityLinkerRejectsDuplicateSubjectMapping(t *testing.T) {
 	})
 
 	_, _, err := linker.Resolve(context.Background(), externalIdentity("subject-1", "person@example.com", true))
-	if err == nil || !strings.Contains(err.Error(), "subject maps to more than one user") {
+	if !errorHasTextCode(err, TextCodeOIDCDuplicateSubject) {
 		t.Fatalf("expected duplicate subject error, got %v", err)
 	}
 }
@@ -254,8 +253,4 @@ func (u *fakeUsers) Create(_ context.Context, record *auth.User, _ ...bunrepo.In
 	}
 	u.created = append(u.created, record)
 	return record, nil
-}
-
-func authErrorContains(err error, code string) bool {
-	return err != nil && strings.Contains(err.Error(), code)
 }

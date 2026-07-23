@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/goliatone/go-auth"
+	goerrors "github.com/goliatone/go-errors"
 	repository "github.com/goliatone/go-repository-bun"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
@@ -182,7 +183,9 @@ func TestFinalizePasswordResetHandler_RejectsTemporaryUserWithoutAtomicCleanup(t
 	err := handler.Execute(ctx, event)
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "temporary password reset cleanup")
+	var richErr *goerrors.Error
+	require.ErrorAs(t, err, &richErr)
+	require.Equal(t, "users repository does not support temporary password reset cleanup", richErr.Message)
 	require.False(t, users.resetPasswordTxCalled)
 	require.False(t, users.resetAndClearCalled)
 	resets.AssertExpectations(t)

@@ -375,8 +375,7 @@ func TestTokenService_Validate(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, claims)
-		// Should be wrapped as ErrTokenMalformed
-		assert.Contains(t, err.Error(), "token is malformed")
+		assert.True(t, auth.IsMalformedError(err))
 	})
 
 	t.Run("returns error for token with wrong signing method", func(t *testing.T) {

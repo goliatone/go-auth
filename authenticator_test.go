@@ -114,7 +114,7 @@ func TestLogin(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Empty(t, token)
-		assert.Contains(t, err.Error(), "identity not found")
+		assert.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 
 	t.Run("Login blocked when status inactive", func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestImpersonate(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Empty(t, token)
-		assert.Contains(t, err.Error(), "identity not found")
+		assert.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 
 	t.Run("Impersonation blocked when status inactive", func(t *testing.T) {
@@ -294,7 +294,7 @@ func TestSessionFromToken(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, session)
-		assert.Contains(t, err.Error(), "expired")
+		assert.True(t, auth.IsTokenExpiredError(err))
 	})
 
 	t.Run("Legacy token format rejected", func(t *testing.T) {
@@ -441,7 +441,7 @@ func TestIdentityFromSession(t *testing.T) {
 
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "identity not found")
+		assert.ErrorIs(t, err, auth.ErrIdentityNotFound)
 	})
 }
 

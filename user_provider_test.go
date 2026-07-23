@@ -72,14 +72,15 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 	})
 
 	t.Run("User not found", func(t *testing.T) {
+		lookupErr := errors.New("user not found")
 		mockTracker.On("GetByIdentifier", ctx, "nonexistent@example.com").
-			Return(nil, errors.New("user not found")).Once()
+			Return(nil, lookupErr).Once()
 
 		identity, err := provider.VerifyIdentity(ctx, "nonexistent@example.com", "password123")
 
 		assert.Error(t, err)
 		assert.Nil(t, identity)
-		assert.Contains(t, err.Error(), "user not found")
+		assert.ErrorIs(t, err, lookupErr)
 
 		mockTracker.AssertExpectations(t)
 	})
