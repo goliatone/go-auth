@@ -1,0 +1,129 @@
+# Supabase provider
+
+`provider/supabase` adds Supabase-specific behavior over hardened generic OIDC.
+It keeps passwords, MFA challenges, recovery, token issuance, business roles,
+application assignments, and consent presentation in their owning systems.
+
+## Runtime boundaries
+
+- Generic OIDC owns discovery, PKCE, state, nonce, exchange, issuer/audience
+  validation, signatures, and JWKS.
+- Provider sessions own encrypted token custody, refresh locking, rotation
+  ambiguity, persistence, opaque cookies, and local revocation.
+- Supabase owns bounded remote refresh, sign-out, identity, factor, and OAuth
+  decision calls.
+- `LifecycleCoordinator` owns local-first security ordering and calls
+  freshness invalidation with a stable operation ID.
+- Backoffice owns permission checks, public login/consent presentation, CSRF,
+  application registry, reconciliation jobs, and durable audit storage.
+
+## Required configuration
+
+Load these values through host configuration and secret management:
+
+| Input | Purpose | Required owner |
+|---|---|---|
+| Project URL, issuer, discovery URL | Exact identity project trust boundary | Identity provider owner |
+| OAuth client ID/secret and auth method | Backoffice confidential OIDC client | OAuth client owner |
+| Exact callback and authorization UI URLs | Login and public consent entry | Backoffice owner |
+| ID/access audiences and RS256/ES256 algorithms | Token trust policy | Identity/security owner |
+| Publishable key | User-bound recovery and authorization calls | Identity provider owner |
+| Admin credential | Narrow server-only lifecycle/factor calls | Privileged credential owner |
+| Authorization proof key | Shared 32–128 byte HMAC key for details/decision continuity | Backoffice secret owner |
+| Optional management credential | Deployment/control-plane checks only | Platform owner |
+| Exact return URLs and OAuth client policies | Recovery and client redirect policy | Application registry owner |
+| Environment and API versions | Deployment isolation and provider contract | Release owner |
+
+Admin, publishable, OAuth client, and management values must be distinct.
+Construction fails on insecure production URLs, duplicate values, mixed
+credentials, weak algorithms, unknown scopes, or open return policies. HTTP is
+available only for explicit loopback development.
+
+## Sign-in and provider sessions
+
+Call `Config.OIDCConfig()` and use `Config.PrincipalMapper(...)` as the OIDC
+principal mapper. Use provider-session mode and wire `SessionClient` as the
+manager's refresher, reconciler, and remote revocation hook. The session
+manager—not Supabase—owns refresh coordination and token persistence.
+
+Refresh validates the new access token and binds a returned ID token to it.
+Subject, provider session, issuer, client, audiences, assurance, methods,
+authentication time, issue time, expiry, the `authenticated` user role, and
+the configured scope allowlist must remain valid. Supabase cannot return
+rotated token material after an ambiguous refresh, so reconciliation is
+explicitly `unknown` and the session manager requires fresh authentication.
+
+Current and all-session sign-out are supported. Named remote session sign-out
+is typed `unsupported`. Sign-out revokes refresh/session state, but an issued
+access JWT can remain valid until its recorded expiry; privileged actions must
+also enforce account and authorization freshness. Logout transport requires a
+validated access context matching the configured issuer/client/audience and,
+for the provider-session hook, the stored subject and provider session ID.
+
+## Lifecycle and factors
+
+Every call requires `AuthorizedOperationContext` containing a stable operation
+ID, exact action, host permission, actor, target, reason, environment, and
+request correlation. Invalid or mismatched proof fails before transport.
+
+Use `LifecycleCoordinator` for suspension and factor removal. Its
+`ProviderSessionLocalInvalidator` makes local sessions unusable without
+invoking a remote hook. Only then does the coordinator call Supabase once and
+deliver freshness invalidation. Results retain separate local, remote, and
+freshness outcomes. Remote or consumer failure never restores local access.
+
+The built-in result cache coalesces and replays attempts within one process.
+Multi-replica hosts must durably persist operation/results and reconcile
+pending outcomes using the same operation ID. `ActivitySink` remains
+best-effort audit telemetry and is not a consistency mechanism.
+
+Factor removal requires `Operation.Target.ObjectID` to match `FactorID`.
+Supabase re-reads the authoritative factor list immediately before deletion;
+caller state/count fields are optional concurrency expectations, never security
+inputs. Local invalidation is conservative for every factor-removal attempt so
+a stale hint cannot bypass verified-factor ordering. Last-verified-factor
+removal is denied unless the host explicitly authorizes it.
+
+## Authorization UI
+
+The public Backoffice entry stores only a bounded `AuthorizationContinuation`
+through central login. Details, approve, and deny require:
+
+- the same validated central Supabase provider user/session;
+- an internal `UserTokenProvider` target/capability;
+- a registered client and allowed scope set;
+- the server-held HMAC proof returned by details retrieval;
+- host-verified CSRF bound to action, client, requested/granted scopes, provider
+  subject/session, environment, and details expiry; and
+- an exact registered redirect returned by Supabase.
+
+These calls use the publishable key plus the current provider user token.
+Admin, management, and Backoffice-local credentials cannot substitute. The
+decision redirect is redacted from formatting/logging and omitted from JSON;
+browser code must explicitly call `HTTPRedirectURL()`.
+
+## Errors, retries, and audit
+
+Responses are size-bounded, redirects are rejected, request metadata is
+validated, and error bodies are never copied into public errors. Reads retry
+at most three times with bounded backoff. A mutation is retryable only when its
+method contract is proven safe and it carries an idempotency key. Unsafe
+timeouts and `5xx` responses are `pending`/ambiguous and are not replayed
+blindly. Successful responses that cannot be read or decoded after an unsafe
+mutation are also ambiguous because the provider may already have committed.
+
+Audit records may include actor, target, action, result, reason, request ID,
+provider session correlation, environment, and residual expiry. Configure
+`WithActivitySink` on the Supabase client and optionally
+`WithActivityErrorHandler` to surface best-effort delivery failure. Every
+free-form value is one-way fingerprinted before the event is constructed;
+tokens, authorization codes, cookies, credentials, and opaque secrets never
+enter event or normalized audit data.
+
+## Deployment gates
+
+Before production enablement, run live conformance for exact endpoints, client
+authentication, API versions, public-signup policy, OAuth server maturity,
+refresh/logout behavior, factor side effects, and key rotation. Separately
+prove the selected cross-project trust/RLS branch. A failed RLS trust branch
+does not enable service-role fallback or change the provider adapter boundary.
