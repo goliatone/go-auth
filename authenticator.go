@@ -247,7 +247,15 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 		validator = s.tokenService
 	}
 
-	claims, err := validator.Validate(raw)
+	var claims AuthClaims
+	var err error
+	if sessionValidator, ok := validator.(interface {
+		ValidateSession(string) (AuthClaims, error)
+	}); ok {
+		claims, err = sessionValidator.ValidateSession(raw)
+	} else {
+		claims, err = validator.Validate(raw)
+	}
 	if err != nil {
 		s.logger.Error("SessionFromToken validation failed", "error", err)
 		return nil, err
@@ -348,36 +356,7 @@ func (s *Auther) actorFromIdentity(identity Identity) ActorRef {
 }
 
 func (s *Auther) ensureIdentityActive(identity Identity) (UserStatus, error) {
-	status, ok := identityStatus(identity)
-	if !ok {
-		return "", nil
-	}
-
-	if status == "" {
-		status = UserStatusActive
-	}
-
-	if err := statusAuthError(status); err != nil {
-		return status, err
-	}
-
-	return status, nil
-}
-
-type statusAwareIdentity interface {
-	Status() UserStatus
-}
-
-func identityStatus(identity Identity) (UserStatus, bool) {
-	if identity == nil {
-		return "", false
-	}
-
-	if sa, ok := identity.(statusAwareIdentity); ok {
-		return sa.Status(), true
-	}
-
-	return "", false
+	return EnsureIdentityActive(identity)
 }
 
 func (s *Auther) rebuildTokenService() {

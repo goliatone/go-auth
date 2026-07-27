@@ -64,8 +64,8 @@ type TokenService interface {
 	// Generate creates a new JWT token for the given identity with resource-specific roles
 	Generate(identity Identity, resourceRoles map[string]string) (string, error)
 
-	// SignClaims signs the provided claims without mutating registered fields, enabling
-	// callers to apply decorators before the token is finalized.
+	// SignClaims validates required claims, assigns jti/token_use when needed,
+	// and signs the provided custom claims.
 	SignClaims(claims *JWTClaims) (string, error)
 
 	// Validate parses and validates a token string, returning structured claims

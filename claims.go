@@ -27,6 +27,12 @@ type TokenIDer interface {
 	TokenID() string
 }
 
+// TokenUseClaimer is implemented by claims that identify the trust boundary
+// in which the token may be used.
+type TokenUseClaimer interface {
+	TokenUse() string
+}
+
 // JWTClaims is the concrete implementation of AuthClaims
 type JWTClaims struct {
 	jwt.RegisteredClaims
@@ -35,6 +41,7 @@ type JWTClaims struct {
 	Resources map[string]string `json:"res,omitempty"`      // resource -> role mapping
 	Metadata  map[string]any    `json:"metadata,omitempty"` // extension payload
 	Scopes    []string          `json:"scopes,omitempty"`   // optional scopes (e.g., debug tokens)
+	Use       string            `json:"token_use,omitempty"`
 }
 
 // Verify interface compliance
@@ -48,6 +55,14 @@ func (c *JWTClaims) Subject() string {
 // TokenID returns the JWT ID (jti) claim.
 func (c *JWTClaims) TokenID() string {
 	return c.ID
+}
+
+// TokenUse returns the signed token-use boundary.
+func (c *JWTClaims) TokenUse() string {
+	if c == nil {
+		return ""
+	}
+	return c.Use
 }
 
 func ensureTokenID(claims *jwt.RegisteredClaims) {

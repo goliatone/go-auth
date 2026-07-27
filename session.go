@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -150,20 +149,8 @@ func (s *SessionObject) getGlobalRole() UserRole {
 	return RoleGuest
 }
 
-// TODO: enable only in development!
 func (s SessionObject) String() string {
-	issuedAt := "<nil>"
-	if s.IssuedAt != nil {
-		issuedAt = s.IssuedAt.Format(time.RFC1123)
-	}
-	return fmt.Sprintf(
-		"user=%s aud=%v iss=%s iat=%s data=%v",
-		s.UserID,
-		s.Audience,
-		s.Issuer,
-		issuedAt,
-		s.Data,
-	)
+	return "auth.SessionObject([REDACTED])"
 }
 
 // sessionFromAuthClaims creates a SessionObject from modern AuthClaims interface

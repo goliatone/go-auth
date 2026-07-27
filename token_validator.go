@@ -37,9 +37,31 @@ func NewMultiTokenValidator(validators ...TokenValidator) *MultiTokenValidator {
 
 // Validate satisfies the TokenValidator interface.
 func (m *MultiTokenValidator) Validate(tokenString string) (AuthClaims, error) {
+	return m.validate(tokenString, false)
+}
+
+// ValidateSession applies session-use enforcement to validators that expose a
+// session-specific validation boundary while preserving external validators.
+func (m *MultiTokenValidator) ValidateSession(tokenString string) (AuthClaims, error) {
+	return m.validate(tokenString, true)
+}
+
+func (m *MultiTokenValidator) validate(tokenString string, sessionOnly bool) (AuthClaims, error) {
 	var lastErr error
 	for _, v := range m.validators {
-		claims, err := v.Validate(tokenString)
+		var claims AuthClaims
+		var err error
+		if sessionOnly {
+			if sessionValidator, ok := v.(interface {
+				ValidateSession(string) (AuthClaims, error)
+			}); ok {
+				claims, err = sessionValidator.ValidateSession(tokenString)
+			} else {
+				claims, err = v.Validate(tokenString)
+			}
+		} else {
+			claims, err = v.Validate(tokenString)
+		}
 		if err == nil {
 			return claims, nil
 		}

@@ -73,7 +73,7 @@ func (m *MockLogger) WithContext(ctx context.Context) auth.Logger {
 }
 
 func TestNewTokenService(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -93,8 +93,52 @@ func TestNewTokenService(t *testing.T) {
 	})
 }
 
+func TestNewValidatedTokenServiceRejectsUnsafeConfiguration(t *testing.T) {
+	validKey := []byte("test-signing-key-0123456789abcdef")
+	tests := []struct {
+		name       string
+		key        []byte
+		expiration int
+		issuer     string
+		audience   jwt.ClaimStrings
+	}{
+		{name: "empty key", key: nil, expiration: 24, issuer: "issuer", audience: jwt.ClaimStrings{"audience"}},
+		{name: "short key", key: []byte("short"), expiration: 24, issuer: "issuer", audience: jwt.ClaimStrings{"audience"}},
+		{name: "missing expiration", key: validKey, expiration: 0, issuer: "issuer", audience: jwt.ClaimStrings{"audience"}},
+		{name: "missing issuer", key: validKey, expiration: 24, audience: jwt.ClaimStrings{"audience"}},
+		{name: "missing audience", key: validKey, expiration: 24, issuer: "issuer"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service, err := auth.NewValidatedTokenService(tt.key, tt.expiration, tt.issuer, tt.audience, nil)
+			assert.Error(t, err)
+			assert.Nil(t, service)
+		})
+	}
+
+	service, err := auth.NewValidatedTokenService(validKey, 24, "issuer", jwt.ClaimStrings{"audience"}, nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, service)
+
+	compat := auth.NewTokenService([]byte("short"), 24, "issuer", jwt.ClaimStrings{"audience"}, nil)
+	token, err := compat.Generate(&staticIdentity{id: "user-1", role: "member"}, nil)
+	assert.Error(t, err)
+	assert.Empty(t, token)
+}
+
+type staticIdentity struct {
+	id   string
+	role string
+}
+
+func (i *staticIdentity) ID() string       { return i.id }
+func (i *staticIdentity) Username() string { return i.id }
+func (i *staticIdentity) Email() string    { return i.id + "@example.com" }
+func (i *staticIdentity) Role() string     { return i.role }
+
 func TestTokenService_Generate(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -176,7 +220,7 @@ func TestTokenService_Generate(t *testing.T) {
 }
 
 func TestTokenService_GenerateWithResources(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -267,7 +311,7 @@ func TestTokenService_GenerateWithResources(t *testing.T) {
 }
 
 func TestTokenService_SignClaims(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -311,7 +355,7 @@ func TestTokenService_SignClaims(t *testing.T) {
 }
 
 func TestTokenService_Validate(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -402,6 +446,71 @@ func TestTokenService_Validate(t *testing.T) {
 		assert.Nil(t, claims)
 	})
 
+	t.Run("rejects alternate HMAC algorithms", func(t *testing.T) {
+		now := time.Now()
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    issuer,
+				Subject:   "user-123",
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+				ID:        "token-hs384",
+			},
+			UID:      "user-123",
+			UserRole: "member",
+			Use:      auth.TokenTypeSession,
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
+		raw, err := token.SignedString(signingKey)
+		assert.NoError(t, err)
+
+		validated, err := service.Validate(raw)
+		assert.Error(t, err)
+		assert.Nil(t, validated)
+	})
+
+	t.Run("rejects missing required claims", func(t *testing.T) {
+		now := time.Now()
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:    issuer,
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+				ID:        "token-no-subject",
+			},
+			UID:      "user-123",
+			UserRole: "member",
+			Use:      auth.TokenTypeSession,
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		raw, err := token.SignedString(signingKey)
+		assert.NoError(t, err)
+
+		validated, err := service.Validate(raw)
+		assert.Error(t, err)
+		assert.Nil(t, validated)
+	})
+
+	t.Run("rejects non-expiring custom claims", func(t *testing.T) {
+		now := time.Now()
+		claims := &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Issuer:   issuer,
+				Subject:  "user-123",
+				Audience: audience,
+				IssuedAt: jwt.NewNumericDate(now),
+			},
+			UID:      "user-123",
+			UserRole: "member",
+		}
+
+		raw, err := service.SignClaims(claims)
+		assert.Error(t, err)
+		assert.Empty(t, raw)
+	})
+
 	t.Run("returns error for token with wrong signing key", func(t *testing.T) {
 		// Create a token with a different signing key using JWTClaims
 		wrongKey := []byte("wrong-signing-key")
@@ -433,7 +542,7 @@ func TestTokenService_Validate(t *testing.T) {
 }
 
 func TestMintScopedToken(t *testing.T) {
-	signingKey := []byte("test-signing-key")
+	signingKey := []byte("test-signing-key-0123456789abcdef")
 	tokenExpiration := 24
 	issuer := "test-issuer"
 	audience := jwt.ClaimStrings{"test-audience"}
@@ -466,10 +575,15 @@ func TestMintScopedToken(t *testing.T) {
 		jwtClaims, ok := claims.(*auth.JWTClaims)
 		assert.True(t, ok)
 		assert.Equal(t, opts.Scopes, jwtClaims.Scopes)
+		assert.NoError(t, auth.RequireTokenUse(jwtClaims, auth.TokenTypeScoped))
 		assert.NotEmpty(t, jwtClaims.ID)
 		assert.Equal(t, issuer, jwtClaims.Issuer)
 		assert.Equal(t, audience, jwtClaims.Audience)
 		assert.True(t, expiresAt.Equal(jwtClaims.ExpiresAt.Time))
+
+		sessionClaims, sessionErr := auth.NewTokenServiceAdapter(service).Validate(token)
+		assert.Error(t, sessionErr)
+		assert.Nil(t, sessionClaims)
 
 		identity.AssertExpectations(t)
 	})
@@ -503,7 +617,7 @@ func TestMintScopedToken(t *testing.T) {
 }
 
 func TestTokenService_Integration(t *testing.T) {
-	signingKey := []byte("integration-test-key")
+	signingKey := []byte("integration-test-key-0123456789abcdef")
 	tokenExpiration := 1 // 1 hour for integration test
 	issuer := "integration-issuer"
 	audience := jwt.ClaimStrings{"integration-audience"}
@@ -596,7 +710,7 @@ func TestTokenService_Integration(t *testing.T) {
 
 func TestTokenService_DefaultMetadataMinimization(t *testing.T) {
 	service := auth.NewTokenService(
-		[]byte("test-signing-key"),
+		[]byte("test-signing-key-0123456789abcdef"),
 		24,
 		"test-issuer",
 		jwt.ClaimStrings{"test-audience"},
@@ -650,7 +764,7 @@ func TestTokenService_DefaultMetadataMinimization(t *testing.T) {
 
 func TestTokenService_GuardrailsRejectOversizedTokens(t *testing.T) {
 	service := auth.NewTokenService(
-		[]byte("test-signing-key"),
+		[]byte("test-signing-key-0123456789abcdef"),
 		24,
 		"test-issuer",
 		jwt.ClaimStrings{"test-audience"},

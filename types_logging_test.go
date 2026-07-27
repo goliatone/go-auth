@@ -98,7 +98,7 @@ func (identityProviderStub) FindIdentityByIdentifier(context.Context, string) (I
 
 type configStub struct{}
 
-func (configStub) GetSigningKey() string           { return "test-signing-key" }
+func (configStub) GetSigningKey() string           { return "test-signing-key-0123456789abcdef" }
 func (configStub) GetSigningMethod() string        { return "HS256" }
 func (configStub) GetContextKey() string           { return "jwt" }
 func (configStub) GetTokenExpiration() int         { return 24 }

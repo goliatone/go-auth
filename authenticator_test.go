@@ -36,7 +36,7 @@ func (t TestIdentity) Status() auth.UserStatus {
 
 func newMockConfig() *MockConfig {
 	mockConfig := new(MockConfig)
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -50,7 +50,7 @@ func TestLogin(t *testing.T) {
 	mockConfig := new(MockConfig)
 
 	// Configure mock config
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -78,7 +78,7 @@ func TestLogin(t *testing.T) {
 
 		// Verify token can be parsed and contains correct claims using new structure
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -143,7 +143,7 @@ func TestImpersonate(t *testing.T) {
 	mockConfig := new(MockConfig)
 
 	// Configure mock config
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -171,7 +171,7 @@ func TestImpersonate(t *testing.T) {
 
 		// Verify token can be parsed and contains correct claims using new structure
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -221,7 +221,7 @@ func TestSessionFromToken(t *testing.T) {
 	mockProvider := new(MockIdentityProvider)
 	mockConfig := new(MockConfig)
 
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -240,14 +240,16 @@ func TestSessionFromToken(t *testing.T) {
 			Issuer:    "test-issuer",
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(expiry),
+			ID:        uuid.NewString(),
 		},
 		UID:       userID,
 		UserRole:  "admin",
 		Resources: make(map[string]string),
+		Use:       auth.TokenTypeSession,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte("test-signing-key"))
+	tokenString, err := token.SignedString([]byte("test-signing-key-0123456789abcdef"))
 	assert.NoError(t, err)
 
 	t.Run("Valid token", func(t *testing.T) {
@@ -281,14 +283,16 @@ func TestSessionFromToken(t *testing.T) {
 				Issuer:    "test-issuer",
 				IssuedAt:  jwt.NewNumericDate(now.Add(-48 * time.Hour)),
 				ExpiresAt: jwt.NewNumericDate(now.Add(-24 * time.Hour)), // Expired 24 hours ago
+				ID:        uuid.NewString(),
 			},
 			UID:       userID,
 			UserRole:  "admin",
 			Resources: make(map[string]string),
+			Use:       auth.TokenTypeSession,
 		}
 
 		expiredToken := jwt.NewWithClaims(jwt.SigningMethodHS256, expiredClaims)
-		expiredTokenString, _ := expiredToken.SignedString([]byte("test-signing-key"))
+		expiredTokenString, _ := expiredToken.SignedString([]byte("test-signing-key-0123456789abcdef"))
 
 		session, err := authenticator.SessionFromToken(expiredTokenString)
 
@@ -312,24 +316,26 @@ func TestSessionFromToken(t *testing.T) {
 		}
 
 		legacyToken := jwt.NewWithClaims(jwt.SigningMethodHS256, legacyClaims)
-		legacyTokenString, _ := legacyToken.SignedString([]byte("test-signing-key"))
+		legacyTokenString, _ := legacyToken.SignedString([]byte("test-signing-key-0123456789abcdef"))
 
 		session, err := authenticator.SessionFromToken(legacyTokenString)
 
-		// Legacy tokens should be rejected or return sessions with empty role data
-		// because they don't match the expected JWTClaims structure
-		if err == nil {
-			// If parsing succeeds, the session should have empty/missing role data
-			// because legacy format stores role in "dat" field, not in root claims
-			assert.NotNil(t, session)
-			data := session.GetData()
-			// Role should be empty because legacy "dat" field is not parsed
-			assert.Equal(t, "", data["role"])
-		} else {
-			// Token validation failed, which is expected for legacy tokens
-			assert.Nil(t, session)
-			assert.Error(t, err)
-		}
+		assert.Error(t, err)
+		assert.Nil(t, session)
+	})
+
+	t.Run("Scoped token rejected as session", func(t *testing.T) {
+		scopedClaims := *claims
+		scopedClaims.RegisteredClaims = claims.RegisteredClaims
+		scopedClaims.ID = uuid.NewString()
+		scopedClaims.Use = auth.TokenTypeScoped
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &scopedClaims)
+		raw, signErr := token.SignedString([]byte("test-signing-key-0123456789abcdef"))
+		assert.NoError(t, signErr)
+
+		session, err := authenticator.SessionFromToken(raw)
+		assert.Error(t, err)
+		assert.Nil(t, session)
 	})
 }
 
@@ -394,7 +400,7 @@ func TestIdentityFromSession(t *testing.T) {
 	mockProvider := new(MockIdentityProvider)
 	mockConfig := new(MockConfig)
 
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -451,7 +457,7 @@ func TestNewAuthenticator(t *testing.T) {
 		mockConfig := new(MockConfig)
 
 		// Configure mock config
-		mockConfig.On("GetSigningKey").Return("test-signing-key")
+		mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 		mockConfig.On("GetTokenExpiration").Return(24)
 		mockConfig.On("GetIssuer").Return("test-issuer")
 		mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -480,7 +486,7 @@ func TestNewAuthenticator(t *testing.T) {
 
 		// Verify token uses empty resource roles (from no-op provider)
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -504,7 +510,7 @@ func TestWithResourceRoleProvider(t *testing.T) {
 		mockRoleProvider := new(MockResourceRoleProvider)
 
 		// Configure mock config
-		mockConfig.On("GetSigningKey").Return("test-signing-key")
+		mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 		mockConfig.On("GetTokenExpiration").Return(24)
 		mockConfig.On("GetIssuer").Return("test-issuer")
 		mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -541,7 +547,7 @@ func TestWithResourceRoleProvider(t *testing.T) {
 
 		// Verify token uses the custom provider's resource roles
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -680,7 +686,7 @@ func TestLoginWithResourceRoleProvider(t *testing.T) {
 	mockRoleProvider := new(MockResourceRoleProvider)
 
 	// Configure mock config
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -707,7 +713,7 @@ func TestLoginWithResourceRoleProvider(t *testing.T) {
 
 		// Verify token uses empty resources from no-op provider
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -745,7 +751,7 @@ func TestLoginWithResourceRoleProvider(t *testing.T) {
 
 		// Verify token uses the custom provider's resource roles
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -789,7 +795,7 @@ func TestImpersonateWithResourceRoleProvider(t *testing.T) {
 	mockRoleProvider := new(MockResourceRoleProvider)
 
 	// Configure mock config
-	mockConfig.On("GetSigningKey").Return("test-signing-key")
+	mockConfig.On("GetSigningKey").Return("test-signing-key-0123456789abcdef")
 	mockConfig.On("GetTokenExpiration").Return(24)
 	mockConfig.On("GetIssuer").Return("test-issuer")
 	mockConfig.On("GetAudience").Return([]string{"test:audience"})
@@ -816,7 +822,7 @@ func TestImpersonateWithResourceRoleProvider(t *testing.T) {
 
 		// Verify token uses empty resources from no-op provider
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)
@@ -854,7 +860,7 @@ func TestImpersonateWithResourceRoleProvider(t *testing.T) {
 
 		// Verify token uses the custom provider's resource roles
 		parsedToken, err := jwt.ParseWithClaims(token, &auth.JWTClaims{}, func(t *jwt.Token) (any, error) {
-			return []byte("test-signing-key"), nil
+			return []byte("test-signing-key-0123456789abcdef"), nil
 		})
 
 		assert.NoError(t, err)

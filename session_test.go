@@ -48,9 +48,10 @@ func TestSessionObject(t *testing.T) {
 
 	// Test String method
 	stringRep := session.String()
-	assert.Contains(t, stringRep, userID)
-	assert.Contains(t, stringRep, "app:user")
-	assert.Contains(t, stringRep, "test-issuer")
+	assert.Equal(t, "auth.SessionObject([REDACTED])", stringRep)
+	assert.NotContains(t, stringRep, userID)
+	assert.NotContains(t, stringRep, "app:user")
+	assert.NotContains(t, stringRep, "test-issuer")
 }
 
 func TestSessionFromAuthClaims(t *testing.T) {

@@ -30,6 +30,11 @@ func (tsa *TokenServiceAdapter) Validate(tokenString string) (jwtware.AuthClaims
 	if tsa.tokenValidator == nil {
 		return nil, ErrUnableToDecodeSession
 	}
+	if validator, ok := tsa.tokenValidator.(interface {
+		ValidateSession(string) (AuthClaims, error)
+	}); ok {
+		return validator.ValidateSession(tokenString)
+	}
 	return tsa.tokenValidator.Validate(tokenString)
 }
 

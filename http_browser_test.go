@@ -16,7 +16,7 @@ import (
 
 type browserTestConfig struct{}
 
-func (browserTestConfig) GetSigningKey() string         { return "test-secret" }
+func (browserTestConfig) GetSigningKey() string         { return "test-secret-0123456789abcdef012345" }
 func (browserTestConfig) GetSigningMethod() string      { return "HS256" }
 func (browserTestConfig) GetContextKey() string         { return "auth" }
 func (browserTestConfig) GetTokenExpiration() int       { return 24 }
