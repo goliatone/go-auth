@@ -1,5 +1,50 @@
 # Changelog
 
+# [Unreleased]
+
+## Added
+
+- Provider-neutral `Secret`, `ProviderTokenSet`, validated token context, and
+  authenticated principal contracts.
+- Explicit local/enriched/provider-session OIDC callback modes and atomic
+  provider-session handoff.
+- Source-bound UserInfo profile enrichment, allowlist-resolved enriched issuer
+  claims, and local/provider session identifiers on normalized principals.
+- `none`, `client_secret_basic`, and `client_secret_post` token endpoint
+  authentication.
+- ES256/P-256 JWKS validation, strict ID/access/UserInfo binding, bounded
+  provider responses, and request deadlines.
+
+## Changed
+
+- OIDC provider tokens use opaque secret wrappers. New configurations should
+  use `ClientSecretValue`; the source-compatible string `ClientSecret` field is
+  deprecated and redacted from default output.
+- Begin-login state, nonce, and PKCE fields remain source-compatible but are
+  deprecated and redacted from default output. Use `HTTPRedirectURL()` and
+  `SessionSecret()` at HTTP adapter boundaries.
+- `PrincipalTokenIssuer` receives only the normalized claims resolved from
+  `LocalClaimPolicy`. `ProviderSessionHandoff` returns a secret-safe
+  `ProviderSessionHandoffResult` with the local session ID.
+- Provider endpoints require HTTPS by default and server-to-server OIDC
+  requests no longer follow redirects. In-memory state and unknown-key JWKS
+  work are bounded, and custom principal mapper authority is revalidated.
+- Provider-subject `IdentifierStore.Upsert` is now immutable: same-user retries
+  are idempotent and cross-user reassignment returns `ErrIdentifierConflict`.
+- Legacy `MaxLoginAttempts` and `CoolDownPeriod` variable symbols remain
+  available for source compatibility. Login policy is now instance-scoped,
+  and atomic reservation is exposed without expanding the existing `Users`
+  interface.
+
+## Migration
+
+- Release the root module before updating nested adapter module requirements.
+- Remove local adapter `replace` directives only after that root version is
+  published; live Supabase/RLS conformance remains a separate deployment gate.
+- Replace package-level login-policy overrides with
+  `UserProvider.WithLoginAttemptPolicy`; custom password-login trackers must
+  implement `AtomicLoginAttemptTracker`.
+
 # [0.44.2](https://github.com/goliatone/go-auth/compare/v0.44.1...v0.44.2) - (2026-07-23)
 
 ## <!-- 1 -->🐛 Bug Fixes
@@ -1268,5 +1313,3 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
-
-
