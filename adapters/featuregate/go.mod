@@ -31,12 +31,12 @@ require (
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
-	github.com/goliatone/go-errors v0.10.0 // indirect
-	github.com/goliatone/go-logger v0.8.0 // indirect
-	github.com/goliatone/go-masker v0.1.0 // indirect
+	github.com/goliatone/go-errors v0.12.0 // indirect
+	github.com/goliatone/go-logger v0.9.0 // indirect
+	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-print v0.4.1 // indirect
-	github.com/goliatone/go-repository-bun v0.15.1 // indirect
-	github.com/goliatone/go-router v0.59.0 // indirect
+	github.com/goliatone/go-repository-bun v0.16.1 // indirect
+	github.com/goliatone/go-router v0.61.0 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/goliatone/hashid v0.2.2 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
@@ -65,9 +65,9 @@ require (
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
