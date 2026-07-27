@@ -98,6 +98,13 @@ func TestStandaloneMigrationsSQLiteApplyRollbackReapply(t *testing.T) {
 	assertTableExistsSQLite(t, db, "password_reset")
 	assertTableExistsSQLite(t, db, "social_accounts")
 	assertTableExistsSQLite(t, db, "user_identifiers")
+	assertTableExistsSQLite(t, db, "oidc_states")
+	assertTableExistsSQLite(t, db, "provider_sessions")
+	assertTableExistsSQLite(t, db, "provider_session_tokens")
+	assertColumnNotExistsSQLite(t, db, "oidc_states", "state")
+	assertColumnNotExistsSQLite(t, db, "oidc_states", "code_verifier")
+	assertColumnNotExistsSQLite(t, db, "provider_sessions", "access_token")
+	assertColumnNotExistsSQLite(t, db, "provider_session_tokens", "refresh_token")
 
 	if err := rollbackStandalone(ctx, db, "sqlite"); err != nil {
 		t.Fatalf("rollback standalone sqlite: %v", err)
@@ -106,6 +113,9 @@ func TestStandaloneMigrationsSQLiteApplyRollbackReapply(t *testing.T) {
 	assertTableNotExistsSQLite(t, db, "password_reset")
 	assertTableNotExistsSQLite(t, db, "social_accounts")
 	assertTableNotExistsSQLite(t, db, "user_identifiers")
+	assertTableNotExistsSQLite(t, db, "oidc_states")
+	assertTableNotExistsSQLite(t, db, "provider_sessions")
+	assertTableNotExistsSQLite(t, db, "provider_session_tokens")
 
 	if err := applyStandalone(ctx, db, "sqlite"); err != nil {
 		t.Fatalf("reapply standalone sqlite: %v", err)
@@ -114,6 +124,9 @@ func TestStandaloneMigrationsSQLiteApplyRollbackReapply(t *testing.T) {
 	assertTableExistsSQLite(t, db, "password_reset")
 	assertTableExistsSQLite(t, db, "social_accounts")
 	assertTableExistsSQLite(t, db, "user_identifiers")
+	assertTableExistsSQLite(t, db, "oidc_states")
+	assertTableExistsSQLite(t, db, "provider_sessions")
+	assertTableExistsSQLite(t, db, "provider_session_tokens")
 }
 
 func TestStandaloneMigrationsPostgresApplyRollbackReapply(t *testing.T) {
@@ -150,6 +163,13 @@ func TestStandaloneMigrationsPostgresApplyRollbackReapply(t *testing.T) {
 	assertTableExistsPostgres(t, db, schemaName, "password_reset")
 	assertTableExistsPostgres(t, db, schemaName, "social_accounts")
 	assertTableExistsPostgres(t, db, schemaName, "user_identifiers")
+	assertTableExistsPostgres(t, db, schemaName, "oidc_states")
+	assertTableExistsPostgres(t, db, schemaName, "provider_sessions")
+	assertTableExistsPostgres(t, db, schemaName, "provider_session_tokens")
+	assertColumnNotExistsPostgres(t, db, schemaName, "oidc_states", "state")
+	assertColumnNotExistsPostgres(t, db, schemaName, "oidc_states", "code_verifier")
+	assertColumnNotExistsPostgres(t, db, schemaName, "provider_sessions", "access_token")
+	assertColumnNotExistsPostgres(t, db, schemaName, "provider_session_tokens", "refresh_token")
 
 	if err := rollbackStandalone(ctx, db, "postgres"); err != nil {
 		t.Fatalf("rollback standalone postgres: %v", err)
@@ -158,6 +178,9 @@ func TestStandaloneMigrationsPostgresApplyRollbackReapply(t *testing.T) {
 	assertTableNotExistsPostgres(t, db, schemaName, "password_reset")
 	assertTableNotExistsPostgres(t, db, schemaName, "social_accounts")
 	assertTableNotExistsPostgres(t, db, schemaName, "user_identifiers")
+	assertTableNotExistsPostgres(t, db, schemaName, "oidc_states")
+	assertTableNotExistsPostgres(t, db, schemaName, "provider_sessions")
+	assertTableNotExistsPostgres(t, db, schemaName, "provider_session_tokens")
 
 	if err := applyStandalone(ctx, db, "postgres"); err != nil {
 		t.Fatalf("reapply standalone postgres: %v", err)
@@ -166,6 +189,9 @@ func TestStandaloneMigrationsPostgresApplyRollbackReapply(t *testing.T) {
 	assertTableExistsPostgres(t, db, schemaName, "password_reset")
 	assertTableExistsPostgres(t, db, schemaName, "social_accounts")
 	assertTableExistsPostgres(t, db, schemaName, "user_identifiers")
+	assertTableExistsPostgres(t, db, schemaName, "oidc_states")
+	assertTableExistsPostgres(t, db, schemaName, "provider_sessions")
+	assertTableExistsPostgres(t, db, schemaName, "provider_session_tokens")
 }
 
 func applyStandalone(ctx context.Context, db *sql.DB, dialect string) error {
@@ -306,6 +332,29 @@ func assertTableNotExistsSQLite(t *testing.T, db *sql.DB, table string) {
 	}
 }
 
+func assertColumnNotExistsSQLite(t *testing.T, db *sql.DB, table, column string) {
+	t.Helper()
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		t.Fatalf("inspect sqlite table %q: %v", table, err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+	for rows.Next() {
+		var cid int
+		var name, dataType string
+		var notNull, primaryKey int
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatalf("scan sqlite table %q: %v", table, err)
+		}
+		if name == column {
+			t.Fatalf("expected sqlite table %q to omit plaintext column %q", table, column)
+		}
+	}
+}
+
 func assertTableExistsPostgres(t *testing.T, db *sql.DB, schema, table string) {
 	t.Helper()
 	var exists bool
@@ -340,5 +389,26 @@ func assertTableNotExistsPostgres(t *testing.T, db *sql.DB, schema, table string
 	}
 	if exists {
 		t.Fatalf("expected postgres table %s.%s to be absent", schema, table)
+	}
+}
+
+func assertColumnNotExistsPostgres(t *testing.T, db *sql.DB, schema, table, column string) {
+	t.Helper()
+	var exists bool
+	err := db.QueryRow(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.columns
+			WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+		)`,
+		schema,
+		table,
+		column,
+	).Scan(&exists)
+	if err != nil {
+		t.Fatalf("query postgres column existence %s.%s.%s: %v", schema, table, column, err)
+	}
+	if exists {
+		t.Fatalf("expected postgres table %s.%s to omit plaintext column %s", schema, table, column)
 	}
 }
