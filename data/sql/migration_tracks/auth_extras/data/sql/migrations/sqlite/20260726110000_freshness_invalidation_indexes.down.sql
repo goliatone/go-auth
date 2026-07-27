@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_provider_sessions_subject_tenant_status;
+DROP INDEX IF EXISTS idx_provider_sessions_tenant_status;
