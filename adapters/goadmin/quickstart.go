@@ -44,6 +44,7 @@ type QuickstartConfig struct {
 	RegisterAuthUI       RegisterAuthUIFunc
 	AuthUIOptions        []quickstart.AuthUIOption
 	ExtendedCookies      bool
+	ProviderServices     ProviderServices
 }
 
 // QuickstartResult returns the constructed pieces for host customization.
@@ -55,6 +56,7 @@ type QuickstartResult struct {
 	Module             *Module
 	ProviderEntries    []oidc.ProviderInfo
 	AuthUIOptions      []quickstart.AuthUIOption
+	ProviderServices   ProviderServices
 }
 
 // SetupSSO wires go-auth SSO into go-admin before adm.Initialize is called.
@@ -137,7 +139,7 @@ func SetupSSO(cfg QuickstartConfig) (QuickstartResult, error) {
 	if err != nil {
 		return QuickstartResult{}, err
 	}
-	module := NewModule(WithHandlers(handlers))
+	module := NewModule(WithHandlers(handlers), WithProviderServices(cfg.ProviderServices))
 	if err := cfg.Admin.RegisterModule(module); err != nil {
 		return QuickstartResult{}, fmt.Errorf("register go-auth sso module: %w", err)
 	}
@@ -158,6 +160,7 @@ func SetupSSO(cfg QuickstartConfig) (QuickstartResult, error) {
 		Module:             module,
 		ProviderEntries:    entries,
 		AuthUIOptions:      authUIOptions,
+		ProviderServices:   cfg.ProviderServices,
 	}, nil
 }
 

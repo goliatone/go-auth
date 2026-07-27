@@ -14,6 +14,10 @@ The module boundary is intentional:
 Local development can use a temporary workspace or `replace` directives, but
 released module files should not require sibling checkout paths.
 
+The callback handler accepts both legacy local-token results and opaque
+provider-session results through `BrowserSessionResult.SessionSecret()`. It
+never receives or serializes provider access, refresh, or ID tokens.
+
 ## Quickstart
 
 Use `SetupSSO` before `adm.Initialize(...)`.
@@ -48,6 +52,11 @@ Callback succeeds but admin remains logged out:
 Confirm handlers use `RouteAuthenticator.SetAuthCookie` and the same go-auth
 `AuthConfig` as local login. Cookie name, path, SameSite, Secure, and duration
 come from that route authenticator.
+
+Provider-session callback returns an invalid result:
+The browser flow must return exactly one session value: a legacy local token or
+an opaque host-session secret. Missing or ambiguous values fail without a
+cookie.
 
 Provider-list endpoint leaks too much:
 Return only key, label, login URL, icon metadata, and disabled reason. Client

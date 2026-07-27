@@ -132,11 +132,11 @@ func (h handlerRuntime) beginLogin(c router.Context) error {
 		h.record(c.Context(), auth.ActivityEventSSOLoginFailure, "", map[string]any{
 			"provider": providerKey,
 			"stage":    "begin",
-			"error":    err.Error(),
+			"error":    "login start failed",
 		})
 		return safeHandlerError(c, http.StatusBadRequest, "sso login could not start")
 	}
-	return c.Redirect(res.RedirectURL, http.StatusFound)
+	return c.Redirect(res.HTTPRedirectURL(), http.StatusFound)
 }
 
 func (h handlerRuntime) callback(c router.Context) error {
@@ -151,7 +151,7 @@ func (h handlerRuntime) callback(c router.Context) error {
 		h.record(c.Context(), auth.ActivityEventSSOLoginFailure, "", map[string]any{
 			"provider": providerKey,
 			"stage":    "callback",
-			"error":    err.Error(),
+			"error":    "callback failed",
 		})
 		return safeHandlerError(c, http.StatusUnauthorized, "sso login failed")
 	}
@@ -160,11 +160,15 @@ func (h handlerRuntime) callback(c router.Context) error {
 	if h.extendedCookies {
 		cookieOpts = append(cookieOpts, auth.WithExtendedAuthCookieDuration())
 	}
-	if err := h.routeAuth.SetAuthCookie(c, result.LocalToken, cookieOpts...); err != nil {
+	sessionSecret, err := result.SessionSecret()
+	if err != nil {
+		return safeHandlerError(c, http.StatusInternalServerError, "sso session result is invalid")
+	}
+	if err := h.routeAuth.SetAuthCookie(c, sessionSecret.Reveal(), cookieOpts...); err != nil {
 		h.record(c.Context(), auth.ActivityEventSSOLoginFailure, result.Audit.UserID, map[string]any{
 			"provider": result.ProviderKey,
 			"stage":    "cookie",
-			"error":    err.Error(),
+			"error":    "cookie creation failed",
 		})
 		return safeHandlerError(c, http.StatusInternalServerError, "sso session could not be created")
 	}
@@ -198,7 +202,7 @@ func (h handlerRuntime) link(c router.Context) error {
 		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
 			"provider": providerKey,
 			"stage":    "verify",
-			"error":    err.Error(),
+			"error":    "link proof failed",
 		})
 		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
 	}
@@ -223,7 +227,7 @@ func (h handlerRuntime) link(c router.Context) error {
 	if err := h.manualLinker.Link(c.Context(), userID, verifiedProvider, verifiedSubject); err != nil {
 		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
 			"provider": verifiedProvider,
-			"error":    err.Error(),
+			"error":    "link failed",
 		})
 		return safeHandlerError(c, http.StatusForbidden, "sso account link failed")
 	}
@@ -252,7 +256,7 @@ func (h handlerRuntime) unlink(c router.Context) error {
 		h.record(c.Context(), auth.ActivityEventSSOLinkRejected, userID, map[string]any{
 			"provider": providerKey,
 			"stage":    "unlink",
-			"error":    err.Error(),
+			"error":    "unlink failed",
 		})
 		return safeHandlerError(c, http.StatusForbidden, "sso account unlink failed")
 	}

@@ -3,10 +3,10 @@ module github.com/goliatone/go-auth/adapters/goadmin
 go 1.26.5
 
 require (
-	github.com/goliatone/go-admin v0.121.6
-	github.com/goliatone/go-admin/quickstart v0.121.6
-	github.com/goliatone/go-auth v0.44.1
-	github.com/goliatone/go-router v0.61.1
+	github.com/goliatone/go-admin v0.124.1
+	github.com/goliatone/go-admin/quickstart v0.124.1
+	github.com/goliatone/go-auth v0.44.2
+	github.com/goliatone/go-router v0.61.2
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -83,14 +83,14 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	github.com/goliatone/go-auth/adapters/featuregate v0.44.1 // indirect
+	github.com/goliatone/go-auth/adapters/featuregate v0.44.2 // indirect
 	github.com/goliatone/go-cms v0.60.2 // indirect
 	github.com/goliatone/go-command v0.24.1 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-config v0.14.0 // indirect
 	github.com/goliatone/go-crud v0.25.0 // indirect
 	github.com/goliatone/go-crud/gql v0.25.0 // indirect
-	github.com/goliatone/go-dashboard v0.14.0 // indirect
+	github.com/goliatone/go-dashboard v0.14.1 // indirect
 	github.com/goliatone/go-errors v0.12.0 // indirect
 	github.com/goliatone/go-export v0.9.0 // indirect
 	github.com/goliatone/go-export/adapters/template/go-template v0.9.0 // indirect

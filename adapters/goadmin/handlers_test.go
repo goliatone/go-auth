@@ -3,6 +3,7 @@ package goadmin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -143,6 +144,9 @@ func TestCallbackRecordsSafeFailureWithoutCookie(t *testing.T) {
 	}
 	if len(activity.events) != 1 || activity.events[0].EventType != auth.ActivityEventSSOLoginFailure {
 		t.Fatalf("expected login failure activity, got %#v", activity.events)
+	}
+	if strings.Contains(fmt.Sprint(activity.events[0].Metadata), "sensitive details") {
+		t.Fatalf("activity metadata leaked callback error: %#v", activity.events[0].Metadata)
 	}
 	c.AssertExpectations(t)
 }

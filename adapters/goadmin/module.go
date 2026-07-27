@@ -23,6 +23,7 @@ const (
 // Module wires go-auth browser SSO into the go-admin UI route surface.
 type Module struct {
 	handlers Handlers
+	services ProviderServices
 }
 
 // Handlers contains route handlers used by Module.
@@ -47,6 +48,16 @@ func WithHandlers(handlers Handlers) Option {
 	}
 }
 
+// WithProviderServices exposes optional lifecycle/authorization boundaries to
+// host-owned route composition without invoking them during module setup.
+func WithProviderServices(services ProviderServices) Option {
+	return func(m *Module) {
+		if m != nil {
+			m.services = services
+		}
+	}
+}
+
 // NewModule constructs a go-admin SSO module.
 func NewModule(opts ...Option) *Module {
 	m := &Module{}
@@ -65,6 +76,13 @@ func (m *Module) Manifest() admin.ModuleManifest {
 		NameKey:        "modules.go_auth_sso.name",
 		DescriptionKey: "modules.go_auth_sso.description",
 	}
+}
+
+func (m *Module) ProviderServices() ProviderServices {
+	if m == nil {
+		return ProviderServices{}
+	}
+	return m.services
 }
 
 // RouteContract declares browser SSO routes on the admin UI surface.
