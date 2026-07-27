@@ -10,6 +10,7 @@ import (
 var userCtxKey = &contextKey{"user"}
 var claimsCtxKey = &contextKey{"claims"}
 var actorCtxKey = &contextKey{"actor"}
+var providerSessionCtxKey = &contextKey{"provider_session"}
 
 type contextKey struct {
 	name string
@@ -26,6 +27,11 @@ type ActorContext struct {
 	Metadata       map[string]any
 	ImpersonatorID string
 	IsImpersonated bool
+}
+
+type ProviderSessionContext struct {
+	Session   ProviderSession
+	Principal AuthenticatedPrincipal
 }
 
 var (
@@ -104,6 +110,28 @@ func ActorFromContext(ctx context.Context) (*ActorContext, bool) {
 	}
 	raw, ok := ctx.Value(actorCtxKey).(*ActorContext)
 	return raw, ok
+}
+
+func WithProviderSessionContext(ctx context.Context, session ProviderSession, principal AuthenticatedPrincipal) context.Context {
+	if ctx == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, providerSessionCtxKey, &ProviderSessionContext{
+		Session: session, Principal: principal.Clone(),
+	})
+}
+
+func ProviderSessionFromContext(ctx context.Context) (*ProviderSessionContext, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	value, ok := ctx.Value(providerSessionCtxKey).(*ProviderSessionContext)
+	if !ok || value == nil {
+		return nil, false
+	}
+	clone := *value
+	clone.Principal = value.Principal.Clone()
+	return &clone, true
 }
 
 // ActorFromRouterContext extracts the ActorContext from a router context by reading the underlying standard context.
