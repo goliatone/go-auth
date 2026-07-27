@@ -60,6 +60,11 @@ func Normalize(event auth.ActivityEvent, opts ...Option) Normalized {
 	)
 
 	objectID := resolveObjectID(event, options.objectIDResolver)
+	providerLifecycle := auth.IsProviderLifecycleActivity(event.EventType)
+	if providerLifecycle {
+		actorID = string(auth.FingerprintProviderAuditValue(actorID))
+		objectID = string(auth.FingerprintProviderAuditValue(objectID))
+	}
 	occurredAt := event.OccurredAt
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
@@ -133,8 +138,14 @@ func resolveObjectID(event auth.ActivityEvent, resolver func(auth.ActivityEvent)
 
 func normalizeMetadata(event auth.ActivityEvent) map[string]any {
 	metadata := cloneMap(event.Metadata)
+	if auth.IsProviderLifecycleActivity(event.EventType) {
+		metadata = providerLifecycleMetadata(metadata)
+	}
 
 	if actorType := strings.TrimSpace(event.Actor.Type); actorType != "" {
+		if auth.IsProviderLifecycleActivity(event.EventType) {
+			actorType = string(auth.FingerprintProviderAuditValue(actorType))
+		}
 		if metadata == nil {
 			metadata = map[string]any{}
 		}
@@ -158,6 +169,39 @@ func normalizeMetadata(event auth.ActivityEvent) map[string]any {
 	}
 
 	return metadata
+}
+
+var providerLifecycleMetadataKeys = map[string]struct{}{
+	"operation_id": {}, "action": {}, "result": {}, "reason": {},
+	"request_id": {}, "provider_request_id": {}, "provider_session_id": {},
+	"environment": {}, "target_provider": {}, "target_subject": {},
+	"target_object": {}, "session_effect": {}, "retryable": {},
+	"residual_expires_at": {},
+}
+
+func providerLifecycleMetadata(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]any, len(providerLifecycleMetadataKeys))
+	for key, value := range input {
+		if _, allowed := providerLifecycleMetadataKeys[key]; !allowed {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			output[key] = string(auth.FingerprintProviderAuditValue(typed))
+		case auth.ProviderAuditFingerprint:
+			output[key] = string(typed)
+		case bool, time.Time, auth.ProviderOperationAction,
+			auth.ProviderOperationStatus, auth.ProviderSessionEffect:
+			output[key] = value
+		}
+	}
+	if len(output) == 0 {
+		return nil
+	}
+	return output
 }
 
 func cloneMap(in map[string]any) map[string]any {
