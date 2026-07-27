@@ -7,25 +7,42 @@ import (
 )
 
 const (
-	TextCodeInvalidCreds               = "INVALID_CREDENTIALS" // #nosec G101 -- Error text code, not a credential.
-	TextCodeTooManyAttempts            = "TOO_MANY_ATTEMPTS"
-	TextCodeSessionNotFound            = "SESSION_NOT_FOUND"
-	TextCodeSessionDecodeError         = "SESSION_DECODE_ERROR"
-	TextCodeClaimsMappingError         = "CLAIMS_MAPPING_ERROR"
-	TextCodeDataParseError             = "DATA_PARSE_ERROR"
-	TextCodeEmptyPassword              = "EMPTY_PASSWORD_NOT_ALLOWED"
-	TextCodeTokenExpired               = "TOKEN_EXPIRED"
-	TextCodeTokenMalformed             = "TOKEN_MALFORMED" // #nosec G101 -- Error text code, not a credential.
-	TextCodeTokenTooLarge              = "TOKEN_TOO_LARGE"
-	TextCodeImmutableClaim             = "IMMUTABLE_CLAIM_MUTATION"
-	TextCodeAccountSuspended           = "ACCOUNT_SUSPENDED"
-	TextCodeAccountDisabled            = "ACCOUNT_DISABLED"
-	TextCodeAccountArchived            = "ACCOUNT_ARCHIVED"
-	TextCodeAccountPending             = "ACCOUNT_PENDING"
-	TextCodeSignupDisabled             = "SIGNUP_DISABLED"
-	TextCodePasswordResetDisabled      = "PASSWORD_RESET_DISABLED"
-	TextCodePermissionResolverRequired = "PERMISSION_RESOLVER_REQUIRED"
-	TextCodeTemporaryPasswordExpired   = "TEMPORARY_PASSWORD_EXPIRED"
+	TextCodeInvalidCreds                = "INVALID_CREDENTIALS" // #nosec G101 -- Error text code, not a credential.
+	TextCodeTooManyAttempts             = "TOO_MANY_ATTEMPTS"
+	TextCodeSessionNotFound             = "SESSION_NOT_FOUND"
+	TextCodeSessionDecodeError          = "SESSION_DECODE_ERROR"
+	TextCodeClaimsMappingError          = "CLAIMS_MAPPING_ERROR"
+	TextCodeDataParseError              = "DATA_PARSE_ERROR"
+	TextCodeEmptyPassword               = "EMPTY_PASSWORD_NOT_ALLOWED"
+	TextCodeTokenExpired                = "TOKEN_EXPIRED"
+	TextCodeTokenMalformed              = "TOKEN_MALFORMED" // #nosec G101 -- Error text code, not a credential.
+	TextCodeTokenTooLarge               = "TOKEN_TOO_LARGE"
+	TextCodeImmutableClaim              = "IMMUTABLE_CLAIM_MUTATION"
+	TextCodeAccountSuspended            = "ACCOUNT_SUSPENDED"
+	TextCodeAccountDisabled             = "ACCOUNT_DISABLED"
+	TextCodeAccountArchived             = "ACCOUNT_ARCHIVED"
+	TextCodeAccountPending              = "ACCOUNT_PENDING"
+	TextCodeSignupDisabled              = "SIGNUP_DISABLED"
+	TextCodePasswordResetDisabled       = "PASSWORD_RESET_DISABLED"
+	TextCodePermissionResolverRequired  = "PERMISSION_RESOLVER_REQUIRED"
+	TextCodeTemporaryPasswordExpired    = "TEMPORARY_PASSWORD_EXPIRED"
+	TextCodeIdentifierConflict          = "IDENTIFIER_CONFLICT"
+	TextCodeAssuranceMissing            = "ASSURANCE_MISSING"
+	TextCodeAssuranceUnknown            = "ASSURANCE_UNKNOWN"
+	TextCodeAssuranceInsufficient       = "ASSURANCE_INSUFFICIENT"
+	TextCodeAssuranceStale              = "ASSURANCE_STALE"
+	TextCodeAssuranceStepUpRequired     = "ASSURANCE_STEP_UP_REQUIRED"
+	TextCodeAccountStateUnknown         = "ACCOUNT_STATE_UNKNOWN"
+	TextCodeAccountStateConflict        = "ACCOUNT_STATE_CONFLICT"
+	TextCodeAccountStateUnavailable     = "ACCOUNT_STATE_UNAVAILABLE"
+	TextCodePermissionVersionMismatch   = "PERMISSION_VERSION_MISMATCH"
+	TextCodePermissionVersionMissing    = "PERMISSION_VERSION_MISSING"
+	TextCodeAuthorizationRoleMissing    = "AUTHORIZATION_ROLE_MISSING"
+	TextCodeFreshnessPolicyInvalid      = "FRESHNESS_POLICY_INVALID"
+	TextCodeAuthorizationFreshnessDeny  = "AUTHORIZATION_FRESHNESS_DENIED"
+	TextCodeFreshnessInvalidationFailed = "FRESHNESS_INVALIDATION_FAILED"
+	TextCodeEmergencyAccessDenied       = "EMERGENCY_ACCESS_DENIED"
+	TextCodeEmergencyAccessUnavailable  = "EMERGENCY_ACCESS_UNAVAILABLE"
 )
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
@@ -127,6 +144,76 @@ var ErrPermissionResolverRequired = errors.New("permission resolver is required 
 var ErrTemporaryPasswordExpired = errors.New("temporary password expired", errors.CategoryAuth).
 	WithTextCode(TextCodeTemporaryPasswordExpired).
 	WithCode(errors.CodeForbidden)
+
+// ErrIdentifierConflict is returned when an immutable external identifier is
+// already bound to another local user.
+var ErrIdentifierConflict = errors.New("external identifier is already bound", errors.CategoryConflict).
+	WithTextCode(TextCodeIdentifierConflict).
+	WithCode(errors.CodeConflict)
+
+var ErrAssuranceMissing = errors.New("authentication assurance is missing", errors.CategoryAuth).
+	WithTextCode(TextCodeAssuranceMissing).
+	WithCode(errors.CodeUnauthorized)
+
+var ErrAssuranceUnknown = errors.New("authentication assurance is unknown", errors.CategoryAuthz).
+	WithTextCode(TextCodeAssuranceUnknown).
+	WithCode(errors.CodeForbidden)
+
+var ErrAssuranceInsufficient = errors.New("authentication assurance is insufficient", errors.CategoryAuthz).
+	WithTextCode(TextCodeAssuranceInsufficient).
+	WithCode(errors.CodeForbidden)
+
+var ErrAssuranceStale = errors.New("authentication assurance is stale", errors.CategoryAuthz).
+	WithTextCode(TextCodeAssuranceStale).
+	WithCode(errors.CodeForbidden)
+
+var ErrAssuranceStepUpRequired = errors.New("authentication step-up is required", errors.CategoryAuth).
+	WithTextCode(TextCodeAssuranceStepUpRequired).
+	WithCode(errors.CodeUnauthorized)
+
+var ErrAccountStateUnknown = errors.New("account state is unknown", errors.CategoryAuthz).
+	WithTextCode(TextCodeAccountStateUnknown).
+	WithCode(errors.CodeForbidden)
+
+var ErrAccountStateConflict = errors.New("account state sources conflict", errors.CategoryAuthz).
+	WithTextCode(TextCodeAccountStateConflict).
+	WithCode(errors.CodeForbidden)
+
+var ErrAccountStateUnavailable = errors.New("account state is unavailable", errors.CategoryExternal).
+	WithTextCode(TextCodeAccountStateUnavailable).
+	WithCode(errors.CodeInternal)
+
+var ErrPermissionVersionMismatch = errors.New("permission version is stale", errors.CategoryAuthz).
+	WithTextCode(TextCodePermissionVersionMismatch).
+	WithCode(errors.CodeForbidden)
+
+var ErrPermissionVersionMissing = errors.New("permission version is unavailable", errors.CategoryExternal).
+	WithTextCode(TextCodePermissionVersionMissing).
+	WithCode(errors.CodeInternal)
+
+var ErrAuthorizationRoleMissing = errors.New("authorization role is unavailable", errors.CategoryExternal).
+	WithTextCode(TextCodeAuthorizationRoleMissing).
+	WithCode(errors.CodeInternal)
+
+var ErrFreshnessPolicyInvalid = errors.New("authorization freshness policy is invalid", errors.CategoryValidation).
+	WithTextCode(TextCodeFreshnessPolicyInvalid).
+	WithCode(errors.CodeBadRequest)
+
+var ErrAuthorizationFreshnessDenied = errors.New("authorization freshness requirement was denied", errors.CategoryAuthz).
+	WithTextCode(TextCodeAuthorizationFreshnessDeny).
+	WithCode(errors.CodeForbidden)
+
+var ErrFreshnessInvalidationFailed = errors.New("freshness invalidation failed", errors.CategoryInternal).
+	WithTextCode(TextCodeFreshnessInvalidationFailed).
+	WithCode(errors.CodeInternal)
+
+var ErrEmergencyAccessDenied = errors.New("emergency access denied", errors.CategoryAuthz).
+	WithTextCode(TextCodeEmergencyAccessDenied).
+	WithCode(errors.CodeForbidden)
+
+var ErrEmergencyAccessUnavailable = errors.New("emergency access validation unavailable", errors.CategoryExternal).
+	WithTextCode(TextCodeEmergencyAccessUnavailable).
+	WithCode(errors.CodeInternal)
 
 func IsTokenExpiredError(err error) bool {
 	if err == nil {
