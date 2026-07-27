@@ -64,3 +64,7 @@ var ErrLinkingNotAllowed = errors.New("linking not allowed", errors.CategoryAuth
 var ErrLastAuthMethod = errors.New("cannot unlink last authentication method", errors.CategoryValidation).
 	WithTextCode(TextCodeLastAuthMethod).
 	WithCode(errors.CodeBadRequest)
+
+var ErrAccountOwnershipConflict = errors.New("social account ownership conflict", errors.CategoryConflict).
+	WithTextCode("social_account_ownership_conflict").
+	WithCode(errors.CodeConflict)

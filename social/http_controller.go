@@ -1,6 +1,7 @@
 package social
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,6 +51,9 @@ type HTTPConfig struct {
 
 	// ErrorHandler handles errors (optional)
 	ErrorHandler func(ctx router.Context, err error) error
+
+	// BrowserSecurity protects authenticated account-management routes.
+	BrowserSecurity []router.MiddlewareFunc
 }
 
 // NewHTTPController creates a new social auth HTTP controller.
@@ -66,6 +70,8 @@ func NewHTTPController(auth *SocialAuthenticator, cfg HTTPConfig) *HTTPControlle
 	if cfg.CookieSameSite == "" {
 		cfg.CookieSameSite = "Lax"
 	}
+	cfg.CookieSecure = true
+	cfg.CookieHTTPOnly = true
 	if cfg.SuccessRedirect == "" {
 		cfg.SuccessRedirect = "/"
 	}
@@ -82,11 +88,27 @@ func NewHTTPController(auth *SocialAuthenticator, cfg HTTPConfig) *HTTPControlle
 // RegisterRoutes registers social auth routes.
 func (c *HTTPController) RegisterRoutes(group RouteRegistrar) {
 	group.Get("/providers", c.ListProviders)
-	group.Get("/accounts", c.ListAccounts)
+	if len(c.config.BrowserSecurity) > 0 {
+		group.Get("/accounts", c.ListAccounts, c.config.BrowserSecurity...)
+	}
 	group.Get("/:provider/callback", c.Callback)
-	group.Post("/:provider/link", c.LinkAccount)
-	group.Delete("/:provider", c.UnlinkAccount)
 	group.Get("/:provider", c.BeginAuth)
+	if len(c.config.BrowserSecurity) > 0 {
+		group.Post("/:provider/link", c.LinkAccount, c.config.BrowserSecurity...)
+		group.Delete("/:provider", c.UnlinkAccount, c.config.BrowserSecurity...)
+	}
+}
+
+// RegisterSecureRoutes requires authenticated browser middleware for account
+// listing, linking, and unlinking while preserving state validation on the
+// public OAuth callback.
+func (c *HTTPController) RegisterSecureRoutes(group RouteRegistrar, middleware ...router.MiddlewareFunc) error {
+	if len(middleware) == 0 {
+		return fmt.Errorf("social: browser security middleware is required")
+	}
+	c.config.BrowserSecurity = append([]router.MiddlewareFunc(nil), middleware...)
+	c.RegisterRoutes(group)
+	return nil
 }
 
 // ListProviders returns available social providers.

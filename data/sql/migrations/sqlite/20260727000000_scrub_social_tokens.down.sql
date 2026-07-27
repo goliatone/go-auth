@@ -1,0 +1,1 @@
+-- Irreversible security cleanup: plaintext provider credentials are not restored.

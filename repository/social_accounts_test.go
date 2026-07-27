@@ -95,8 +95,8 @@ func TestSocialAccountRepositoryUpsertAndFind(t *testing.T) {
 	assert.Equal(t, userID, found.UserID)
 	assert.Equal(t, "octo@example.com", found.Email)
 	assert.Equal(t, "octo", found.Username)
-	assert.Equal(t, "token", found.AccessToken)
-	assert.Equal(t, "refresh", found.RefreshToken)
+	assert.Empty(t, found.AccessToken)
+	assert.Empty(t, found.RefreshToken)
 	require.NotNil(t, found.TokenExpiresAt)
 	assert.WithinDuration(t, expiresAt, *found.TokenExpiresAt, time.Second)
 	assert.Equal(t, "pro", found.ProfileData["plan"])
@@ -118,6 +118,17 @@ func TestSocialAccountRepositoryUpsertAndFind(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, accounts, 1)
 	assert.Equal(t, updated.ID, accounts[0].ID)
+
+	otherUserID := uuid.New().String()
+	_, err = repo.db.Exec("INSERT INTO users (id) VALUES (?)", otherUserID)
+	require.NoError(t, err)
+	account.UserID = otherUserID
+	err = repo.Upsert(ctx, account)
+	require.ErrorIs(t, err, social.ErrAccountOwnershipConflict)
+
+	stillOwned, err := repo.FindByProviderID(ctx, "github", "123")
+	require.NoError(t, err)
+	assert.Equal(t, userID, stillOwned.UserID)
 }
 
 func TestSocialAccountRepositoryDelete(t *testing.T) {

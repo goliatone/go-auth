@@ -124,6 +124,11 @@ type stubAccountRepo struct {
 	deleteCalls []string
 }
 
+func TestHTTPControllerSecureRoutesRequireMiddleware(t *testing.T) {
+	controller := NewHTTPController(NewSocialAuthenticator(nil, nil, nil, SocialAuthConfig{}), HTTPConfig{})
+	require.Error(t, controller.RegisterSecureRoutes(nil))
+}
+
 func (s *stubAccountRepo) FindByProviderID(ctx context.Context, provider, providerUserID string) (*SocialAccount, error) {
 	for _, accounts := range s.byUser {
 		for _, account := range accounts {
@@ -264,8 +269,6 @@ func TestHTTPControllerCallbackSetsCookieAndRedirects(t *testing.T) {
 	controller := NewHTTPController(authenticator, HTTPConfig{
 		SessionContextKey: "user",
 		CookieName:        "auth_token",
-		CookieSecure:      true,
-		CookieHTTPOnly:    true,
 		CookieSameSite:    "Lax",
 		SuccessRedirect:   "/fallback",
 	})
@@ -297,6 +300,8 @@ func TestHTTPControllerCallbackSetsCookieAndRedirects(t *testing.T) {
 	err = controller.Callback(ctx)
 	require.NoError(t, err)
 	require.Len(t, accountRepo.upserts, 1)
+	require.Empty(t, accountRepo.upserts[0].AccessToken)
+	require.Empty(t, accountRepo.upserts[0].RefreshToken)
 
 	parsed, err := url.Parse(redirectURL)
 	require.NoError(t, err)

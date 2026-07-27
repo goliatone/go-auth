@@ -18,8 +18,9 @@ import (
 
 func TestProviderAuthCodeURL(t *testing.T) {
 	provider := New(Config{
-		ClientID:    "client-id",
-		CallbackURL: "https://example.com/callback",
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		CallbackURL:           "https://example.com/callback",
 	})
 
 	authURL := provider.AuthCodeURL("state-token", social.WithPKCE("challenge", "S256"), social.WithPrompt("consent"))
@@ -103,11 +104,12 @@ func TestProviderExchangeUserInfoAndRefresh(t *testing.T) {
 	defer server.Close()
 
 	provider := New(Config{
-		ClientID:     "client-id",
-		ClientSecret: "client-secret",
-		CallbackURL:  "https://example.com/callback",
-		TokenURL:     server.URL + "/token",
-		UserInfoURL:  server.URL + "/userinfo",
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		ClientSecret:          "client-secret",
+		CallbackURL:           "https://example.com/callback",
+		TokenURL:              server.URL + "/token",
+		UserInfoURL:           server.URL + "/userinfo",
 	})
 
 	token, err := provider.Exchange(context.Background(), "auth-code", social.WithCodeVerifier("verifier"))
@@ -144,10 +146,11 @@ func TestProviderUserInfoErrorNormalized(t *testing.T) {
 	defer server.Close()
 
 	provider := New(Config{
-		ClientID:     "client-id",
-		ClientSecret: "client-secret",
-		CallbackURL:  "https://example.com/callback",
-		UserInfoURL:  server.URL,
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		ClientSecret:          "client-secret",
+		CallbackURL:           "https://example.com/callback",
+		UserInfoURL:           server.URL,
 	})
 
 	_, err := provider.UserInfo(context.Background(), &social.Token{AccessToken: "bad"})

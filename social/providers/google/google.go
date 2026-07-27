@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -30,7 +29,8 @@ type Config struct {
 	TokenURL    string
 	UserInfoURL string
 
-	HTTPClient *http.Client
+	HTTPClient            *http.Client
+	AllowInsecureLoopback bool
 }
 
 // DefaultScopes returns the default Google scopes.
@@ -42,6 +42,7 @@ func DefaultScopes() []string {
 type Provider struct {
 	config     Config
 	httpClient *http.Client
+	configErr  error
 }
 
 // New creates a new Google provider.
@@ -59,14 +60,18 @@ func New(cfg Config) *Provider {
 		cfg.UserInfoURL = defaultUserInfoURL
 	}
 
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+	var configErr error
+	for _, endpoint := range []string{cfg.AuthURL, cfg.TokenURL, cfg.UserInfoURL} {
+		if err := social.ValidateProviderEndpoint(endpoint, cfg.AllowInsecureLoopback); err != nil {
+			configErr = err
+			break
+		}
 	}
 
 	return &Provider{
 		config:     cfg,
-		httpClient: client,
+		httpClient: social.HardenProviderHTTPClient(cfg.HTTPClient),
+		configErr:  configErr,
 	}
 }
 
@@ -77,6 +82,9 @@ func (p *Provider) Name() string {
 
 // AuthCodeURL implements social.SocialProvider.
 func (p *Provider) AuthCodeURL(state string, opts ...social.AuthCodeOption) string {
+	if p.configErr != nil {
+		return ""
+	}
 	cfg := social.ApplyAuthCodeOptions(p.config.Scopes, opts...)
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
@@ -110,6 +118,9 @@ func (p *Provider) AuthCodeURL(state string, opts ...social.AuthCodeOption) stri
 
 // Exchange implements social.SocialProvider.
 func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.ExchangeOption) (*social.Token, error) {
+	if p.configErr != nil {
+		return nil, p.configErr
+	}
 	cfg := social.ApplyExchangeOptions(opts...)
 
 	data := url.Values{
@@ -136,7 +147,7 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +187,9 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 
 // UserInfo implements social.SocialProvider.
 func (p *Provider) UserInfo(ctx context.Context, token *social.Token) (*social.SocialProfile, error) {
+	if p.configErr != nil {
+		return nil, p.configErr
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.config.UserInfoURL, nil)
 	if err != nil {
 		return nil, err
@@ -188,7 +202,7 @@ func (p *Provider) UserInfo(ctx context.Context, token *social.Token) (*social.S
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +230,9 @@ func (p *Provider) ValidateToken(ctx context.Context, token *social.Token) error
 
 // RefreshToken implements social.SocialProvider.
 func (p *Provider) RefreshToken(ctx context.Context, refreshToken string) (*social.Token, error) {
+	if p.configErr != nil {
+		return nil, p.configErr
+	}
 	data := url.Values{
 		"client_id":     {p.config.ClientID},
 		"client_secret": {p.config.ClientSecret},
@@ -235,7 +252,7 @@ func (p *Provider) RefreshToken(ctx context.Context, refreshToken string) (*soci
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/goliatone/go-auth"
@@ -28,16 +30,17 @@ type SocialAuthenticator struct {
 
 // SocialAuthConfig configures the social authenticator.
 type SocialAuthConfig struct {
-	BaseURL              string
-	CallbackPath         string
-	DefaultRedirectURL   string
-	StateEncryptionKey   []byte
-	StateHMACKey         []byte
-	StateTTL             time.Duration
-	AllowSignup          bool
-	AllowLinking         bool
-	RequireEmailVerified bool
-	DefaultRole          string
+	BaseURL                string
+	CallbackPath           string
+	DefaultRedirectURL     string
+	StateEncryptionKey     []byte
+	StateHMACKey           []byte
+	StateTTL               time.Duration
+	AllowSignup            bool
+	AllowLinking           bool
+	RequireEmailVerified   bool
+	DefaultRole            string
+	AllowedRedirectOrigins []string
 }
 
 // SocialAuthOption configures the social authenticator.
@@ -165,6 +168,9 @@ func (sa *SocialAuthenticator) BeginAuth(
 		if opt != nil {
 			opt(cfg)
 		}
+	}
+	if err := validateRedirectTarget(cfg.redirectURL, sa.config.AllowedRedirectOrigins); err != nil {
+		return nil, err
 	}
 
 	if cfg.action == ActionSignup {
@@ -295,6 +301,9 @@ func (sa *SocialAuthenticator) resolveCallback(ctx context.Context, providerName
 	if time.Now().Unix() > state.ExpiresAt {
 		return nil, nil, ErrStateExpired
 	}
+	if err := validateRedirectTarget(state.RedirectURL, sa.config.AllowedRedirectOrigins); err != nil {
+		return nil, nil, err
+	}
 	if err := sa.requireSignupFeature(ctx, state); err != nil {
 		return nil, nil, err
 	}
@@ -337,7 +346,7 @@ func (sa *SocialAuthenticator) resolveSocialIdentity(ctx context.Context, state 
 		return nil, nil, auth.ErrIdentityNotFound
 	}
 
-	if err := ensureIdentityActive(identity); err != nil {
+	if _, err := auth.EnsureIdentityActive(identity); err != nil {
 		return nil, nil, err
 	}
 
@@ -370,8 +379,9 @@ func newSocialAccount(result *LinkingResult, profile *SocialProfile, providerNam
 		return account
 	}
 
-	account.AccessToken = token.AccessToken
-	account.RefreshToken = token.RefreshToken
+	// The legacy social-account table is not a credential vault. Provider
+	// credentials are deliberately omitted; provider sessions own encrypted
+	// token storage.
 	account.ProfileData = profile.Raw
 	if !token.ExpiresAt.IsZero() {
 		account.TokenExpiresAt = &token.ExpiresAt
@@ -473,35 +483,26 @@ const (
 	ActionLink   = "link"
 )
 
-type statusAwareIdentity interface {
-	Status() auth.UserStatus
-}
-
-func ensureIdentityActive(identity auth.Identity) error {
-	if identity == nil {
-		return auth.ErrIdentityNotFound
-	}
-
-	sa, ok := identity.(statusAwareIdentity)
-	if !ok {
+func validateRedirectTarget(raw string, allowedOrigins []string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return nil
 	}
-
-	status := sa.Status()
-	if status == "" {
-		status = auth.UserStatusActive
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ErrInvalidState
 	}
-
-	switch status {
-	case auth.UserStatusSuspended:
-		return auth.ErrUserSuspended
-	case auth.UserStatusDisabled:
-		return auth.ErrUserDisabled
-	case auth.UserStatusArchived:
-		return auth.ErrUserArchived
-	case auth.UserStatusPending:
-		return auth.ErrUserPending
-	default:
-		return nil
+	if !parsed.IsAbs() {
+		if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+			return nil
+		}
+		return ErrInvalidState
 	}
+	origin := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
+	for _, allowed := range allowedOrigins {
+		if strings.EqualFold(strings.TrimRight(strings.TrimSpace(allowed), "/"), origin) {
+			return nil
+		}
+	}
+	return ErrInvalidState
 }

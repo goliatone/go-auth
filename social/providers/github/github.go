@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/goliatone/go-auth/social"
 )
@@ -32,7 +30,8 @@ type Config struct {
 	UserURL   string
 	EmailsURL string
 
-	HTTPClient *http.Client
+	HTTPClient            *http.Client
+	AllowInsecureLoopback bool
 }
 
 // DefaultScopes returns the default GitHub scopes.
@@ -44,6 +43,7 @@ func DefaultScopes() []string {
 type Provider struct {
 	config     Config
 	httpClient *http.Client
+	configErr  error
 }
 
 // New creates a new GitHub provider.
@@ -64,14 +64,18 @@ func New(cfg Config) *Provider {
 		cfg.EmailsURL = defaultEmailsURL
 	}
 
-	client := cfg.HTTPClient
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+	var configErr error
+	for _, endpoint := range []string{cfg.AuthURL, cfg.TokenURL, cfg.UserURL, cfg.EmailsURL} {
+		if err := social.ValidateProviderEndpoint(endpoint, cfg.AllowInsecureLoopback); err != nil {
+			configErr = err
+			break
+		}
 	}
 
 	return &Provider{
 		config:     cfg,
-		httpClient: client,
+		httpClient: social.HardenProviderHTTPClient(cfg.HTTPClient),
+		configErr:  configErr,
 	}
 }
 
@@ -82,6 +86,9 @@ func (p *Provider) Name() string {
 
 // AuthCodeURL implements social.SocialProvider.
 func (p *Provider) AuthCodeURL(state string, opts ...social.AuthCodeOption) string {
+	if p.configErr != nil {
+		return ""
+	}
 	cfg := social.ApplyAuthCodeOptions(p.config.Scopes, opts...)
 	scopes := cfg.Scopes
 	if len(scopes) == 0 {
@@ -109,6 +116,9 @@ func (p *Provider) AuthCodeURL(state string, opts ...social.AuthCodeOption) stri
 
 // Exchange implements social.SocialProvider.
 func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.ExchangeOption) (*social.Token, error) {
+	if p.configErr != nil {
+		return nil, p.configErr
+	}
 	cfg := social.ApplyExchangeOptions(opts...)
 
 	data := url.Values{
@@ -134,7 +144,7 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +173,9 @@ func (p *Provider) Exchange(ctx context.Context, code string, opts ...social.Exc
 
 // UserInfo implements social.SocialProvider.
 func (p *Provider) UserInfo(ctx context.Context, token *social.Token) (*social.SocialProfile, error) {
+	if p.configErr != nil {
+		return nil, p.configErr
+	}
 	user, err := p.fetchUser(ctx, token.AccessToken)
 	if err != nil {
 		return nil, err
@@ -202,7 +215,7 @@ func (p *Provider) fetchUser(ctx context.Context, accessToken string) (*githubUs
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +246,7 @@ func (p *Provider) fetchPrimaryEmail(ctx context.Context, accessToken string) (s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := social.ReadProviderResponseBody(resp.Body)
 	if err != nil {
 		return "", false, err
 	}

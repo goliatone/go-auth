@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/goliatone/go-auth/social"
@@ -77,12 +78,13 @@ func (r *SocialAccountRepository) FindByUserID(ctx context.Context, userID strin
 // Upsert implements social.SocialAccountRepository.
 func (r *SocialAccountRepository) Upsert(ctx context.Context, account *social.SocialAccount) error {
 	model := r.fromSocialAccount(account)
+	model.AccessToken = ""
+	model.RefreshToken = ""
 	model.UpdatedAt = time.Now()
 
-	_, err := r.db.NewInsert().
+	result, err := r.db.NewInsert().
 		Model(model).
 		On("CONFLICT (provider, provider_user_id) DO UPDATE").
-		Set("user_id = EXCLUDED.user_id").
 		Set("email = EXCLUDED.email").
 		Set("name = EXCLUDED.name").
 		Set("username = EXCLUDED.username").
@@ -92,9 +94,19 @@ func (r *SocialAccountRepository) Upsert(ctx context.Context, account *social.So
 		Set("token_expires_at = EXCLUDED.token_expires_at").
 		Set("profile_data = EXCLUDED.profile_data").
 		Set("updated_at = EXCLUDED.updated_at").
+		Where("user_id = EXCLUDED.user_id").
 		Exec(ctx)
-
-	return err
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("%w: provider subject is already linked to another user", social.ErrAccountOwnershipConflict)
+	}
+	return nil
 }
 
 // Delete implements social.SocialAccountRepository.

@@ -17,8 +17,9 @@ import (
 
 func TestProviderAuthCodeURL(t *testing.T) {
 	provider := New(Config{
-		ClientID:    "client-id",
-		CallbackURL: "https://example.com/callback",
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		CallbackURL:           "https://example.com/callback",
 	})
 
 	authURL := provider.AuthCodeURL("state-token", social.WithScopes("repo"), social.WithPKCE("challenge", "S256"))
@@ -83,13 +84,14 @@ func TestProviderExchangeAndUserInfo(t *testing.T) {
 	defer server.Close()
 
 	provider := New(Config{
-		ClientID:     "client-id",
-		ClientSecret: "client-secret",
-		CallbackURL:  "https://example.com/callback",
-		AuthURL:      server.URL + "/login/oauth/authorize",
-		TokenURL:     server.URL + "/login/oauth/access_token",
-		UserURL:      server.URL + "/user",
-		EmailsURL:    server.URL + "/user/emails",
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		ClientSecret:          "client-secret",
+		CallbackURL:           "https://example.com/callback",
+		AuthURL:               server.URL + "/login/oauth/authorize",
+		TokenURL:              server.URL + "/login/oauth/access_token",
+		UserURL:               server.URL + "/user",
+		EmailsURL:             server.URL + "/user/emails",
 	})
 
 	token, err := provider.Exchange(context.Background(), "auth-code", social.WithCodeVerifier("verifier"))
@@ -116,10 +118,11 @@ func TestProviderExchangeErrorNormalized(t *testing.T) {
 	defer server.Close()
 
 	provider := New(Config{
-		ClientID:     "client-id",
-		ClientSecret: "client-secret",
-		CallbackURL:  "https://example.com/callback",
-		TokenURL:     server.URL,
+		AllowInsecureLoopback: true,
+		ClientID:              "client-id",
+		ClientSecret:          "client-secret",
+		CallbackURL:           "https://example.com/callback",
+		TokenURL:              server.URL,
 	})
 
 	_, err := provider.Exchange(context.Background(), "bad-code")
