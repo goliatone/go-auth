@@ -13,7 +13,7 @@ require (
 	github.com/goliatone/go-logger v0.9.0
 	github.com/goliatone/go-persistence-bun v0.16.1
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-router v0.61.1
+	github.com/goliatone/go-router v0.61.2
 	github.com/google/uuid v1.6.0
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
