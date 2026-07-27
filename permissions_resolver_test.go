@@ -61,6 +61,27 @@ func TestCachedPermissionsResolverCachesAndDedupes(t *testing.T) {
 	}
 }
 
+func TestCachedPermissionsResolverStrictModePreservesLegacyCustomKeyWithoutScope(t *testing.T) {
+	var calls atomic.Int64
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(context.Context) ([]string, error) {
+			calls.Add(1)
+			return []string{"records.read"}, nil
+		},
+		KeyFunc:        func(context.Context) (string, bool) { return "legacy-custom-key", true },
+		TTL:            time.Minute,
+		CacheErrorMode: PermissionCacheErrorModeFailClosed,
+	})
+	for range 2 {
+		if _, err := resolver.ResolvePermissions(context.Background()); err != nil {
+			t.Fatalf("legacy custom-key resolution failed: %v", err)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("legacy custom-key context did not cache: calls=%d", calls.Load())
+	}
+}
+
 func TestWithResolvedPermissionsCacheResolvesOncePerContext(t *testing.T) {
 	var runs atomic.Int64
 	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
@@ -278,7 +299,7 @@ func TestDefaultPermissionsCacheKeyBypassesWhenNoDiscriminator(t *testing.T) {
 	}
 }
 
-func TestCachedPermissionsResolverWithoutCancelInSingleflight(t *testing.T) {
+func TestCachedPermissionsResolverCallerCancellationDoesNotCancelSharedWork(t *testing.T) {
 	expected := []string{"admin.translations.export"}
 	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
 		Resolver: func(ctx context.Context) ([]string, error) {
@@ -311,9 +332,88 @@ func TestCachedPermissionsResolverWithoutCancelInSingleflight(t *testing.T) {
 	}()
 	wg.Wait()
 
-	if errA != nil || errB != nil {
-		t.Fatalf("expected shared resolution to ignore caller cancellation, got errA=%v errB=%v", errA, errB)
+	if !errors.Is(errA, context.Canceled) || errB != nil {
+		t.Fatalf("caller/shared cancellation errA=%v errB=%v", errA, errB)
 	}
+}
+
+func TestCachedPermissionsResolverBoundsHungSharedWork(t *testing.T) {
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(ctx context.Context) ([]string, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		KeyFunc:           func(context.Context) (string, bool) { return "k|hung", true },
+		TTL:               time.Minute,
+		ResolutionTimeout: 25 * time.Millisecond,
+	})
+
+	startedAt := time.Now()
+	_, err := resolver.ResolvePermissions(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("hung resolver error=%v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("hung resolver exceeded bound: %s", elapsed)
+	}
+}
+
+func TestCachedPermissionsResolverBoundsHungForcedRefreshWork(t *testing.T) {
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(ctx context.Context) ([]string, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		KeyFunc:           func(context.Context) (string, bool) { return "k|hung-refresh", true },
+		TTL:               time.Minute,
+		ResolutionTimeout: 25 * time.Millisecond,
+	})
+
+	startedAt := time.Now()
+	_, err := resolver.resolveFreshWithCacheKey(context.Background(), "k|hung-refresh", true)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("hung forced refresh error=%v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("hung forced refresh exceeded bound: %s", elapsed)
+	}
+}
+
+func TestCachedPermissionsResolverForcedRefreshHonorsCallerCancellation(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(ctx context.Context) ([]string, error) {
+			close(started)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-release:
+				return []string{"admin.translations.export"}, nil
+			}
+		},
+		KeyFunc:           func(context.Context) (string, bool) { return "k|refresh-cancel", true },
+		TTL:               time.Minute,
+		ResolutionTimeout: time.Second,
+	})
+
+	callerCtx, cancelCaller := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := resolver.resolveFreshWithCacheKey(callerCtx, "k|refresh-cancel", true)
+		result <- err
+	}()
+	<-started
+	cancelCaller()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("forced refresh caller error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("forced refresh caller did not honor cancellation")
+	}
+	close(release)
 }
 
 func TestCachedPermissionsResolverPurgesExpiredEntriesOnStore(t *testing.T) {
@@ -404,6 +504,58 @@ func (s *testPermissionCacheStore) PurgeExpired(ctx context.Context) (int, error
 		return s.purgeFunc(ctx)
 	}
 	return 0, nil
+}
+
+type testIndexedPermissionCacheStore struct {
+	*testPermissionCacheStore
+	indexFunc       func(context.Context, string, PermissionInvalidationScope) error
+	deleteScopeFunc func(context.Context, PermissionInvalidationScope, int) (int, bool, error)
+}
+
+func (s *testIndexedPermissionCacheStore) IndexPermissionCacheKey(
+	ctx context.Context,
+	key string,
+	scope PermissionInvalidationScope,
+) error {
+	if s != nil && s.indexFunc != nil {
+		return s.indexFunc(ctx, key, scope)
+	}
+	return nil
+}
+
+func (s *testIndexedPermissionCacheStore) DeletePermissionCacheScope(
+	ctx context.Context,
+	scope PermissionInvalidationScope,
+	limit int,
+) (int, bool, error) {
+	if s != nil && s.deleteScopeFunc != nil {
+		return s.deleteScopeFunc(ctx, scope, limit)
+	}
+	return 0, false, nil
+}
+
+type testAtomicIndexedPermissionCacheStore struct {
+	*testIndexedPermissionCacheStore
+	atomicSetFunc func(
+		context.Context,
+		string,
+		[]string,
+		time.Duration,
+		PermissionInvalidationScope,
+	) error
+}
+
+func (s *testAtomicIndexedPermissionCacheStore) SetPermissionCacheEntry(
+	ctx context.Context,
+	key string,
+	permissions []string,
+	ttl time.Duration,
+	scope PermissionInvalidationScope,
+) error {
+	if s != nil && s.atomicSetFunc != nil {
+		return s.atomicSetFunc(ctx, key, permissions, ttl, scope)
+	}
+	return nil
 }
 
 func TestCachedPermissionsResolverUsesInjectedStore(t *testing.T) {
@@ -501,6 +653,134 @@ func TestCachedPermissionsResolverCacheErrorsFailClosed(t *testing.T) {
 	_, err := resolver.ResolvePermissions(context.Background())
 	if err == nil {
 		t.Fatalf("expected fail-closed cache error")
+	}
+}
+
+func TestCachedPermissionsResolverAtomicIndexFailureCannotLeaveEntry(t *testing.T) {
+	now := time.Now().UTC()
+	sentinel := errors.New("atomic index failed")
+	backing := NewInMemoryPermissionCacheStore(InMemoryPermissionCacheStoreConfig{})
+	store := &testAtomicIndexedPermissionCacheStore{
+		testIndexedPermissionCacheStore: &testIndexedPermissionCacheStore{
+			testPermissionCacheStore: &testPermissionCacheStore{
+				getFunc:    backing.Get,
+				setFunc:    backing.Set,
+				deleteFunc: backing.Delete,
+			},
+			indexFunc:       backing.IndexPermissionCacheKey,
+			deleteScopeFunc: backing.DeletePermissionCacheScope,
+		},
+		atomicSetFunc: func(
+			ctx context.Context,
+			key string,
+			permissions []string,
+			ttl time.Duration,
+			_ PermissionInvalidationScope,
+		) error {
+			if err := backing.Set(ctx, key, permissions, ttl); err != nil {
+				return err
+			}
+			return sentinel
+		},
+	}
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(context.Context) ([]string, error) {
+			return []string{"records.read"}, nil
+		},
+		KeyFunc: func(context.Context) (string, bool) { return "atomic-failure", true },
+		Store:   store,
+		TTL:     time.Minute,
+	})
+	permissions, err := resolver.ResolverFunc().ResolveCurrentPermissions(
+		context.Background(),
+		CurrentPermissionsRequest{
+			Principal: freshnessPrincipal(t, "aal1", "1", now),
+			Version:   "1",
+			Role:      "office",
+			SessionID: "session-1",
+		},
+	)
+	if err != nil || len(permissions) != 1 {
+		t.Fatalf("fail-open permissions=%v err=%v", permissions, err)
+	}
+	if _, ok, getErr := backing.Get(context.Background(), "atomic-failure"); getErr != nil || ok {
+		t.Fatalf("failed atomic entry remained cached: ok=%t err=%v", ok, getErr)
+	}
+}
+
+func TestCachedPermissionsResolverBypassesUnsafeIndexedStore(t *testing.T) {
+	now := time.Now().UTC()
+	var setCalls atomic.Int64
+	store := &testIndexedPermissionCacheStore{
+		testPermissionCacheStore: &testPermissionCacheStore{
+			setFunc: func(context.Context, string, []string, time.Duration) error {
+				setCalls.Add(1)
+				return nil
+			},
+		},
+	}
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(context.Context) ([]string, error) {
+			return []string{"records.read"}, nil
+		},
+		KeyFunc: func(context.Context) (string, bool) { return "unsafe-indexed", true },
+		Store:   store,
+		TTL:     time.Minute,
+	})
+	permissions, err := resolver.ResolverFunc().ResolveCurrentPermissions(
+		context.Background(),
+		CurrentPermissionsRequest{
+			Principal: freshnessPrincipal(t, "aal1", "1", now),
+			Version:   "1",
+			Role:      "office",
+			SessionID: "session-1",
+		},
+	)
+	if err != nil || len(permissions) != 1 {
+		t.Fatalf("unsafe indexed fail-open permissions=%v err=%v", permissions, err)
+	}
+	if setCalls.Load() != 0 {
+		t.Fatalf("unsafe indexed store received %d non-atomic writes", setCalls.Load())
+	}
+	if resolver.Stats().StoreSetErrors != 1 {
+		t.Fatalf("unsafe indexed store error was not counted: %+v", resolver.Stats())
+	}
+}
+
+func TestCachedPermissionsResolverBypassesUnindexedScopedStore(t *testing.T) {
+	now := time.Now().UTC()
+	var setCalls atomic.Int64
+	store := &testPermissionCacheStore{
+		setFunc: func(context.Context, string, []string, time.Duration) error {
+			setCalls.Add(1)
+			return nil
+		},
+	}
+	resolver := NewCachedPermissionsResolver(CachedPermissionsResolverConfig{
+		Resolver: func(context.Context) ([]string, error) {
+			return []string{"records.read"}, nil
+		},
+		KeyFunc: func(context.Context) (string, bool) { return "unsafe-unindexed", true },
+		Store:   store,
+		TTL:     time.Minute,
+	})
+	permissions, err := resolver.ResolverFunc().ResolveCurrentPermissions(
+		context.Background(),
+		CurrentPermissionsRequest{
+			Principal: freshnessPrincipal(t, "aal1", "1", now),
+			Version:   "1",
+			Role:      "office",
+			SessionID: "session-1",
+		},
+	)
+	if err != nil || len(permissions) != 1 {
+		t.Fatalf("unindexed fail-open permissions=%v err=%v", permissions, err)
+	}
+	if setCalls.Load() != 0 {
+		t.Fatalf("unindexed scoped store received %d unreachable writes", setCalls.Load())
+	}
+	if resolver.Stats().StoreSetErrors != 1 {
+		t.Fatalf("unindexed scoped store error was not counted: %+v", resolver.Stats())
 	}
 }
 

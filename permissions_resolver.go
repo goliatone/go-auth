@@ -28,18 +28,92 @@ var permissionVersionMetadataKeys = []string{
 // PermissionResolverFunc resolves effective permission keys from a request context.
 type PermissionResolverFunc func(context.Context) ([]string, error)
 
+const (
+	DefaultPermissionResolutionTimeout = 5 * time.Second
+	MaxPermissionResolutionTimeout     = 30 * time.Second
+)
+
+// CurrentPermissionsRequest binds permission resolution to the normalized
+// principal and authoritative authorization version selected by the freshness
+// guard. SessionID is the local provider-session ID when one is available.
+type CurrentPermissionsRequest struct {
+	Principal AuthenticatedPrincipal
+	Version   string
+	Role      string
+	SessionID string
+	// ForceRefresh bypasses every cross-request cache lookup. A successful
+	// authoritative result may still replace the entry under the current key.
+	ForceRefresh bool
+}
+
+type currentPermissionsContextKey struct{}
+
+// WithCurrentPermissionsRequest returns a context whose permission cache keys
+// and invalidation scope are derived from current normalized authorization
+// state rather than stale token hints.
+func WithCurrentPermissionsRequest(
+	ctx context.Context,
+	request CurrentPermissionsRequest,
+) (context.Context, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	request.Principal = request.Principal.Clone()
+	request.Version = strings.TrimSpace(request.Version)
+	request.Role = strings.TrimSpace(request.Role)
+	request.SessionID = strings.TrimSpace(request.SessionID)
+	if strings.TrimSpace(request.Principal.ApplicationSubject()) == "" || request.Version == "" {
+		return nil, ErrPermissionVersionMissing
+	}
+	return context.WithValue(ctx, currentPermissionsContextKey{}, request), nil
+}
+
+// CurrentPermissionsRequestFromContext returns a defensive copy of the
+// authoritative permission-resolution request.
+func CurrentPermissionsRequestFromContext(ctx context.Context) (CurrentPermissionsRequest, bool) {
+	if ctx == nil {
+		return CurrentPermissionsRequest{}, false
+	}
+	request, ok := ctx.Value(currentPermissionsContextKey{}).(CurrentPermissionsRequest)
+	if !ok {
+		return CurrentPermissionsRequest{}, false
+	}
+	request.Principal = request.Principal.Clone()
+	return request, true
+}
+
+// ResolveCurrentPermissions resolves permissions for an authoritative version.
+// Existing PermissionResolverFunc implementations remain source compatible and
+// receive the normalized request through context.
+func (f PermissionResolverFunc) ResolveCurrentPermissions(
+	ctx context.Context,
+	request CurrentPermissionsRequest,
+) ([]string, error) {
+	if f == nil {
+		return nil, ErrAuthorizationFreshnessDenied
+	}
+	currentCtx, err := WithCurrentPermissionsRequest(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return f(currentCtx)
+}
+
 // PermissionCacheKeyFunc computes a stable cache key for a permission resolution request.
 // Return ok=false to bypass cross-request caching.
 type PermissionCacheKeyFunc func(context.Context) (key string, ok bool)
 
 // CachedPermissionsResolverConfig configures the cross-request resolver cache.
 type CachedPermissionsResolverConfig struct {
-	Resolver       PermissionResolverFunc
-	KeyFunc        PermissionCacheKeyFunc
-	Store          PermissionCacheStore
-	TTL            time.Duration
-	CacheErrorMode PermissionCacheErrorMode
-	Logger         Logger
+	Resolver PermissionResolverFunc
+	KeyFunc  PermissionCacheKeyFunc
+	Store    PermissionCacheStore
+	TTL      time.Duration
+	// ResolutionTimeout bounds shared backend work independently from any one
+	// caller. Zero uses DefaultPermissionResolutionTimeout.
+	ResolutionTimeout time.Duration
+	CacheErrorMode    PermissionCacheErrorMode
+	Logger            Logger
 }
 
 // PermissionResolverStats exposes lightweight runtime counters for observability.
@@ -61,12 +135,13 @@ type PermissionResolverStats struct {
 // CachedPermissionsResolver wraps a permission resolver with key-based TTL caching
 // and singleflight deduplication to prevent query amplification under load.
 type CachedPermissionsResolver struct {
-	resolver       PermissionResolverFunc
-	keyFunc        PermissionCacheKeyFunc
-	store          PermissionCacheStore
-	ttl            time.Duration
-	logger         Logger
-	cacheErrorMode PermissionCacheErrorMode
+	resolver          PermissionResolverFunc
+	keyFunc           PermissionCacheKeyFunc
+	store             PermissionCacheStore
+	ttl               time.Duration
+	resolutionTimeout time.Duration
+	logger            Logger
+	cacheErrorMode    PermissionCacheErrorMode
 
 	group singleflight.Group
 
@@ -96,13 +171,21 @@ func NewCachedPermissionsResolver(cfg CachedPermissionsResolverConfig) *CachedPe
 		store = NewInMemoryPermissionCacheStore(InMemoryPermissionCacheStoreConfig{})
 	}
 	ttl := max(cfg.TTL, 0)
+	resolutionTimeout := cfg.ResolutionTimeout
+	if resolutionTimeout <= 0 {
+		resolutionTimeout = DefaultPermissionResolutionTimeout
+	}
+	if resolutionTimeout > MaxPermissionResolutionTimeout {
+		resolutionTimeout = MaxPermissionResolutionTimeout
+	}
 	return &CachedPermissionsResolver{
-		resolver:       cfg.Resolver,
-		keyFunc:        keyFn,
-		store:          store,
-		ttl:            ttl,
-		cacheErrorMode: normalizePermissionCacheErrorMode(cfg.CacheErrorMode),
-		logger:         EnsureLogger(cfg.Logger),
+		resolver:          cfg.Resolver,
+		keyFunc:           keyFn,
+		store:             store,
+		ttl:               ttl,
+		resolutionTimeout: resolutionTimeout,
+		cacheErrorMode:    normalizePermissionCacheErrorMode(cfg.CacheErrorMode),
+		logger:            EnsureLogger(cfg.Logger),
 	}
 }
 
@@ -126,13 +209,17 @@ func (r *CachedPermissionsResolver) ResolvePermissions(ctx context.Context) ([]s
 
 	key, ok := r.keyFunc(ctx)
 	key = strings.TrimSpace(key)
+	currentRequest, _ := CurrentPermissionsRequestFromContext(ctx)
 
 	resolve := func() ([]string, error) {
+		if currentRequest.ForceRefresh {
+			return r.resolveFreshWithCacheKey(ctx, key, ok)
+		}
 		return r.resolveWithCacheKey(ctx, key, ok)
 	}
 
 	if requestCache, hasRequestCache := resolvedPermissionsCacheFromContext(ctx); hasRequestCache {
-		return requestCache.resolve(r.requestCacheKey(key, ok), resolve)
+		return requestCache.resolve(r.requestCacheKey(key, ok, currentRequest.ForceRefresh), resolve)
 	}
 
 	return resolve()
@@ -150,9 +237,13 @@ func (r *CachedPermissionsResolver) resolveWithCacheKey(ctx context.Context, key
 		return cloneStringSlice(cached), nil
 	}
 	r.cacheMisses.Add(1)
-	resolverCtx := context.WithoutCancel(ctx)
-
-	value, err, shared := r.group.Do(key, func() (any, error) {
+	resolverBaseCtx := context.WithoutCancel(ctx)
+	result := r.group.DoChan(key, func() (any, error) {
+		resolverCtx, cancelResolver := context.WithTimeout(
+			resolverBaseCtx,
+			r.resolutionTimeout,
+		)
+		defer cancelResolver()
 		if cached, hit, lookupErr := r.lookup(resolverCtx, key); lookupErr != nil {
 			return nil, lookupErr
 		} else if hit {
@@ -170,24 +261,84 @@ func (r *CachedPermissionsResolver) resolveWithCacheKey(ctx context.Context, key
 		}
 		return cloneStringSlice(perms), nil
 	})
-	if shared {
+
+	var flightResult singleflight.Result
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case flightResult = <-result:
+	}
+	if flightResult.Shared {
 		r.singleflightShared.Add(1)
 	}
-	if err != nil {
-		return nil, err
+	if flightResult.Err != nil {
+		return nil, flightResult.Err
 	}
-	perms, _ := value.([]string)
+	perms, _ := flightResult.Val.([]string)
 	return cloneStringSlice(perms), nil
 }
 
-func (r *CachedPermissionsResolver) requestCacheKey(cacheKey string, cacheKeyOK bool) string {
+func (r *CachedPermissionsResolver) resolveFreshWithCacheKey(
+	ctx context.Context,
+	key string,
+	keyOK bool,
+) ([]string, error) {
+	if !keyOK || key == "" || r.ttl <= 0 {
+		return r.resolveWithoutCache(ctx)
+	}
+	r.cacheMisses.Add(1)
+	resolverBaseCtx := context.WithoutCancel(ctx)
+	result := r.group.DoChan("refresh:"+key, func() (any, error) {
+		resolverCtx, cancelResolver := context.WithTimeout(
+			resolverBaseCtx,
+			r.resolutionTimeout,
+		)
+		defer cancelResolver()
+		r.resolverRuns.Add(1)
+		permissions, resolveErr := r.resolver(resolverCtx)
+		if resolveErr != nil {
+			r.errors.Add(1)
+			return nil, resolveErr
+		}
+		permissions = normalizePermissionValues(permissions)
+		if storeErr := r.storePermissions(resolverCtx, key, permissions); storeErr != nil {
+			return nil, storeErr
+		}
+		return cloneStringSlice(permissions), nil
+	})
+
+	var flightResult singleflight.Result
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case flightResult = <-result:
+	}
+	if flightResult.Shared {
+		r.singleflightShared.Add(1)
+	}
+	if flightResult.Err != nil {
+		return nil, flightResult.Err
+	}
+	permissions, _ := flightResult.Val.([]string)
+	return cloneStringSlice(permissions), nil
+}
+
+func (r *CachedPermissionsResolver) requestCacheKey(
+	cacheKey string,
+	cacheKeyOK bool,
+	forceRefresh bool,
+) string {
 	if r == nil {
 		return ""
 	}
-	if cacheKeyOK && strings.TrimSpace(cacheKey) != "" {
-		return fmt.Sprintf("resolver:%p|key:%s", r, cacheKey)
+	mode := "cached"
+	if forceRefresh {
+		mode = "refresh"
 	}
-	return fmt.Sprintf("resolver:%p|key:none", r)
+	if cacheKeyOK && strings.TrimSpace(cacheKey) != "" {
+		return fmt.Sprintf("resolver:%p|mode:%s|key:%s", r, mode, cacheKey)
+	}
+	return fmt.Sprintf("resolver:%p|mode:%s|key:none", r, mode)
 }
 
 // Stats returns a copy of the internal counters.
@@ -238,6 +389,26 @@ func (r *CachedPermissionsResolver) Invalidate(ctx context.Context, key string) 
 	r.storeDeleteErrors.Add(1)
 	r.logCacheStoreError("delete", key, err)
 	return err
+}
+
+// InvalidateScope removes at most limit indexed entries. Callers retry while
+// more=true; no implementation is allowed to fall back to a full key scan.
+func (r *CachedPermissionsResolver) InvalidateScope(
+	ctx context.Context,
+	scope PermissionInvalidationScope,
+	limit int,
+) (deleted int, more bool, err error) {
+	if r == nil || r.store == nil {
+		return 0, false, nil
+	}
+	indexed, ok := r.store.(IndexedPermissionCacheStore)
+	if !ok {
+		return 0, false, fmt.Errorf("%w: permission cache does not support indexed invalidation", ErrFreshnessPolicyInvalid)
+	}
+	if limit <= 0 || limit > 10_000 {
+		return 0, false, fmt.Errorf("%w: invalid permission invalidation limit", ErrFreshnessPolicyInvalid)
+	}
+	return indexed.DeletePermissionCacheScope(ctx, scope, limit)
 }
 
 // PurgeExpired deletes stale cache entries when the configured store supports it.
@@ -299,16 +470,66 @@ func (r *CachedPermissionsResolver) storePermissions(ctx context.Context, key st
 	if r == nil || r.ttl <= 0 || r.store == nil {
 		return nil
 	}
-	err := r.store.Set(ctx, key, normalizePermissionValues(permissions), r.ttl)
-	if err == nil {
+	normalized := normalizePermissionValues(permissions)
+	scope := permissionInvalidationScopeFromContext(ctx)
+	hasScope := scope.ApplicationSubject != "" || scope.TenantID != "" || scope.SessionID != ""
+	if hasScope {
+		if atomicStore, ok := r.store.(AtomicIndexedPermissionCacheStore); ok {
+			err := atomicStore.SetPermissionCacheEntry(ctx, key, normalized, r.ttl, scope)
+			if err == nil {
+				return nil
+			}
+			r.storeSetErrors.Add(1)
+			// Defensively remove a value from a custom store that violated the
+			// all-or-nothing contract before returning an error.
+			_ = r.store.Delete(ctx, key)
+			if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
+				return err
+			}
+			r.logCacheStoreError("set_indexed", key, err)
+			return nil
+		}
+		err := fmt.Errorf(
+			"%w: scoped permission cache must publish value and indexes atomically",
+			ErrFreshnessPolicyInvalid,
+		)
+		r.storeSetErrors.Add(1)
+		_ = r.store.Delete(ctx, key)
+		if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
+			return err
+		}
+		r.logCacheStoreError("set_indexed", key, err)
 		return nil
 	}
-	r.storeSetErrors.Add(1)
-	if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
-		return err
+
+	err := r.store.Set(ctx, key, normalized, r.ttl)
+	if err != nil {
+		r.storeSetErrors.Add(1)
+		if r.cacheErrorMode == PermissionCacheErrorModeFailClosed {
+			return err
+		}
+		r.logCacheStoreError("set", key, err)
+		return nil
 	}
-	r.logCacheStoreError("set", key, err)
 	return nil
+}
+
+func permissionInvalidationScopeFromContext(ctx context.Context) PermissionInvalidationScope {
+	if ctx == nil {
+		return PermissionInvalidationScope{}
+	}
+	claims, hasClaims := GetClaims(ctx)
+	parts := permissionCacheKeyParts{}
+	parts.applyClaimsIdentity(claims, hasClaims)
+	parts.applyActorIdentity(ctx)
+	parts.applyActorDiscriminators(ctx)
+	parts.applyClaimsDiscriminators(claims, hasClaims)
+	parts.applyCurrentPermissionsRequest(ctx)
+	return PermissionInvalidationScope{
+		ApplicationSubject: strings.TrimSpace(parts.userID),
+		TenantID:           strings.TrimSpace(parts.tenantID),
+		SessionID:          strings.TrimSpace(parts.sessionID),
+	}
 }
 
 func (r *CachedPermissionsResolver) logCacheStoreError(operation, key string, err error) {
@@ -359,6 +580,9 @@ func PermissionsVersionFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
+	if request, ok := CurrentPermissionsRequestFromContext(ctx); ok {
+		return strings.TrimSpace(request.Version)
+	}
 	if actor, ok := ActorFromContext(ctx); ok && actor != nil {
 		if version := firstMetadataString(actor.Metadata, permissionVersionMetadataKeys); version != "" {
 			return version
@@ -384,12 +608,14 @@ func DefaultPermissionsCacheKeyFromContext(ctx context.Context) (string, bool) {
 	parts := permissionCacheKeyParts{}
 	parts.applyClaimsIdentity(claims, hasClaims)
 	parts.applyActorIdentity(ctx)
+	parts.applyCurrentPermissionsRequest(ctx)
 	if parts.userID == "" {
 		return "", false
 	}
 
 	parts.applyActorDiscriminators(ctx)
 	parts.applyClaimsDiscriminators(claims, hasClaims)
+	parts.applyCurrentPermissionsRequest(ctx)
 
 	version := PermissionsVersionFromContext(ctx)
 	tokenID := ""
@@ -496,6 +722,27 @@ func (p *permissionCacheKeyParts) applyClaimsDiscriminators(claims AuthClaims, o
 	}
 	if p.sessionID == "" {
 		p.sessionID = firstMetadataString(meta, []string{"session_id"})
+	}
+}
+
+func (p *permissionCacheKeyParts) applyCurrentPermissionsRequest(ctx context.Context) {
+	request, ok := CurrentPermissionsRequestFromContext(ctx)
+	if !ok {
+		return
+	}
+	p.userID = strings.TrimSpace(request.Principal.ApplicationSubject())
+	p.tenantID = strings.TrimSpace(request.Principal.TenantID())
+	p.orgID = strings.TrimSpace(request.Principal.OrganizationID())
+	if request.Role != "" {
+		p.role = request.Role
+	}
+	if request.SessionID != "" {
+		p.sessionID = request.SessionID
+	} else {
+		p.sessionID = firstNonEmptyStrings(
+			strings.TrimSpace(request.Principal.LocalSessionID()),
+			strings.TrimSpace(request.Principal.ProviderSessionID()),
+		)
 	}
 }
 

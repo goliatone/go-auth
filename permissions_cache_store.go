@@ -19,6 +19,35 @@ type PurgeablePermissionCacheStore interface {
 	PurgeExpired(ctx context.Context) (purged int, err error)
 }
 
+// PermissionInvalidationScope identifies cache entries without requiring
+// unbounded key scans. At least one dimension must be present.
+type PermissionInvalidationScope struct {
+	ApplicationSubject string
+	TenantID           string
+	SessionID          string
+}
+
+// IndexedPermissionCacheStore is the additive bounded-invalidation contract.
+type IndexedPermissionCacheStore interface {
+	PermissionCacheStore
+	IndexPermissionCacheKey(ctx context.Context, key string, scope PermissionInvalidationScope) error
+	DeletePermissionCacheScope(ctx context.Context, scope PermissionInvalidationScope, limit int) (deleted int, more bool, err error)
+}
+
+// AtomicIndexedPermissionCacheStore publishes a permission value and all of
+// its invalidation indexes as one operation. Implementations must leave neither
+// the value nor its indexes visible when this method returns an error.
+type AtomicIndexedPermissionCacheStore interface {
+	IndexedPermissionCacheStore
+	SetPermissionCacheEntry(
+		ctx context.Context,
+		key string,
+		permissions []string,
+		ttl time.Duration,
+		scope PermissionInvalidationScope,
+	) error
+}
+
 // PermissionCacheErrorMode defines resolver behavior when cache store operations fail.
 type PermissionCacheErrorMode string
 
