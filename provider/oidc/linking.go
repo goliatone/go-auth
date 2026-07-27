@@ -26,7 +26,67 @@ type LinkerConfig struct {
 	AllowSignup   bool
 	EmailFallback EmailFallbackPolicy
 	DefaultRole   auth.UserRole
+	IDStrategy    IdentityIDStrategy
+	UserFactory   UserFactory
 	ActivitySink  auth.ActivitySink
+}
+
+// IdentityIDStrategy selects a local user ID before persistence. Strategies
+// must validate provider subjects before returning an ID.
+type IdentityIDStrategy interface {
+	UserID(context.Context, ExternalIdentity) (uuid.UUID, error)
+}
+
+// IdentityIDStrategyFunc adapts a function to IdentityIDStrategy.
+type IdentityIDStrategyFunc func(context.Context, ExternalIdentity) (uuid.UUID, error)
+
+func (f IdentityIDStrategyFunc) UserID(ctx context.Context, identity ExternalIdentity) (uuid.UUID, error) {
+	if f == nil {
+		return uuid.Nil, cloneWithProvider(ErrLinkingRejected, identity.Provider, map[string]any{"cause": "identity ID strategy is unavailable"})
+	}
+	return f(ctx, identity)
+}
+
+// GeneratedIdentityIDStrategy preserves the historical random UUID behavior.
+type GeneratedIdentityIDStrategy struct{}
+
+func (GeneratedIdentityIDStrategy) UserID(context.Context, ExternalIdentity) (uuid.UUID, error) {
+	return uuid.New(), nil
+}
+
+// ProviderSubjectUUIDIDStrategy uses a validated UUID provider subject as the
+// local user ID. Provider optionally restricts the strategy to one provider.
+type ProviderSubjectUUIDIDStrategy struct {
+	Provider string
+}
+
+func (s ProviderSubjectUUIDIDStrategy) UserID(_ context.Context, identity ExternalIdentity) (uuid.UUID, error) {
+	provider := strings.TrimSpace(identity.Provider)
+	expected := strings.TrimSpace(s.Provider)
+	if expected != "" && !strings.EqualFold(provider, expected) {
+		return uuid.Nil, cloneWithProvider(ErrLinkingRejected, provider, map[string]any{"cause": "provider subject ID strategy mismatch"})
+	}
+	id, err := uuid.Parse(strings.TrimSpace(identity.Subject))
+	if err != nil || id == uuid.Nil {
+		return uuid.Nil, cloneWithProvider(ErrLinkingRejected, provider, map[string]any{"cause": "provider subject must be a non-zero UUID"})
+	}
+	return id, nil
+}
+
+// UserFactory builds a local user before create-and-bind. Hosts can use it for
+// provider-specific defaults without changing the linker transaction boundary.
+type UserFactory interface {
+	NewUser(context.Context, ExternalIdentity, auth.UserRole) (*auth.User, error)
+}
+
+// UserFactoryFunc adapts a function to UserFactory.
+type UserFactoryFunc func(context.Context, ExternalIdentity, auth.UserRole) (*auth.User, error)
+
+func (f UserFactoryFunc) NewUser(ctx context.Context, identity ExternalIdentity, role auth.UserRole) (*auth.User, error) {
+	if f == nil {
+		return nil, cloneWithProvider(ErrLinkingRejected, identity.Provider, map[string]any{"cause": "user factory is unavailable"})
+	}
+	return f(ctx, identity, role)
 }
 
 type DefaultIdentityLinker struct {
@@ -35,6 +95,8 @@ type DefaultIdentityLinker struct {
 	allowSignup   bool
 	emailFallback EmailFallbackPolicy
 	defaultRole   auth.UserRole
+	idStrategy    IdentityIDStrategy
+	userFactory   UserFactory
 	activitySink  auth.ActivitySink
 }
 
@@ -45,9 +107,16 @@ func NewIdentityLinker(cfg LinkerConfig) (*DefaultIdentityLinker, error) {
 	if cfg.Identifiers == nil {
 		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identifiers"})
 	}
+	if cfg.IDStrategy != nil && cfg.UserFactory != nil {
+		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identity_creation", "cause": "ID strategy and user factory are mutually exclusive"})
+	}
 	role := cfg.DefaultRole
 	if role == "" {
 		role = auth.RoleMember
+	}
+	idStrategy := cfg.IDStrategy
+	if idStrategy == nil {
+		idStrategy = GeneratedIdentityIDStrategy{}
 	}
 	return &DefaultIdentityLinker{
 		users:         cfg.Users,
@@ -55,6 +124,8 @@ func NewIdentityLinker(cfg LinkerConfig) (*DefaultIdentityLinker, error) {
 		allowSignup:   cfg.AllowSignup,
 		emailFallback: cfg.EmailFallback,
 		defaultRole:   role,
+		idStrategy:    idStrategy,
+		userFactory:   cfg.UserFactory,
 		activitySink:  cfg.ActivitySink,
 	}, nil
 }
@@ -142,11 +213,11 @@ func (l *DefaultIdentityLinker) tryEmailFallback(ctx context.Context, identity E
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, err)
 		return nil, decision, false, err
 	}
-	upsertErr := l.identifiers.Upsert(ctx, user.ID.String(), identity.Provider, identity.Subject)
-	if upsertErr != nil {
+	bindErr := bindIdentifier(ctx, l.identifiers, user.ID.String(), identity.Provider, identity.Subject)
+	if bindErr != nil {
 		decision := LinkingDecision{Action: LinkActionRejected, UserID: user.ID.String()}
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, upsertErr)
-		return nil, decision, false, upsertErr
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, bindErr)
+		return nil, decision, false, bindErr
 	}
 	decision := LinkingDecision{Action: LinkActionEmailFallback, UserID: user.ID.String()}
 	l.emit(ctx, auth.ActivityEventSSOLinkAutomatic, user.ID.String(), identity, LinkActionEmailFallback, nil)
@@ -160,20 +231,51 @@ func (l *DefaultIdentityLinker) createLinkedUser(ctx context.Context, identity E
 		return nil, LinkingDecision{Action: LinkActionRejected}, err
 	}
 
-	user := l.userFromIdentity(identity)
-	created, err := l.users.Create(ctx, user)
+	user, err := l.userFromIdentity(ctx, identity)
 	if err != nil {
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
 		return nil, LinkingDecision{Action: LinkActionRejected}, err
 	}
-	upsertErr := l.identifiers.Upsert(ctx, created.ID.String(), provider, subject)
-	if upsertErr != nil {
-		l.emit(ctx, auth.ActivityEventSSOLinkRejected, created.ID.String(), identity, LinkActionRejected, upsertErr)
-		return nil, LinkingDecision{Action: LinkActionRejected, UserID: created.ID.String()}, upsertErr
+	created, err := l.persistLinkedUser(ctx, user, provider, subject)
+	if err != nil {
+		if winner, decision, found, resolveErr := l.resolveSubject(ctx, identity, provider, subject); resolveErr == nil && found {
+			return auth.NewIdentityFromUser(winner), decision, nil
+		}
+		l.emit(ctx, auth.ActivityEventSSOLinkRejected, "", identity, LinkActionRejected, err)
+		return nil, LinkingDecision{Action: LinkActionRejected}, err
 	}
 	decision := LinkingDecision{Action: LinkActionCreated, UserID: created.ID.String()}
 	l.emit(ctx, auth.ActivityEventSSOLinkAutomatic, created.ID.String(), identity, LinkActionCreated, nil)
 	return auth.NewIdentityFromUser(created), decision, nil
+}
+
+func (l *DefaultIdentityLinker) persistLinkedUser(
+	ctx context.Context,
+	user *auth.User,
+	provider string,
+	subject string,
+) (*auth.User, error) {
+	if transactional, ok := l.identifiers.(auth.TransactionalIdentifierStore); ok {
+		return transactional.CreateUserAndBind(ctx, l.users, user, provider, subject)
+	}
+	created, err := l.users.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	if bindErr := bindIdentifier(ctx, l.identifiers, created.ID.String(), provider, subject); bindErr != nil {
+		if cleanupErr := l.users.Delete(ctx, created); cleanupErr != nil {
+			return nil, fmt.Errorf("%w; cleanup failed: %v", bindErr, cleanupErr)
+		}
+		return nil, bindErr
+	}
+	return created, nil
+}
+
+func bindIdentifier(ctx context.Context, store auth.IdentifierStore, userID, provider, identifier string) error {
+	if immutable, ok := store.(auth.ImmutableIdentifierStore); ok {
+		return immutable.Bind(ctx, userID, provider, identifier)
+	}
+	return store.Upsert(ctx, userID, provider, identifier)
 }
 
 func (l *DefaultIdentityLinker) RecordManualLink(ctx context.Context, userID string, identity ExternalIdentity, metadata map[string]any) {
@@ -202,9 +304,25 @@ func (l *DefaultIdentityLinker) RecordUnlink(ctx context.Context, userID string,
 	l.emitWithMetadata(ctx, auth.ActivityEventSSOUnlink, userID, identity, "unlink", nil, metadata)
 }
 
-func (l *DefaultIdentityLinker) userFromIdentity(identity ExternalIdentity) *auth.User {
+func (l *DefaultIdentityLinker) userFromIdentity(ctx context.Context, identity ExternalIdentity) (*auth.User, error) {
+	if l.userFactory != nil {
+		user, err := l.userFactory.NewUser(ctx, identity, l.defaultRole)
+		if err != nil {
+			return nil, err
+		}
+		if user == nil || user.ID == uuid.Nil {
+			return nil, cloneWithProvider(ErrLinkingRejected, identity.Provider, map[string]any{"cause": "user factory returned an invalid user"})
+		}
+		return user.EnsureStatus(), nil
+	}
+	id, err := l.idStrategy.UserID(ctx, identity)
+	if err != nil {
+		return nil, err
+	}
+	if id == uuid.Nil {
+		return nil, cloneWithProvider(ErrLinkingRejected, identity.Provider, map[string]any{"cause": "identity ID strategy returned an empty UUID"})
+	}
 	now := time.Now()
-	id := uuid.New()
 	email := strings.TrimSpace(identity.Email)
 	username := email
 	if username == "" {
@@ -229,7 +347,7 @@ func (l *DefaultIdentityLinker) userFromIdentity(identity ExternalIdentity) *aut
 		},
 		CreatedAt: &now,
 		UpdatedAt: &now,
-	}).EnsureStatus()
+	}).EnsureStatus(), nil
 }
 
 func (l *DefaultIdentityLinker) emit(ctx context.Context, eventType auth.ActivityEventType, userID string, identity ExternalIdentity, action string, err error) {
@@ -247,7 +365,7 @@ func (l *DefaultIdentityLinker) emitWithMetadata(ctx context.Context, eventType 
 	}
 	maps.Copy(metadata, extra)
 	if err != nil {
-		metadata["error"] = err.Error()
+		metadata["error"] = "identity operation failed"
 	}
 	_ = l.activitySink.Record(ctx, auth.ActivityEvent{
 		EventType: eventType,

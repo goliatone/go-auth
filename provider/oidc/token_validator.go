@@ -2,7 +2,12 @@ package oidc
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/sha512"
+	"crypto/subtle"
+	"encoding/base64"
 	stderrors "errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -56,8 +61,8 @@ func NewTokenValidator(ctx context.Context, provider ProviderConfig, metadata Di
 	if err := provider.validate(); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(metadata.Issuer) == "" || strings.TrimSpace(metadata.JWKSURI) == "" {
-		return nil, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"field": "discovery_metadata"})
+	if err := validateTokenValidationEndpoints(provider, metadata); err != nil {
+		return nil, err
 	}
 
 	options := validatorOptions{httpClient: http.DefaultClient, clock: time.Now}
@@ -88,16 +93,24 @@ func NewTokenValidator(ctx context.Context, provider ProviderConfig, metadata Di
 	}
 
 	validator := &TokenValidator{
-		provider:  provider,
-		metadata:  metadata,
-		jwks:      newJWKSCache(metadata.JWKSURI, provider.CacheTTL, options.httpClient),
+		provider: provider,
+		metadata: metadata,
+		jwks: newJWKSCache(
+			metadata.JWKSURI,
+			provider.CacheTTL,
+			provider.JWKSRefreshCooldown,
+			options.httpClient,
+			provider.Limits,
+			provider.RequestTimeout,
+			options.clock,
+		),
 		clock:     options.clock,
 		algSet:    algSet,
 		contextFn: options.contextFn,
 	}
 
 	if _, err := validator.jwks.keysSnapshot(ctx, true); err != nil {
-		return nil, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": err.Error()})
+		return nil, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": "invalid JWKS response"})
 	}
 
 	return validator, nil
@@ -116,6 +129,10 @@ func (v *TokenValidator) Validate(tokenString string) (auth.AuthClaims, error) {
 }
 
 func (v *TokenValidator) ValidateIDToken(ctx context.Context, rawIDToken string, nonce string) (jwt.MapClaims, error) {
+	return v.ValidateIDTokenWithAccessToken(ctx, rawIDToken, nonce, "")
+}
+
+func (v *TokenValidator) ValidateIDTokenWithAccessToken(ctx context.Context, rawIDToken string, nonce string, rawAccessToken string) (jwt.MapClaims, error) {
 	if v == nil {
 		return nil, auth.ErrTokenMalformed
 	}
@@ -134,7 +151,98 @@ func (v *TokenValidator) ValidateIDToken(ctx context.Context, rawIDToken string,
 	if iat, err := claims.GetIssuedAt(); err != nil || iat == nil {
 		return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "iat claim is required"})
 	}
+	if err := v.validateIDTokenBindings(rawIDToken, rawAccessToken, claims); err != nil {
+		return nil, err
+	}
 	return claims, nil
+}
+
+func (v *TokenValidator) ValidateAccessToken(ctx context.Context, rawAccessToken string) (jwt.MapClaims, error) {
+	if v == nil {
+		return nil, auth.ErrTokenMalformed
+	}
+	audience := v.provider.AccessTokenAudience
+	if len(audience) == 0 {
+		audience = v.provider.Audience
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return v.validateMapClaims(ctx, rawAccessToken, "", audience)
+}
+
+//nolint:gocyclo // Token binding checks stay explicit to keep every malformed input fail closed.
+func (v *TokenValidator) validateIDTokenBindings(rawIDToken, rawAccessToken string, claims jwt.MapClaims) error {
+	expectedAudience := v.idTokenAudience()
+	audiences, err := claims.GetAudience()
+	if err != nil {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "invalid audience"})
+	}
+	expected := make(map[string]struct{}, len(expectedAudience))
+	for _, audience := range expectedAudience {
+		expected[audience] = struct{}{}
+	}
+	for _, audience := range audiences {
+		if _, ok := expected[audience]; !ok {
+			return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "untrusted audience"})
+		}
+	}
+	rawAuthorizedParty, hasAZP := claims["azp"]
+	authorizedParty, validAZP := rawAuthorizedParty.(string)
+	if hasAZP {
+		if !validAZP || strings.TrimSpace(authorizedParty) == "" || authorizedParty != strings.TrimSpace(v.provider.ClientID) {
+			return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "invalid authorized party"})
+		}
+	}
+	if len(audiences) > 1 && !hasAZP {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "authorized party is required for multiple audiences"})
+	}
+	rawHash, hasHash := claims["at_hash"]
+	if !hasHash {
+		return nil
+	}
+	hashValue, validHash := rawHash.(string)
+	if !validHash || strings.TrimSpace(hashValue) == "" {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "invalid at_hash"})
+	}
+	if strings.TrimSpace(rawAccessToken) == "" {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "access token is required for at_hash"})
+	}
+	algorithm, err := tokenAlgorithm(rawIDToken)
+	if err != nil {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "invalid token header"})
+	}
+	expectedHash, err := accessTokenHash(algorithm, rawAccessToken)
+	if err != nil || subtle.ConstantTimeCompare([]byte(hashValue), []byte(expectedHash)) != 1 {
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "invalid at_hash"})
+	}
+	return nil
+}
+
+func tokenAlgorithm(raw string) (string, error) {
+	token, _, err := jwt.NewParser().ParseUnverified(raw, jwt.MapClaims{})
+	if err != nil || token == nil || token.Method == nil {
+		return "", fmt.Errorf("invalid token")
+	}
+	return token.Method.Alg(), nil
+}
+
+func accessTokenHash(algorithm, token string) (string, error) {
+	var digest []byte
+	switch {
+	case strings.HasSuffix(algorithm, "256"):
+		sum := sha256.Sum256([]byte(token))
+		digest = sum[:]
+	case strings.HasSuffix(algorithm, "384"):
+		sum := sha512.Sum384([]byte(token))
+		digest = sum[:]
+	case strings.HasSuffix(algorithm, "512"):
+		sum := sha512.Sum512([]byte(token))
+		digest = sum[:]
+	default:
+		return "", fmt.Errorf("unsupported hash algorithm")
+	}
+	return base64.RawURLEncoding.EncodeToString(digest[:len(digest)/2]), nil
 }
 
 func (v *TokenValidator) validateMapClaims(ctx context.Context, tokenString string, nonce string, audience []string) (jwt.MapClaims, error) {
@@ -143,6 +251,9 @@ func (v *TokenValidator) validateMapClaims(ctx context.Context, tokenString stri
 	}
 	if strings.Count(tokenString, ".") != 2 {
 		return nil, auth.ErrTokenMalformed
+	}
+	if err := validateEncodedTokenSize(tokenString, v.provider.Limits.normalized().EncodedTokenBytes); err != nil {
+		return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "encoded token exceeds limit"})
 	}
 
 	claims := jwt.MapClaims{}
@@ -195,6 +306,7 @@ func (v *TokenValidator) idTokenAudience() []string {
 	return []string{clientID}
 }
 
+//nolint:gocyclo // Algorithm and key-type rejection branches are intentionally explicit.
 func (v *TokenValidator) keyfunc(ctx context.Context) jwt.Keyfunc {
 	return func(token *jwt.Token) (any, error) {
 		alg := ""
@@ -218,7 +330,7 @@ func (v *TokenValidator) keyfunc(ctx context.Context) jwt.Keyfunc {
 		}
 		key, ok, err := v.jwks.key(ctx, kid)
 		if err != nil {
-			return nil, cloneWithProvider(ErrDiscoveryFailed, v.provider.Key, map[string]any{"cause": err.Error()})
+			return nil, cloneWithProvider(ErrDiscoveryFailed, v.provider.Key, map[string]any{"cause": "JWKS lookup failed"})
 		}
 		if !ok {
 			return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "unknown kid", "kid": kid})
@@ -233,6 +345,8 @@ func (v *TokenValidator) keyfunc(ctx context.Context) jwt.Keyfunc {
 		switch {
 		case strings.HasPrefix(alg, "RS") || strings.HasPrefix(alg, "PS"):
 			return key.rsaPublicKey()
+		case alg == "ES256":
+			return key.ecPublicKey()
 		default:
 			return nil, cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "unsupported signing algorithm", "alg": alg})
 		}
@@ -251,7 +365,7 @@ func (v *TokenValidator) normalizeValidationError(err error) error {
 		if clone == nil {
 			return auth.ErrTokenExpired
 		}
-		return clone.WithMetadata(map[string]any{"provider": v.provider.Key, "cause": err.Error()})
+		return clone.WithMetadata(map[string]any{"provider": v.provider.Key, "cause": "token expired"})
 	}
 	if stderrors.Is(err, jwt.ErrTokenSignatureInvalid) ||
 		stderrors.Is(err, jwt.ErrTokenInvalidAudience) ||
@@ -259,13 +373,13 @@ func (v *TokenValidator) normalizeValidationError(err error) error {
 		stderrors.Is(err, jwt.ErrTokenRequiredClaimMissing) ||
 		stderrors.Is(err, jwt.ErrTokenUsedBeforeIssued) ||
 		stderrors.Is(err, jwt.ErrTokenNotValidYet) {
-		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": err.Error()})
+		return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "token validation failed"})
 	}
 	if strings.Contains(err.Error(), TextCodeOIDCInvalidIDToken) ||
 		strings.Contains(err.Error(), TextCodeOIDCDiscoveryFailed) {
 		return err
 	}
-	return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": err.Error()})
+	return cloneWithProvider(ErrInvalidIDToken, v.provider.Key, map[string]any{"cause": "token validation failed"})
 }
 
 func allowedAlgorithmSet(provider ProviderConfig, metadata DiscoveryMetadata) map[string]struct{} {
@@ -303,7 +417,12 @@ func rejectUnsupportedConfiguredAlgorithms(provider ProviderConfig, algSet map[s
 }
 
 func supportedSigningAlgorithm(alg string) bool {
-	return strings.HasPrefix(alg, "RS") || strings.HasPrefix(alg, "PS")
+	switch alg {
+	case "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256":
+		return true
+	default:
+		return false
+	}
 }
 
 func mapTokenClaimsToAuth(claims jwt.MapClaims) *auth.JWTClaims {

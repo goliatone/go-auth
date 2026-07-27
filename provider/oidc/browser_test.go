@@ -110,6 +110,53 @@ func TestBrowserAuthenticatorCompleteCallback(t *testing.T) {
 	}
 }
 
+func TestBrowserAuthenticatorRejectsInactiveIdentityBeforeIssuance(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	tests := map[auth.UserStatus]string{
+		auth.UserStatusPending:   auth.TextCodeAccountPending,
+		auth.UserStatusSuspended: auth.TextCodeAccountSuspended,
+		auth.UserStatusDisabled:  auth.TextCodeAccountDisabled,
+		auth.UserStatusArchived:  auth.TextCodeAccountArchived,
+	}
+	for status, textCode := range tests {
+		t.Run(string(status), func(t *testing.T) {
+			authenticator, signer := newBrowserTestAuthenticator(t, now, nil)
+			issuerCalled := false
+			authenticator.identityLinker = linkerFunc(func(_ context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
+				return testIdentity{id: "local-user", email: identity.Email, status: status}, LinkingDecision{Action: "existing"}, nil
+			})
+			authenticator.tokenIssuer = tokenIssuerFunc(func(auth.Identity, map[string]string) (string, error) {
+				issuerCalled = true
+				return "must-not-issue", nil
+			})
+
+			begin, err := authenticator.BeginLogin(context.Background(), AuthorizationRequest{ProviderKey: "test"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			idToken := signer(jwt.MapClaims{
+				"iss": "https://issuer.example/", "sub": "subject-1", "aud": "client",
+				"exp": now.Add(time.Hour).Unix(), "iat": now.Add(-time.Minute).Unix(), "nonce": begin.Nonce,
+			})
+			authenticator.tokenExchanger = TokenExchangerFunc(func(context.Context, ProviderConfig, DiscoveryMetadata, string, string) (TokenResponse, error) {
+				return TokenResponse{IDToken: idToken}, nil
+			})
+
+			_, err = authenticator.CompleteCallback(context.Background(), CallbackRequest{
+				ProviderKey: "test",
+				Code:        "code",
+				State:       begin.State,
+			})
+			if !errorHasTextCode(err, textCode) {
+				t.Fatalf("expected lifecycle error %s, got %v", textCode, err)
+			}
+			if issuerCalled {
+				t.Fatal("token issuer ran for an inactive identity")
+			}
+		})
+	}
+}
+
 func TestBrowserAuthenticatorFetchesUserInfoWhenEnabled(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	authenticator, signer := newBrowserTestAuthenticator(t, now, nil)
@@ -132,7 +179,7 @@ func TestBrowserAuthenticatorFetchesUserInfoWhenEnabled(t *testing.T) {
 		if accessToken != "access-token" {
 			t.Fatalf("access token = %q, want access-token", accessToken)
 		}
-		return map[string]any{"email": "userinfo@example.com", "email_verified": true}, nil
+		return map[string]any{"sub": "subject-1", "email": "userinfo@example.com", "email_verified": true}, nil
 	})
 
 	result, err := authenticator.CompleteCallback(context.Background(), CallbackRequest{
@@ -148,6 +195,100 @@ func TestBrowserAuthenticatorFetchesUserInfoWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestBrowserAuthenticatorCorrelatesAndFiltersUserInfoBeforeCustomMapping(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+
+	t.Run("subject mismatch fails before custom mapper", func(t *testing.T) {
+		authenticator, signer := newBrowserTestAuthenticator(t, now, nil)
+		provider := authenticator.providers["test"]
+		provider.Config.UserInfo = true
+		provider.Metadata.UserInfoEndpoint = "https://issuer.example/userinfo"
+		mapperCalled := false
+		provider.Config.ClaimMapper = ClaimsMapperFunc(func(context.Context, ProviderConfig, jwt.MapClaims, map[string]any) (ExternalIdentity, *auth.JWTClaims, error) {
+			mapperCalled = true
+			return ExternalIdentity{}, nil, nil
+		})
+
+		begin, err := authenticator.BeginLogin(context.Background(), AuthorizationRequest{ProviderKey: "test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		idToken := signer(jwt.MapClaims{
+			"iss": "https://issuer.example/", "sub": "subject-1", "aud": "client",
+			"exp": now.Add(time.Hour).Unix(), "iat": now.Add(-time.Minute).Unix(), "nonce": begin.Nonce,
+		})
+		authenticator.tokenExchanger = TokenExchangerFunc(func(context.Context, ProviderConfig, DiscoveryMetadata, string, string) (TokenResponse, error) {
+			return TokenResponse{IDToken: idToken, AccessToken: "access-token"}, nil
+		})
+		authenticator.userInfoFetcher = UserInfoFetcherFunc(func(context.Context, ProviderConfig, DiscoveryMetadata, string) (map[string]any, error) {
+			return map[string]any{"sub": "subject-2", "email": "other@example.com"}, nil
+		})
+
+		_, err = authenticator.CompleteCallback(context.Background(), CallbackRequest{
+			ProviderKey: "test",
+			Code:        "code",
+			State:       begin.State,
+		})
+		if !errorHasTextCode(err, TextCodeOIDCInvalidIDToken) {
+			t.Fatalf("expected invalid ID token error, got %v", err)
+		}
+		if mapperCalled {
+			t.Fatal("custom mapper ran before UserInfo subject correlation")
+		}
+	})
+
+	t.Run("custom mapper receives profile-only claims", func(t *testing.T) {
+		authenticator, signer := newBrowserTestAuthenticator(t, now, nil)
+		provider := authenticator.providers["test"]
+		provider.Config.UserInfo = true
+		provider.Metadata.UserInfoEndpoint = "https://issuer.example/userinfo"
+		provider.Config.ClaimMapper = ClaimsMapperFunc(func(_ context.Context, provider ProviderConfig, claims jwt.MapClaims, userInfo map[string]any) (ExternalIdentity, *auth.JWTClaims, error) {
+			for _, forbidden := range []string{"tenant_id", "roles", "permissions", "groups", "resource_roles"} {
+				if _, ok := userInfo[forbidden]; ok {
+					t.Fatalf("custom mapper received forbidden UserInfo claim %q: %+v", forbidden, userInfo)
+				}
+			}
+			return ExternalIdentity{
+				Provider: provider.Key,
+				Subject:  claims["sub"].(string),
+				Email:    userInfo["email"].(string),
+			}, nil, nil
+		})
+
+		begin, err := authenticator.BeginLogin(context.Background(), AuthorizationRequest{ProviderKey: "test"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		idToken := signer(jwt.MapClaims{
+			"iss": "https://issuer.example/", "sub": "subject-1", "aud": "client",
+			"exp": now.Add(time.Hour).Unix(), "iat": now.Add(-time.Minute).Unix(), "nonce": begin.Nonce,
+		})
+		authenticator.tokenExchanger = TokenExchangerFunc(func(context.Context, ProviderConfig, DiscoveryMetadata, string, string) (TokenResponse, error) {
+			return TokenResponse{IDToken: idToken, AccessToken: "access-token"}, nil
+		})
+		authenticator.userInfoFetcher = UserInfoFetcherFunc(func(context.Context, ProviderConfig, DiscoveryMetadata, string) (map[string]any, error) {
+			return map[string]any{
+				"sub": "subject-1", "email": "profile@example.com",
+				"tenant_id": "tenant", "roles": []any{"admin"},
+				"permissions": []any{"admin:all"}, "groups": []any{"admin"},
+				"resource_roles": map[string]any{"admin": "owner"},
+			}, nil
+		})
+
+		result, err := authenticator.CompleteCallback(context.Background(), CallbackRequest{
+			ProviderKey: "test",
+			Code:        "code",
+			State:       begin.State,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Identity.Email != "profile@example.com" {
+			t.Fatalf("profile enrichment failed: %+v", result.Identity)
+		}
+	})
+}
+
 func TestBrowserAuthenticatorUsesConfiguredStateTTL(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	authenticator, _ := newBrowserTestAuthenticatorWithTTL(t, now, nil, time.Minute)
@@ -158,6 +299,32 @@ func TestBrowserAuthenticatorUsesConfiguredStateTTL(t *testing.T) {
 	}
 	if got, want := begin.ExpiresAt, now.Add(time.Minute); !got.Equal(want) {
 		t.Fatalf("state expiry = %v, want %v", got, want)
+	}
+}
+
+func TestMemoryStateStoreSweepsExpiredEntriesAndFailsClosedAtCapacity(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	store := NewMemoryStateStoreWithCapacity(func() time.Time { return now }, 2)
+	ctx := context.Background()
+
+	for _, record := range []StateRecord{
+		{State: "active-1", ExpiresAt: now.Add(time.Minute)},
+		{State: "active-2", ExpiresAt: now.Add(time.Minute)},
+	} {
+		if err := store.Save(ctx, record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Save(ctx, StateRecord{State: "active-1", ExpiresAt: now.Add(time.Minute)}); !errorHasTextCode(err, TextCodeOIDCInvalidState) {
+		t.Fatalf("expected duplicate state rejection, got %v", err)
+	}
+	if err := store.Save(ctx, StateRecord{State: "overflow", ExpiresAt: now.Add(time.Minute)}); !errorHasTextCode(err, TextCodeOIDCInvalidState) {
+		t.Fatalf("expected bounded store rejection, got %v", err)
+	}
+
+	now = now.Add(2 * time.Minute)
+	if err := store.Save(ctx, StateRecord{State: "after-sweep", ExpiresAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("expired states should be swept before capacity check: %v", err)
 	}
 }
 
@@ -309,13 +476,19 @@ func (f tokenIssuerFunc) Generate(identity auth.Identity, resourceRoles map[stri
 }
 
 type testIdentity struct {
-	id    string
-	email string
+	id     string
+	email  string
+	status auth.UserStatus
 }
 
-func (i testIdentity) ID() string               { return i.id }
-func (i testIdentity) Username() string         { return i.email }
-func (i testIdentity) Email() string            { return i.email }
-func (i testIdentity) Role() string             { return string(auth.RoleMember) }
-func (i testIdentity) Status() auth.UserStatus  { return auth.UserStatusActive }
+func (i testIdentity) ID() string       { return i.id }
+func (i testIdentity) Username() string { return i.email }
+func (i testIdentity) Email() string    { return i.email }
+func (i testIdentity) Role() string     { return string(auth.RoleMember) }
+func (i testIdentity) Status() auth.UserStatus {
+	if i.status == "" {
+		return auth.UserStatusActive
+	}
+	return i.status
+}
 func (i testIdentity) Metadata() map[string]any { return nil }

@@ -2,11 +2,13 @@ package oidc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+
+	auth "github.com/goliatone/go-auth"
 )
 
 type HTTPTokenExchanger struct {
@@ -19,9 +21,7 @@ type HTTPUserInfoFetcher struct {
 
 func (f HTTPUserInfoFetcher) FetchUserInfo(ctx context.Context, provider ProviderConfig, metadata DiscoveryMetadata, accessToken string) (map[string]any, error) {
 	client := f.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client = noRedirectHTTPClient(client)
 	endpoint := strings.TrimSpace(metadata.UserInfoEndpoint)
 	if endpoint == "" {
 		return nil, fmt.Errorf("userinfo endpoint is required")
@@ -29,8 +29,15 @@ func (f HTTPUserInfoFetcher) FetchUserInfo(ctx context.Context, provider Provide
 	if strings.TrimSpace(accessToken) == "" {
 		return nil, fmt.Errorf("access token is required")
 	}
+	if err := validateEndpointSet(provider, []providerEndpoint{
+		{field: "userinfo_endpoint", value: endpoint, required: true},
+	}); err != nil {
+		return nil, err
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	requestCtx, cancel := providerRequestContext(ctx, provider.RequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +54,7 @@ func (f HTTPUserInfoFetcher) FetchUserInfo(ctx context.Context, provider Provide
 	}
 
 	var userInfo map[string]any
-	if err := json.NewDecoder(res.Body).Decode(&userInfo); err != nil {
+	if err := decodeBoundedJSON(res.Body, provider.Limits.normalized().UserInfoBodyBytes, &userInfo); err != nil {
 		return nil, err
 	}
 	return userInfo, nil
@@ -55,22 +62,41 @@ func (f HTTPUserInfoFetcher) FetchUserInfo(ctx context.Context, provider Provide
 
 func (e HTTPTokenExchanger) Exchange(ctx context.Context, provider ProviderConfig, metadata DiscoveryMetadata, code string, codeVerifier string) (TokenResponse, error) {
 	client := e.Client
-	if client == nil {
-		client = http.DefaultClient
+	client = noRedirectHTTPClient(client)
+	if err := validateEndpointSet(provider, []providerEndpoint{
+		{field: "token_endpoint", value: metadata.TokenEndpoint, required: true},
+	}); err != nil {
+		return TokenResponse{}, err
 	}
 	form := url.Values{}
 	form.Set("grant_type", DefaultGrantType)
-	form.Set("client_id", provider.ClientID)
 	form.Set("code", code)
 	form.Set("redirect_uri", provider.RedirectURL)
 	form.Set("code_verifier", codeVerifier)
-	if strings.TrimSpace(provider.ClientSecret) != "" {
-		form.Set("client_secret", provider.ClientSecret)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, metadata.TokenEndpoint, strings.NewReader(form.Encode()))
+	method, err := resolveTokenEndpointAuthMethod(provider, metadata)
 	if err != nil {
 		return TokenResponse{}, err
+	}
+	switch method {
+	case TokenEndpointAuthNone:
+		form.Set("client_id", provider.ClientID)
+	case TokenEndpointAuthClientSecretBasic:
+		// Authorization is applied after request construction.
+	case TokenEndpointAuthClientSecretPost:
+		clientSecret, _ := provider.clientSecret()
+		form.Set("client_id", provider.ClientID)
+		form.Set("client_secret", clientSecret.Reveal())
+	}
+
+	requestCtx, cancel := providerRequestContext(ctx, provider.RequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, metadata.TokenEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	if method == TokenEndpointAuthClientSecretBasic {
+		clientSecret, _ := provider.clientSecret()
+		req.SetBasicAuth(provider.ClientID, clientSecret.Reveal())
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -84,9 +110,66 @@ func (e HTTPTokenExchanger) Exchange(ctx context.Context, provider ProviderConfi
 		return TokenResponse{}, ErrTokenExchangeFailed
 	}
 
-	var tokenResponse TokenResponse
-	if err := json.NewDecoder(res.Body).Decode(&tokenResponse); err != nil {
+	var wire struct {
+		AccessToken      string `json:"access_token"`
+		IDToken          string `json:"id_token"`
+		RefreshToken     string `json:"refresh_token"`
+		TokenType        string `json:"token_type"`
+		ExpiresIn        int64  `json:"expires_in"`
+		RefreshExpiresIn int64  `json:"refresh_expires_in"`
+		Scope            string `json:"scope"`
+	}
+	if err := decodeBoundedJSON(res.Body, provider.Limits.normalized().TokenBodyBytes, &wire); err != nil {
 		return TokenResponse{}, err
 	}
-	return tokenResponse, nil
+	limits := provider.Limits.normalized()
+	for _, token := range []string{wire.AccessToken, wire.IDToken, wire.RefreshToken} {
+		if err := validateEncodedTokenSize(token, limits.EncodedTokenBytes); err != nil {
+			return TokenResponse{}, err
+		}
+	}
+	return TokenResponse{
+		AccessTokenValue:  auth.NewSecret(wire.AccessToken),
+		IDTokenValue:      auth.NewSecret(wire.IDToken),
+		RefreshTokenValue: auth.NewSecret(wire.RefreshToken),
+		TokenType:         wire.TokenType,
+		ExpiresIn:         wire.ExpiresIn,
+		RefreshExpiresIn:  wire.RefreshExpiresIn,
+		Scope:             wire.Scope,
+	}, nil
+}
+
+func resolveTokenEndpointAuthMethod(provider ProviderConfig, metadata DiscoveryMetadata) (TokenEndpointAuthMethod, error) {
+	clientSecret, err := provider.clientSecret()
+	if err != nil {
+		return "", err
+	}
+	method := provider.TokenEndpointAuthMethod
+	if method == TokenEndpointAuthUnspecified {
+		if clientSecret.IsZero() {
+			return TokenEndpointAuthNone, nil
+		}
+		return TokenEndpointAuthClientSecretPost, nil
+	}
+	supported := metadata.TokenEndpointAuthMethods
+	if len(supported) == 0 {
+		supported = []string{string(TokenEndpointAuthClientSecretBasic)}
+	}
+	found := slices.Contains(supported, string(method))
+	if !found {
+		return "", cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{"field": "token_endpoint_auth_method", "cause": "method is not advertised"})
+	}
+	switch method {
+	case TokenEndpointAuthNone:
+		if !clientSecret.IsZero() {
+			return "", cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{"field": "client_secret", "cause": "secret is not allowed for public clients"})
+		}
+	case TokenEndpointAuthClientSecretBasic, TokenEndpointAuthClientSecretPost:
+		if clientSecret.IsZero() {
+			return "", cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{"field": "client_secret", "cause": "secret is required for confidential clients"})
+		}
+	default:
+		return "", cloneWithProvider(ErrInvalidConfig, provider.Key, map[string]any{"field": "token_endpoint_auth_method"})
+	}
+	return method, nil
 }

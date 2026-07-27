@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	auth "github.com/goliatone/go-auth"
 )
 
@@ -19,6 +20,11 @@ type BrowserAuthenticator struct {
 	userInfoFetcher        UserInfoFetcher
 	identityLinker         IdentityLinker
 	tokenIssuer            BrowserTokenIssuer
+	principalTokenIssuer   PrincipalTokenIssuer
+	principalMapper        PrincipalMapper
+	sessionHandoff         ProviderSessionHandoff
+	sessionMode            BrowserSessionMode
+	localClaimPolicy       LocalClaimPolicy
 	defaultRedirect        string
 	allowedRedirectOrigins map[string]struct{}
 	clock                  func() time.Time
@@ -44,6 +50,16 @@ func NewBrowserAuthenticator(cfg BrowserAuthenticatorConfig) (*BrowserAuthentica
 	if err != nil {
 		return nil, err
 	}
+	if cfg.SessionMode == ProviderSessionMode || cfg.LocalClaimPolicy.Enabled() {
+		for key, provider := range providers {
+			if provider.Config.TokenEndpointAuthMethod == TokenEndpointAuthUnspecified {
+				return nil, cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "token_endpoint_auth_method"})
+			}
+			if _, err := resolveTokenEndpointAuthMethod(provider.Config, provider.Metadata); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	return &BrowserAuthenticator{
 		providers:              providers,
@@ -52,6 +68,11 @@ func NewBrowserAuthenticator(cfg BrowserAuthenticatorConfig) (*BrowserAuthentica
 		userInfoFetcher:        deps.userInfoFetcher,
 		identityLinker:         cfg.IdentityLinker,
 		tokenIssuer:            cfg.TokenIssuer,
+		principalTokenIssuer:   cfg.PrincipalTokenIssuer,
+		principalMapper:        cfg.PrincipalMapper,
+		sessionHandoff:         cfg.SessionHandoff,
+		sessionMode:            cfg.SessionMode,
+		localClaimPolicy:       cfg.LocalClaimPolicy,
 		defaultRedirect:        deps.defaultRedirect,
 		allowedRedirectOrigins: originSet(cfg.AllowedRedirectOrigins),
 		clock:                  deps.clock,
@@ -59,7 +80,11 @@ func NewBrowserAuthenticator(cfg BrowserAuthenticatorConfig) (*BrowserAuthentica
 	}, nil
 }
 
+//nolint:gocyclo // Optional dependency combinations are validated explicitly to preserve compatibility.
 func browserAuthenticatorDependenciesFromConfig(cfg BrowserAuthenticatorConfig) (browserAuthenticatorDependencies, error) {
+	if err := cfg.LocalClaimPolicy.validate(); err != nil {
+		return browserAuthenticatorDependencies{}, err
+	}
 	clock := cfg.Clock
 	if clock == nil {
 		clock = time.Now
@@ -67,7 +92,7 @@ func browserAuthenticatorDependenciesFromConfig(cfg BrowserAuthenticatorConfig) 
 
 	stateStore := cfg.StateStore
 	if stateStore == nil {
-		stateStore = NewMemoryStateStore(clock)
+		stateStore = NewMemoryStateStoreWithCapacity(clock, cfg.StateCapacity)
 	}
 
 	tokenExchanger := cfg.TokenExchanger
@@ -91,8 +116,24 @@ func browserAuthenticatorDependenciesFromConfig(cfg BrowserAuthenticatorConfig) 
 	if cfg.IdentityLinker == nil {
 		return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identity_linker"})
 	}
-	if cfg.TokenIssuer == nil {
-		return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "token_issuer"})
+	switch cfg.SessionMode {
+	case LocalTokenMode:
+		if cfg.LocalClaimPolicy.Enabled() {
+			if cfg.PrincipalTokenIssuer == nil {
+				return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "principal_token_issuer"})
+			}
+		} else if cfg.TokenIssuer == nil {
+			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "token_issuer"})
+		}
+	case ProviderSessionMode:
+		if cfg.SessionHandoff == nil {
+			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "session_handoff"})
+		}
+		if cfg.TokenIssuer != nil || cfg.PrincipalTokenIssuer != nil {
+			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "session_mode", "cause": "local issuer is incompatible with provider session mode"})
+		}
+	default:
+		return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "session_mode"})
 	}
 
 	stateTTL := cfg.StateTTL
@@ -132,6 +173,15 @@ func browserProviderMap(providerList []*Provider) (map[string]*Provider, error) 
 }
 
 func validateBrowserProvider(key string, provider *Provider) error {
+	if provider == nil {
+		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider"})
+	}
+	if err := provider.Config.validate(); err != nil {
+		return err
+	}
+	if err := validateDiscoveryEndpoints(provider.Config, provider.Metadata); err != nil {
+		return err
+	}
 	switch {
 	case provider.Validator == nil:
 		return cloneWithProvider(ErrInvalidConfig, key, map[string]any{"field": "provider.validator"})
@@ -148,10 +198,21 @@ func validateBrowserProvider(key string, provider *Provider) error {
 	}
 }
 
+type callbackAuthentication struct {
+	external     ExternalIdentity
+	validated    *ValidatedProviderIdentity
+	mappedClaims *auth.JWTClaims
+	tokenSet     auth.ProviderTokenSet
+}
+
 func (a *BrowserAuthenticator) BeginLogin(ctx context.Context, req AuthorizationRequest) (AuthorizationResponse, error) {
 	provider, err := a.provider(req.ProviderKey)
 	if err != nil {
 		return AuthorizationResponse{}, err
+	}
+	limits := provider.Config.Limits.normalized()
+	if len(req.ProviderKey) > limits.ProviderKeyBytes || len(req.RedirectTo) > limits.RedirectBytes {
+		return AuthorizationResponse{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"cause": "begin-login input exceeds limit"})
 	}
 
 	redirectTo, err := a.safeRedirect(req.RedirectTo)
@@ -172,13 +233,15 @@ func (a *BrowserAuthenticator) BeginLogin(ctx context.Context, req Authorization
 		return AuthorizationResponse{}, err
 	}
 
-	expiresAt := a.clock().Add(a.stateTTL)
+	now := a.clock()
+	expiresAt := now.Add(a.stateTTL)
 	err = a.stateStore.Save(ctx, StateRecord{
 		State:        state,
 		Nonce:        nonce,
 		CodeVerifier: verifier,
 		ProviderKey:  provider.Config.Key,
 		RedirectTo:   redirectTo,
+		CreatedAt:    now,
 		ExpiresAt:    expiresAt,
 	})
 	if err != nil {
@@ -210,26 +273,38 @@ func (a *BrowserAuthenticator) CompleteCallback(ctx context.Context, req Callbac
 	if err != nil {
 		return BrowserSessionResult{}, err
 	}
+	if validationErr := validateCallbackRequestLimits(req, provider.Config.Limits.normalized(), provider.Config.Key); validationErr != nil {
+		return BrowserSessionResult{}, validationErr
+	}
 
 	redirectTarget, err := a.callbackRedirectTarget(record, req)
 	if err != nil {
 		return BrowserSessionResult{}, err
 	}
 
-	identity, mappedClaims, err := a.callbackIdentity(ctx, provider, record, req)
+	callback, err := a.callbackIdentity(ctx, provider, record, req)
 	if err != nil {
 		return BrowserSessionResult{}, err
 	}
 
-	localIdentity, decision, err := a.resolveLocalIdentity(ctx, identity)
+	localIdentity, decision, err := a.resolveLocalIdentity(ctx, callback.external)
 	if err != nil {
 		return BrowserSessionResult{}, err
 	}
 
-	return a.buildSessionResult(provider, redirectTarget, identity, mappedClaims, localIdentity, decision)
+	return a.buildSessionResult(ctx, provider, redirectTarget, callback, localIdentity, decision)
 }
 
 func (a *BrowserAuthenticator) consumeCallbackState(ctx context.Context, req CallbackRequest) (StateRecord, error) {
+	limits := Limits{}.normalized()
+	if a != nil {
+		if provider, ok := a.providers[normalizeProviderKey(req.ProviderKey)]; ok && provider != nil {
+			limits = provider.Config.Limits.normalized()
+		}
+	}
+	if err := validateCallbackRequestLimits(req, limits, req.ProviderKey); err != nil {
+		return StateRecord{}, err
+	}
 	if strings.TrimSpace(req.Code) == "" {
 		return StateRecord{}, cloneWithProvider(ErrInvalidState, req.ProviderKey, map[string]any{"field": "code"})
 	}
@@ -250,6 +325,16 @@ func (a *BrowserAuthenticator) consumeCallbackState(ctx context.Context, req Cal
 	return record, nil
 }
 
+func validateCallbackRequestLimits(req CallbackRequest, limits Limits, providerKey string) error {
+	if len(req.ProviderKey) > limits.ProviderKeyBytes ||
+		len(req.Code) > limits.CallbackCodeBytes ||
+		len(req.State) > limits.CallbackStateBytes ||
+		len(req.RedirectTo) > limits.RedirectBytes {
+		return cloneWithProvider(ErrInvalidState, providerKey, map[string]any{"cause": "callback input exceeds limit"})
+	}
+	return nil
+}
+
 func (a *BrowserAuthenticator) callbackRedirectTarget(record StateRecord, req CallbackRequest) (string, error) {
 	if req.RedirectTo == "" {
 		return record.RedirectTo, nil
@@ -264,34 +349,160 @@ func (a *BrowserAuthenticator) callbackRedirectTarget(record StateRecord, req Ca
 	return record.RedirectTo, nil
 }
 
-func (a *BrowserAuthenticator) callbackIdentity(ctx context.Context, provider *Provider, record StateRecord, req CallbackRequest) (ExternalIdentity, *auth.JWTClaims, error) {
+//nolint:gocyclo,funlen // Callback validation gates stay sequential to preserve fail-closed token handling.
+func (a *BrowserAuthenticator) callbackIdentity(ctx context.Context, provider *Provider, record StateRecord, req CallbackRequest) (callbackAuthentication, error) {
 	tokenResponse, err := a.tokenExchanger.Exchange(ctx, provider.Config, provider.Metadata, req.Code, record.CodeVerifier)
 	if err != nil {
-		return ExternalIdentity{}, nil, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": err.Error()})
+		return callbackAuthentication{}, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": "provider operation failed"})
 	}
-	if strings.TrimSpace(tokenResponse.IDToken) == "" {
-		return ExternalIdentity{}, nil, cloneWithProvider(ErrInvalidIDToken, provider.Config.Key, map[string]any{"cause": "missing id_token"})
+	idToken, err := tokenResponse.idToken()
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	accessToken, err := tokenResponse.accessToken()
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	refreshToken, err := tokenResponse.refreshToken()
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	tokenResponse.IDTokenValue = idToken
+	tokenResponse.AccessTokenValue = accessToken
+	tokenResponse.RefreshTokenValue = refreshToken
+	tokenResponse.IDToken, tokenResponse.AccessToken, tokenResponse.RefreshToken = "", "", ""
+	if idToken.IsZero() {
+		return callbackAuthentication{}, cloneWithProvider(ErrInvalidIDToken, provider.Config.Key, map[string]any{"cause": "missing id_token"})
 	}
 
-	claims, err := provider.Validator.ValidateIDToken(ctx, tokenResponse.IDToken, record.Nonce)
+	idClaims, err := provider.Validator.ValidateIDTokenWithAccessToken(ctx, idToken.Reveal(), record.Nonce, accessToken.Reveal())
 	if err != nil {
-		return ExternalIdentity{}, nil, err
+		return callbackAuthentication{}, err
 	}
 
 	userInfo, err := a.fetchUserInfo(ctx, provider, tokenResponse)
 	if err != nil {
-		return ExternalIdentity{}, nil, err
+		return callbackAuthentication{}, err
+	}
+	userInfo, err = correlatedProfileUserInfo(provider.Config.Key, idClaims, userInfo)
+	if err != nil {
+		return callbackAuthentication{}, err
 	}
 
-	mapper := provider.Config.ClaimMapper
-	if mapper == nil {
-		mapper = DefaultClaimsMapper{}
+	if !a.hardenedFlow() {
+		mapper := provider.Config.ClaimMapper
+		if mapper == nil {
+			mapper = DefaultClaimsMapper{}
+		}
+		identity, mappedClaims, mapErr := mapper.MapClaims(ctx, provider.Config, idClaims, userInfo)
+		if mapErr != nil {
+			return callbackAuthentication{}, mapErr
+		}
+		return callbackAuthentication{external: identity, mappedClaims: mappedClaims}, nil
 	}
-	identity, mappedClaims, err := mapper.MapClaims(ctx, provider.Config, claims, userInfo)
+
+	idContext, err := validatedIDTokenContext(idClaims, provider.Config)
 	if err != nil {
-		return ExternalIdentity{}, nil, err
+		return callbackAuthentication{}, err
 	}
-	return identity, mappedClaims, nil
+	var accessClaims jwt.MapClaims
+	var accessContext *auth.ValidatedTokenContext
+	if provider.Config.RequireAccessTokenClaims {
+		if accessToken.IsZero() {
+			return callbackAuthentication{}, cloneWithProvider(ErrInvalidIDToken, provider.Config.Key, map[string]any{"field": "access_token"})
+		}
+		accessClaims, err = provider.Validator.ValidateAccessToken(ctx, accessToken.Reveal())
+		if err != nil {
+			return callbackAuthentication{}, err
+		}
+		validatedAccess, contextErr := validatedTokenContext(accessClaims)
+		if contextErr != nil {
+			return callbackAuthentication{}, contextErr
+		}
+		accessContext = &validatedAccess
+	}
+	mapper := a.principalMapper
+	if mapper == nil {
+		mapper = DefaultPrincipalMapper{}
+	}
+	validated, err := mapper.MapPrincipal(ctx, provider.Config, idContext, accessContext, idClaims, accessClaims, userInfo)
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	validated, err = validateMappedPrincipal(ctx, provider.Config, idContext, accessContext, idClaims, accessClaims, userInfo, validated)
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	tokenSet, err := tokenSetFromResponse(tokenResponse, a.clock(), idContext, accessContext)
+	if err != nil {
+		return callbackAuthentication{}, err
+	}
+	return callbackAuthentication{
+		external:  validated.externalIdentity(),
+		validated: &validated,
+		tokenSet:  tokenSet,
+	}, nil
+}
+
+func (a *BrowserAuthenticator) hardenedFlow() bool {
+	return a != nil && (a.sessionMode == ProviderSessionMode || a.localClaimPolicy.Enabled())
+}
+
+func tokenSetFromResponse(response TokenResponse, acquiredAt time.Time, idContext auth.ValidatedTokenContext, accessContext *auth.ValidatedTokenContext) (auth.ProviderTokenSet, error) {
+	var accessExpiresAt time.Time
+	var refreshExpiresAt time.Time
+	if response.ExpiresIn > 0 {
+		accessExpiresAt = acquiredAt.Add(time.Duration(response.ExpiresIn) * time.Second)
+	}
+	if accessContext != nil && !accessContext.ExpiresAt.IsZero() {
+		accessExpiresAt = accessContext.ExpiresAt
+	}
+	if response.RefreshExpiresIn > 0 {
+		refreshExpiresAt = acquiredAt.Add(time.Duration(response.RefreshExpiresIn) * time.Second)
+	}
+	return auth.NewProviderTokenSet(auth.ProviderTokenSetInput{
+		AccessToken:      response.AccessTokenValue,
+		RefreshToken:     response.RefreshTokenValue,
+		IDToken:          response.IDTokenValue,
+		TokenType:        response.TokenType,
+		Scopes:           strings.Fields(response.Scope),
+		AcquiredAt:       acquiredAt,
+		AccessExpiresAt:  accessExpiresAt,
+		RefreshExpiresAt: refreshExpiresAt,
+		IDExpiresAt:      idContext.ExpiresAt,
+		IDContext:        &idContext,
+		AccessContext:    accessContext,
+	})
+}
+
+func (v ValidatedProviderIdentity) externalIdentity() ExternalIdentity {
+	return ExternalIdentity{
+		Provider: v.Provider, Subject: v.Subject, Email: v.Email,
+		EmailVerified: v.EmailVerified, Name: v.Name, GivenName: v.GivenName,
+		FamilyName: v.FamilyName, Nickname: v.Nickname, Picture: v.Picture,
+		TenantID: v.TenantID, OrganizationID: v.OrganizationID,
+		ResourceRoles: v.ResourceRoles,
+	}
+}
+
+func principalFromValidated(applicationSubject string, identity ValidatedProviderIdentity) (auth.AuthenticatedPrincipal, error) {
+	return auth.NewAuthenticatedPrincipal(auth.AuthenticatedPrincipalInput{
+		ApplicationSubject: applicationSubject,
+		Provider:           identity.Provider,
+		ProviderSubject:    identity.Subject,
+		ProviderSessionID:  identity.ProviderSessionID,
+		ClientID:           identity.ClientID,
+		AssuranceLevel:     identity.AssuranceLevel,
+		AssuranceMethods:   identity.AssuranceMethods,
+		AuthenticationAt:   identity.AuthenticationAt,
+		IssuedAt:           identity.IssuedAt,
+		ExpiresAt:          identity.ExpiresAt,
+		TokenID:            identity.TokenID,
+		TenantID:           identity.TenantID,
+		OrganizationID:     identity.OrganizationID,
+		PermissionVersion:  identity.PermissionVersion,
+		Metadata:           identity.Metadata,
+	})
 }
 
 func (a *BrowserAuthenticator) resolveLocalIdentity(ctx context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
@@ -302,23 +513,16 @@ func (a *BrowserAuthenticator) resolveLocalIdentity(ctx context.Context, identit
 	if localIdentity == nil {
 		return nil, decision, auth.ErrIdentityNotFound
 	}
+	if _, err := auth.EnsureIdentityActive(localIdentity); err != nil {
+		return nil, decision, err
+	}
 	return localIdentity, decision, nil
 }
 
-func (a *BrowserAuthenticator) buildSessionResult(provider *Provider, redirectTarget string, identity ExternalIdentity, mappedClaims *auth.JWTClaims, localIdentity auth.Identity, decision LinkingDecision) (BrowserSessionResult, error) {
-	resourceRoles := identity.ResourceRoles
-	if len(resourceRoles) == 0 && mappedClaims != nil {
-		resourceRoles = mappedClaims.Resources
-	}
-	localToken, err := a.tokenIssuer.Generate(localIdentity, resourceRoles)
-	if err != nil {
-		return BrowserSessionResult{}, err
-	}
-
-	return BrowserSessionResult{
-		LocalToken:     localToken,
-		Identity:       identity,
-		Claims:         mappedClaims,
+func (a *BrowserAuthenticator) buildSessionResult(ctx context.Context, provider *Provider, redirectTarget string, callback callbackAuthentication, localIdentity auth.Identity, decision LinkingDecision) (BrowserSessionResult, error) {
+	result := BrowserSessionResult{
+		Identity:       callback.external,
+		Claims:         callback.mappedClaims,
 		ProviderKey:    provider.Config.Key,
 		RedirectTarget: redirectTarget,
 		Audit: AuditMetadata{
@@ -326,11 +530,51 @@ func (a *BrowserAuthenticator) buildSessionResult(provider *Provider, redirectTa
 			UserID:    localIdentity.ID(),
 			Metadata: map[string]any{
 				"provider":         provider.Config.Key,
-				"subject":          identity.Subject,
+				"subject":          callback.external.Subject,
 				"linking_decision": decision.Action,
 			},
 		},
-	}, nil
+	}
+	if !a.hardenedFlow() {
+		resourceRoles := callback.external.ResourceRoles
+		if len(resourceRoles) == 0 && callback.mappedClaims != nil {
+			resourceRoles = callback.mappedClaims.Resources
+		}
+		localToken, err := a.tokenIssuer.Generate(localIdentity, resourceRoles)
+		if err != nil {
+			return BrowserSessionResult{}, err
+		}
+		result.LocalToken = localToken
+		return result, nil
+	}
+	principal, err := principalFromValidated(localIdentity.ID(), *callback.validated)
+	if err != nil {
+		return BrowserSessionResult{}, err
+	}
+	result.Principal = principal
+	if a.sessionMode == ProviderSessionMode {
+		handoff, handoffErr := a.sessionHandoff.CreateProviderSession(ctx, principal, callback.tokenSet)
+		if handoffErr != nil || handoff.HostSession().IsZero() || strings.TrimSpace(handoff.LocalSessionID()) == "" {
+			return BrowserSessionResult{}, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": "provider session handoff failed"})
+		}
+		principal, err = principal.BindLocalSessionID(handoff.LocalSessionID())
+		if err != nil {
+			return BrowserSessionResult{}, cloneWithProvider(ErrTokenExchangeFailed, provider.Config.Key, map[string]any{"cause": "provider session handoff failed"})
+		}
+		result.Principal = principal
+		result.HostSession = handoff.HostSession()
+		return result, nil
+	}
+	normalizedClaims, err := PrincipalLocalClaims(principal, a.localClaimPolicy)
+	if err != nil {
+		return BrowserSessionResult{}, err
+	}
+	localToken, err := a.principalTokenIssuer.GeneratePrincipal(localIdentity, normalizedClaims)
+	if err != nil {
+		return BrowserSessionResult{}, err
+	}
+	result.LocalToken = localToken
+	return result, nil
 }
 
 func (a *BrowserAuthenticator) fetchUserInfo(ctx context.Context, provider *Provider, tokenResponse TokenResponse) (map[string]any, error) {
@@ -340,12 +584,16 @@ func (a *BrowserAuthenticator) fetchUserInfo(ctx context.Context, provider *Prov
 	if strings.TrimSpace(provider.Metadata.UserInfoEndpoint) == "" {
 		return nil, cloneWithProvider(ErrUserInfoFailed, provider.Config.Key, map[string]any{"field": "userinfo_endpoint"})
 	}
-	if strings.TrimSpace(tokenResponse.AccessToken) == "" {
+	accessToken, err := tokenResponse.accessToken()
+	if err != nil {
+		return nil, err
+	}
+	if accessToken.IsZero() {
 		return nil, cloneWithProvider(ErrUserInfoFailed, provider.Config.Key, map[string]any{"field": "access_token"})
 	}
-	userInfo, err := a.userInfoFetcher.FetchUserInfo(ctx, provider.Config, provider.Metadata, tokenResponse.AccessToken)
+	userInfo, err := a.userInfoFetcher.FetchUserInfo(ctx, provider.Config, provider.Metadata, accessToken.Reveal())
 	if err != nil {
-		return nil, cloneWithProvider(ErrUserInfoFailed, provider.Config.Key, map[string]any{"cause": err.Error()})
+		return nil, cloneWithProvider(ErrUserInfoFailed, provider.Config.Key, map[string]any{"cause": "provider operation failed"})
 	}
 	return userInfo, nil
 }
@@ -376,6 +624,11 @@ func authorizationURL(provider *Provider, state string, nonce string, verifier s
 	}
 
 	query := parsed.Query()
+	for k, v := range provider.Config.AdditionalAuthParam {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
+			query.Set(k, v)
+		}
+	}
 	query.Set("response_type", DefaultResponseType)
 	query.Set("client_id", provider.Config.ClientID)
 	query.Set("redirect_uri", provider.Config.RedirectURL)
@@ -386,11 +639,6 @@ func authorizationURL(provider *Provider, state string, nonce string, verifier s
 	query.Set("code_challenge_method", "S256")
 	if loginHint = strings.TrimSpace(loginHint); loginHint != "" {
 		query.Set("login_hint", loginHint)
-	}
-	for k, v := range provider.Config.AdditionalAuthParam {
-		if strings.TrimSpace(k) != "" && strings.TrimSpace(v) != "" {
-			query.Set(k, v)
-		}
 	}
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil

@@ -16,6 +16,11 @@ Use `provider/oidc/preset` for providers that only need OIDC configuration:
 Examples include Okta, Azure AD, Google Workspace, and Auth0 browser SSO when
 they are used as standard OIDC providers.
 
+Presets may choose issuer, scopes, claim keys, and display defaults. They must
+not weaken explicit token-endpoint authentication, callback-mode, signing
+algorithm, or response-limit validation. Provider sessions remain
+provider-neutral and server-side.
+
 ## Top-Level Provider Packages
 
 Create a top-level provider package only when the provider needs behavior

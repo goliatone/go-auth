@@ -6,9 +6,11 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,17 +22,20 @@ import (
 func TestDiscoverRejectsIssuerMismatch(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(DiscoveryMetadata{
-			Issuer:  "https://other.example/",
-			JWKSURI: "https://issuer.example/jwks",
+			Issuer:                "https://other.example/",
+			AuthorizationEndpoint: "https://other.example/authorize",
+			TokenEndpoint:         "https://other.example/token",
+			JWKSURI:               "https://other.example/jwks",
 		})
 	}))
 	defer server.Close()
 
 	_, err := Discover(context.Background(), ProviderConfig{
-		Key:         "test",
-		Issuer:      server.URL,
-		ClientID:    "client",
-		RedirectURL: "https://app.example/callback",
+		Key:               "test",
+		Issuer:            server.URL,
+		ClientID:          "client",
+		RedirectURL:       "https://app.example/callback",
+		AllowInsecureHTTP: true,
 	}, server.Client())
 	if !errorHasTextCode(err, TextCodeOIDCDiscoveryFailed) {
 		t.Fatalf("expected discovery issuer mismatch error, got %v", err)
@@ -241,11 +246,11 @@ func TestTokenValidatorRejectsUnsupportedConfiguredAlgorithmAtSetup(t *testing.T
 	defer server.Close()
 
 	provider := testProviderConfig("https://issuer.example/")
-	provider.AllowedAlgorithms = []string{"ES256"}
+	provider.AllowedAlgorithms = []string{"ES384"}
 	_, err := NewTokenValidator(context.Background(), provider, DiscoveryMetadata{
 		Issuer:     "https://issuer.example/",
 		JWKSURI:    server.URL,
-		Algorithms: []string{"ES256"},
+		Algorithms: []string{"ES384"},
 	}, WithValidatorHTTPClient(server.Client()))
 	if !errorHasTextCode(err, TextCodeOIDCInvalidConfig) {
 		t.Fatalf("expected unsupported configured algorithm setup error, got %v", err)
@@ -264,7 +269,7 @@ func TestTokenValidatorRejectsDiscoveryWithNoSupportedAlgorithmsAtSetup(t *testi
 	_, err := NewTokenValidator(context.Background(), provider, DiscoveryMetadata{
 		Issuer:     "https://issuer.example/",
 		JWKSURI:    server.URL,
-		Algorithms: []string{"ES256"},
+		Algorithms: []string{"ES384"},
 	}, WithValidatorHTTPClient(server.Client()))
 	if !errorHasTextCode(err, TextCodeOIDCInvalidConfig) {
 		t.Fatalf("expected unsupported discovery algorithm setup error, got %v", err)
@@ -308,6 +313,72 @@ func TestTokenValidatorRefreshesJWKSForRotation(t *testing.T) {
 	}
 }
 
+func TestUnknownKIDRefreshIsCoalescedAndRateLimited(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	trustedKey := mustRSAKey(t)
+	unknownKey := mustRSAKey(t)
+	var calls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwk{
+			rsaJWK("trusted", trustedKey.PublicKey, "RS256", "sig", nil),
+		}})
+	}))
+	defer server.Close()
+
+	provider := testProviderConfig("https://issuer.example/")
+	provider.JWKSRefreshCooldown = time.Minute
+	validator, err := NewTokenValidator(context.Background(), provider, DiscoveryMetadata{
+		Issuer: provider.Issuer, JWKSURI: server.URL, Algorithms: []string{"RS256"},
+	}, WithValidatorHTTPClient(server.Client()), WithValidatorClock(func() time.Time { return now }))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const attempts = 16
+	tokens := make([]string, attempts)
+	for index := range attempts {
+		tokens[index] = signToken(t, unknownKey, fmt.Sprintf("unknown-%d", index), jwt.MapClaims{
+			"iss": provider.Issuer, "sub": "user", "aud": "api://default",
+			"exp": now.Add(time.Hour).Unix(), "iat": now.Add(-time.Minute).Unix(),
+		})
+	}
+	var wg sync.WaitGroup
+	wg.Add(attempts)
+	for _, raw := range tokens {
+		go func() {
+			defer wg.Done()
+			if _, err := validator.Validate(raw); err == nil {
+				t.Error("unknown kid unexpectedly validated")
+			}
+		}()
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Fatalf("JWKS fetches = %d, want initial fetch plus one coalesced refresh", got)
+	}
+}
+
+func TestJWKRejectsWeakRSAAndInvalidExponent(t *testing.T) {
+	weakModulus := new(big.Int).Lsh(big.NewInt(1), 1023)
+	base := jwk{
+		KeyType:  "RSA",
+		Modulus:  base64.RawURLEncoding.EncodeToString(weakModulus.Bytes()),
+		Exponent: base64.RawURLEncoding.EncodeToString(big.NewInt(65537).Bytes()),
+	}
+	if _, err := base.rsaPublicKey(); err == nil {
+		t.Fatal("expected sub-2048-bit RSA modulus rejection")
+	}
+
+	strong := mustRSAKey(t)
+	base.Modulus = base64.RawURLEncoding.EncodeToString(strong.N.Bytes())
+	base.Exponent = base64.RawURLEncoding.EncodeToString(big.NewInt(2).Bytes())
+	if _, err := base.rsaPublicKey(); err == nil {
+		t.Fatal("expected invalid RSA exponent rejection")
+	}
+}
+
 func newTestValidator(t *testing.T, issuer string, keys []jwk, now time.Time) *TokenValidator {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +405,7 @@ func testProviderConfig(issuer string) ProviderConfig {
 		RedirectURL:       "https://app.example/callback",
 		Audience:          []string{"api://default"},
 		AllowedAlgorithms: []string{"RS256"},
+		AllowInsecureHTTP: true,
 	}
 }
 

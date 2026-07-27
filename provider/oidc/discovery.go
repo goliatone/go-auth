@@ -2,7 +2,6 @@ package oidc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -27,6 +26,11 @@ func NewProvider(ctx context.Context, provider ProviderConfig, opts ...ProviderO
 	metadata, err := Discover(ctx, provider, options.httpClient)
 	if err != nil {
 		return nil, err
+	}
+	if provider.TokenEndpointAuthMethod != TokenEndpointAuthUnspecified {
+		if _, authMethodErr := resolveTokenEndpointAuthMethod(provider, metadata); authMethodErr != nil {
+			return nil, authMethodErr
+		}
 	}
 
 	validator, err := NewTokenValidator(ctx, provider, metadata, WithValidatorHTTPClient(options.httpClient))
@@ -56,23 +60,26 @@ func WithProviderHTTPClient(client *http.Client) ProviderOption {
 }
 
 func Discover(ctx context.Context, provider ProviderConfig, client *http.Client) (DiscoveryMetadata, error) {
-	if client == nil {
-		client = http.DefaultClient
+	if err := provider.validate(); err != nil {
+		return DiscoveryMetadata{}, err
 	}
+	client = noRedirectHTTPClient(client)
 
 	discoveryURL, err := discoveryURL(provider)
 	if err != nil {
 		return DiscoveryMetadata{}, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, discoveryURL, nil)
+	requestCtx, cancel := providerRequestContext(ctx, provider.RequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, discoveryURL, nil)
 	if err != nil {
-		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": err.Error()})
+		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": "request construction failed"})
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": err.Error()})
+		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": "provider request failed"})
 	}
 	defer closeBody(res.Body)
 
@@ -81,15 +88,12 @@ func Discover(ctx context.Context, provider ProviderConfig, client *http.Client)
 	}
 
 	var metadata DiscoveryMetadata
-	if err := json.NewDecoder(res.Body).Decode(&metadata); err != nil {
-		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": err.Error()})
+	if err := decodeBoundedJSON(res.Body, provider.Limits.normalized().DiscoveryBodyBytes, &metadata); err != nil {
+		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"cause": "invalid discovery response"})
 	}
 
-	if strings.TrimSpace(metadata.Issuer) == "" {
-		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"field": "issuer"})
-	}
-	if strings.TrimSpace(metadata.JWKSURI) == "" {
-		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{"field": "jwks_uri"})
+	if err := validateDiscoveryEndpoints(provider, metadata); err != nil {
+		return DiscoveryMetadata{}, err
 	}
 	if provider.Issuer != "" && strings.TrimRight(metadata.Issuer, "/") != strings.TrimRight(provider.Issuer, "/") {
 		return DiscoveryMetadata{}, cloneWithProvider(ErrDiscoveryFailed, provider.Key, map[string]any{

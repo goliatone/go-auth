@@ -7,16 +7,26 @@ import (
 )
 
 type MemoryStateStore struct {
-	mu     sync.Mutex
-	clock  func() time.Time
-	states map[string]StateRecord
+	mu        sync.Mutex
+	clock     func() time.Time
+	capacity  int
+	states    map[string]StateRecord
+	lastSweep time.Time
+	hasSwept  bool
 }
 
 func NewMemoryStateStore(clock func() time.Time) *MemoryStateStore {
+	return NewMemoryStateStoreWithCapacity(clock, DefaultStateCapacity)
+}
+
+func NewMemoryStateStoreWithCapacity(clock func() time.Time, capacity int) *MemoryStateStore {
 	if clock == nil {
 		clock = time.Now
 	}
-	return &MemoryStateStore{clock: clock, states: map[string]StateRecord{}}
+	if capacity <= 0 {
+		capacity = DefaultStateCapacity
+	}
+	return &MemoryStateStore{clock: clock, capacity: capacity, states: map[string]StateRecord{}}
 }
 
 func (s *MemoryStateStore) Save(_ context.Context, state StateRecord) error {
@@ -28,6 +38,29 @@ func (s *MemoryStateStore) Save(_ context.Context, state StateRecord) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := s.clock()
+	if !s.hasSwept || now.Sub(s.lastSweep) >= time.Second {
+		for key, record := range s.states {
+			if !record.ExpiresAt.IsZero() && !now.Before(record.ExpiresAt) {
+				delete(s.states, key)
+			}
+		}
+		s.lastSweep = now
+		s.hasSwept = true
+	}
+	if _, exists := s.states[state.State]; exists {
+		return cloneWithProvider(ErrInvalidState, state.ProviderKey, map[string]any{
+			"cause": "duplicate state",
+		})
+	}
+	if len(s.states) >= s.capacity {
+		return cloneWithProvider(ErrInvalidState, state.ProviderKey, map[string]any{
+			"cause": "state store capacity reached",
+		})
+	}
+	if state.CreatedAt.IsZero() {
+		state.CreatedAt = now
+	}
 	s.states[state.State] = state
 	return nil
 }
