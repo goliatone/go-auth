@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -65,7 +66,7 @@ func TestFinalizePasswordResetHandlerEmitsActivity(t *testing.T) {
 	repo.On("PasswordResets").Return(resets).Twice()
 	repo.On("Users").Return(users).Once()
 
-	resets.On("GetByID", mock.Anything, event.Session, mock.Anything).
+	resets.On("GetByIDTx", mock.Anything, mock.Anything, event.Session, mock.Anything).
 		Return(resetRecord, nil).Once()
 	users.On("GetByIDTx", mock.Anything, mock.Anything, userID.String(), mock.Anything).
 		Return(userRecord, nil).Once()
@@ -126,7 +127,7 @@ func TestFinalizePasswordResetHandler_AllowsNonTemporaryUserWithoutAtomicCleanup
 		CreatedAt: &now,
 	}
 
-	resets.On("GetByID", mock.Anything, event.Session, mock.Anything).
+	resets.On("GetByIDTx", mock.Anything, mock.Anything, event.Session, mock.Anything).
 		Return(resetRecord, nil).Once()
 	resets.On("UpdateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(resetRecord, nil).Once()
@@ -177,7 +178,9 @@ func TestFinalizePasswordResetHandler_RejectsTemporaryUserWithoutAtomicCleanup(t
 		CreatedAt: &now,
 	}
 
-	resets.On("GetByID", mock.Anything, event.Session, mock.Anything).
+	resets.On("GetByIDTx", mock.Anything, mock.Anything, event.Session, mock.Anything).
+		Return(resetRecord, nil).Once()
+	resets.On("UpdateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(resetRecord, nil).Once()
 
 	err := handler.Execute(ctx, event)
@@ -188,6 +191,47 @@ func TestFinalizePasswordResetHandler_RejectsTemporaryUserWithoutAtomicCleanup(t
 	require.Equal(t, "users repository does not support temporary password reset cleanup", richErr.Message)
 	require.False(t, users.resetPasswordTxCalled)
 	require.False(t, users.resetAndClearCalled)
+	resets.AssertExpectations(t)
+}
+
+func TestFinalizePasswordResetHandlerDoesNotChangePasswordWhenAtomicConsumptionLosesRace(t *testing.T) {
+	ctx := context.Background()
+	resets := &MockPasswordResets{}
+	users := &legacyFinalizeUsersRepo{
+		user: &auth.User{
+			ID:    uuid.New(),
+			Email: "user@example.com",
+		},
+	}
+	userID := users.user.ID
+	now := time.Now()
+	repo := &legacyFinalizeRepositoryManager{
+		users:  users,
+		resets: resets,
+	}
+	event := auth.FinalizePasswordResetMesasge{
+		Session:  "session-token",
+		Password: "password12345",
+	}
+	resetRecord := &auth.PasswordReset{
+		ID:        uuid.New(),
+		UserID:    &userID,
+		Status:    auth.ResetRequestedStatus,
+		CreatedAt: &now,
+	}
+
+	resets.On("GetByIDTx", mock.Anything, mock.Anything, event.Session, mock.Anything).
+		Return(resetRecord, nil).Once()
+	resets.On("UpdateTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return((*auth.PasswordReset)(nil), errors.New("expected one affected row")).Once()
+
+	err := auth.NewFinalizePasswordResetHandler(repo).
+		WithLogger(testLogger{}).
+		Execute(ctx, event)
+
+	require.Error(t, err)
+	require.False(t, users.resetPasswordTxCalled)
+	require.Empty(t, users.lastResetHash)
 	resets.AssertExpectations(t)
 }
 

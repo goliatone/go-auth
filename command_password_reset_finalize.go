@@ -6,6 +6,7 @@ import (
 
 	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-featuregate/gate"
+	"github.com/goliatone/go-repository-bun"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -99,7 +100,7 @@ func (h *FinalizePasswordResetHandler) execute(ctx context.Context, event Finali
 }
 
 func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Context, tx bun.Tx, event FinalizePasswordResetMesasge) (*PasswordReset, error) {
-	reset, err := h.loadPendingPasswordReset(ctx, event.Session)
+	reset, err := h.loadPendingPasswordReset(ctx, tx, event.Session)
 	if err != nil {
 		return nil, err
 	}
@@ -114,12 +115,12 @@ func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Conte
 		return nil, err
 	}
 
-	err = h.updateResetUserPassword(ctx, tx, reset, passwordHash)
+	err = h.consumePasswordReset(ctx, tx, reset)
 	if err != nil {
 		return nil, err
 	}
 
-	err = h.markPasswordResetComplete(ctx, tx, reset.ID)
+	err = h.updateResetUserPassword(ctx, tx, reset, passwordHash)
 	if err != nil {
 		return nil, err
 	}
@@ -127,8 +128,8 @@ func (h *FinalizePasswordResetHandler) finalizePasswordResetTx(ctx context.Conte
 	return reset, nil
 }
 
-func (h *FinalizePasswordResetHandler) loadPendingPasswordReset(ctx context.Context, session string) (*PasswordReset, error) {
-	reset, err := h.repo.PasswordResets().GetByID(ctx, session)
+func (h *FinalizePasswordResetHandler) loadPendingPasswordReset(ctx context.Context, tx bun.IDB, session string) (*PasswordReset, error) {
+	reset, err := h.repo.PasswordResets().GetByIDTx(ctx, tx, session)
 	if err != nil {
 		if goerrors.IsNotFound(err) {
 			return nil, goerrors.New("invalid or expired password reset token", goerrors.CategoryNotFound).
@@ -204,11 +205,29 @@ func (h *FinalizePasswordResetHandler) resetTemporaryPasswordTx(ctx context.Cont
 	return nil
 }
 
-func (h *FinalizePasswordResetHandler) markPasswordResetComplete(ctx context.Context, tx bun.Tx, resetID uuid.UUID) error {
-	record := MarkPasswordAsReseted(resetID)
-	if _, err := h.repo.PasswordResets().UpdateTx(ctx, tx, record); err != nil {
-		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to update password reset status")
+func (h *FinalizePasswordResetHandler) consumePasswordReset(ctx context.Context, tx bun.IDB, reset *PasswordReset) error {
+	now := time.Now().UTC()
+	record := &PasswordReset{
+		ID:        reset.ID,
+		Status:    ResetChangedStatus,
+		ResetedAt: &now,
+		UpdatedAt: &now,
 	}
+	cutoff := now.Add(-24 * time.Hour)
+	if _, err := h.repo.PasswordResets().UpdateTx(
+		ctx,
+		tx,
+		record,
+		repository.UpdateColumns("status", "reseted_at", "updated_at"),
+		repository.UpdateBy("status", "=", ResetRequestedStatus),
+		repository.UpdateByTimetz("created_at", ">=", cutoff),
+	); err != nil {
+		return goerrors.Wrap(err, goerrors.CategoryConflict, "password reset token has already been used or expired").
+			WithTextCode("TOKEN_ALREADY_USED")
+	}
+	reset.Status = ResetChangedStatus
+	reset.ResetedAt = &now
+	reset.UpdatedAt = &now
 	return nil
 }
 

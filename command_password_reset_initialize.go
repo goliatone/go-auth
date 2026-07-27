@@ -2,12 +2,12 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	goerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-featuregate/gate"
 	"github.com/goliatone/go-repository-bun"
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
 
@@ -21,24 +21,72 @@ type InitializePasswordResetMessage struct {
 func (p InitializePasswordResetMessage) Type() string { return "user.password_reset" }
 
 type InitializePasswordResetResponse struct {
+	// Reset is retained for source compatibility. Password reset credentials
+	// are never returned through command responses.
 	Reset   *PasswordReset
 	Stage   string
 	Success bool
 }
 
+// PasswordResetDeliveryRequest contains the minimum capability required by a
+// trusted out-of-band delivery implementation. Token is deliberately opaque so
+// common formatting and serialization paths redact it.
+type PasswordResetDeliveryRequest struct {
+	Email     string
+	Token     Secret
+	ExpiresAt time.Time
+}
+
+// PasswordResetDelivery delivers a password reset credential over a trusted
+// out-of-band channel, such as email.
+type PasswordResetDelivery interface {
+	DeliverPasswordReset(context.Context, PasswordResetDeliveryRequest) error
+}
+
+// PasswordResetDeliveryFunc adapts a function to PasswordResetDelivery.
+type PasswordResetDeliveryFunc func(context.Context, PasswordResetDeliveryRequest) error
+
+func (f PasswordResetDeliveryFunc) DeliverPasswordReset(ctx context.Context, req PasswordResetDeliveryRequest) error {
+	return f(ctx, req)
+}
+
 type InitializePasswordResetHandler struct {
 	repo        RepositoryManager
 	featureGate gate.FeatureGate
+	delivery    PasswordResetDelivery
+	logger      Logger
+	provider    LoggerProvider
 }
 
 func NewInitializePasswordResetHandler(repo RepositoryManager) *InitializePasswordResetHandler {
+	loggerProvider, logger := ResolveLogger("auth.password_reset", nil, nil)
 	return &InitializePasswordResetHandler{
-		repo: repo,
+		repo:     repo,
+		logger:   logger,
+		provider: loggerProvider,
 	}
 }
 
 func (h *InitializePasswordResetHandler) WithFeatureGate(featureGate gate.FeatureGate) *InitializePasswordResetHandler {
 	h.featureGate = featureGate
+	return h
+}
+
+// WithDelivery configures the trusted out-of-band reset credential delivery.
+func (h *InitializePasswordResetHandler) WithDelivery(delivery PasswordResetDelivery) *InitializePasswordResetHandler {
+	h.delivery = delivery
+	return h
+}
+
+// WithLogger overrides the logger used by the handler.
+func (h *InitializePasswordResetHandler) WithLogger(logger Logger) *InitializePasswordResetHandler {
+	h.provider, h.logger = ResolveLogger("auth.password_reset", h.provider, logger)
+	return h
+}
+
+// WithLoggerProvider overrides the logger provider used by the handler.
+func (h *InitializePasswordResetHandler) WithLoggerProvider(provider LoggerProvider) *InitializePasswordResetHandler {
+	h.provider, h.logger = ResolveLogger("auth.password_reset", provider, h.logger)
 	return h
 }
 
@@ -59,9 +107,9 @@ func (h *InitializePasswordResetHandler) Execute(ctx context.Context, event Init
 }
 
 func (h *InitializePasswordResetHandler) execute(ctx context.Context, event InitializePasswordResetMessage) error {
-	user := &User{}
-	reset := &PasswordReset{}
-	resp := &InitializePasswordResetResponse{}
+	resp := &InitializePasswordResetResponse{
+		Stage: AccountVerification,
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
@@ -71,34 +119,30 @@ func (h *InitializePasswordResetHandler) execute(ctx context.Context, event Init
 			WithMetadata(map[string]any{"stage": event.Stage})
 	}
 
-	var err error
-
-	err = h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// retrieve the user
-		user, err = h.repo.Users().GetByIdentifier(ctx, event.Email)
+	var createdReset *PasswordReset
+	err := h.repo.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		user, err := h.repo.Users().GetByIdentifier(ctx, event.Email)
 		if err != nil {
 			if repository.IsRecordNotFound(err) {
-				resp.Stage = AccountVerification
 				return nil
 			}
 			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to retrieve user for password reset")
 		}
 
+		// Fail closed when no trusted delivery capability is configured. The
+		// public response remains identical to the unknown-account path.
+		if h.delivery == nil {
+			return nil
+		}
+
+		reset := &PasswordReset{}
 		reset.UserID = &user.ID
 		reset.Email = event.Email
 		reset.Status = ResetRequestedStatus
-		if createdReset, createErr := h.repo.PasswordResets().CreateTx(ctx, tx, reset); createErr != nil {
-			return goerrors.Wrap(createErr, goerrors.CategoryInternal, "failed to create password reset record")
-		} else {
-			resp.Reset = createdReset
+		createdReset, err = h.repo.PasswordResets().CreateTx(ctx, tx, reset)
+		if err != nil {
+			return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to create password reset record")
 		}
-
-		go func() {
-			// TODO: we need to handle emails...
-			printEmailNotification(resp.Reset.Email, resp.Reset.ID.String())
-		}()
-
-		resp.Stage = AccountVerification
 		return nil
 	})
 
@@ -110,17 +154,35 @@ func (h *InitializePasswordResetHandler) execute(ctx context.Context, event Init
 		return goerrors.Wrap(err, goerrors.CategoryInternal, "failed to initialize password reset")
 	}
 
+	if createdReset != nil {
+		deliveryErr := h.delivery.DeliverPasswordReset(ctx, PasswordResetDeliveryRequest{
+			Email:     createdReset.Email,
+			Token:     NewSecret(createdReset.ID.String()),
+			ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		})
+		if deliveryErr != nil {
+			h.invalidateUndeliveredReset(ctx, createdReset.ID)
+			EnsureLogger(h.logger).Error("password reset delivery failed", "error", deliveryErr)
+		}
+	}
+
 	resp.Success = true
-	event.OnResponse(resp)
+	if event.OnResponse != nil {
+		event.OnResponse(resp)
+	}
 
 	return nil
 }
 
-func printEmailNotification(email, id string) {
-	fmt.Println("====== SENDING EMAIL NOTIFICATION =======")
-	fmt.Printf("to: %s\n", email)
-	fmt.Printf(
-		"link: /password-reset/%s\n",
-		id,
-	)
+func (h *InitializePasswordResetHandler) invalidateUndeliveredReset(ctx context.Context, resetID uuid.UUID) {
+	record := &PasswordReset{ID: resetID, Status: ResetExpiredStatus}
+	now := time.Now().UTC()
+	record.UpdatedAt = &now
+	if _, err := h.repo.PasswordResets().Update(
+		ctx,
+		record,
+		repository.UpdateColumns("status", "updated_at"),
+	); err != nil {
+		EnsureLogger(h.logger).Error("failed to invalidate undelivered password reset", "error", err)
+	}
 }
