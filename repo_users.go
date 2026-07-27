@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/mail"
 	"strings"
@@ -49,6 +50,15 @@ type Users interface {
 	ResetPasswordTx(ctx context.Context, tx bun.IDB, id uuid.UUID, passwordHash string) error
 }
 
+// AtomicLoginAttemptRepository is the optional repository capability for
+// reserving login attempts atomically, including inside an existing
+// transaction. It is separate from Users to preserve compatibility for custom
+// Users implementations.
+type AtomicLoginAttemptRepository interface {
+	AtomicLoginAttemptTracker
+	ReserveLoginAttemptTx(ctx context.Context, tx bun.IDB, userID uuid.UUID, policy LoginAttemptPolicy) (LoginAttemptReservation, error)
+}
+
 // TemporaryPasswordResetRepository is an optional user repository capability for
 // replacing a password hash and clearing temporary-password metadata together.
 type TemporaryPasswordResetRepository interface {
@@ -64,8 +74,9 @@ type users struct {
 }
 
 var (
-	_ Users                        = (*users)(nil)
-	_ repository.Repository[*User] = (*users)(nil)
+	_ Users                         = (*users)(nil)
+	_ ProviderProfileSyncRepository = (*users)(nil)
+	_ repository.Repository[*User]  = (*users)(nil)
 )
 
 type UsersOption func(*users)
@@ -257,6 +268,49 @@ func (a *users) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user *Use
 	return err
 }
 
+func (a *users) ReserveLoginAttempt(ctx context.Context, userID uuid.UUID, policy LoginAttemptPolicy) (LoginAttemptReservation, error) {
+	return a.ReserveLoginAttemptTx(ctx, a.db, userID, policy)
+}
+
+func (a *users) ReserveLoginAttemptTx(ctx context.Context, tx bun.IDB, userID uuid.UUID, policy LoginAttemptPolicy) (LoginAttemptReservation, error) {
+	if userID == uuid.Nil || policy.MaxAttempts <= 0 || policy.Window <= 0 {
+		return LoginAttemptReservation{}, fmt.Errorf("invalid login attempt reservation input")
+	}
+
+	now := time.Now().UTC()
+	cutoff := now.Add(-policy.Window)
+	record := &User{ID: userID}
+	err := tx.NewUpdate().
+		Model(record).
+		Set(`login_attempts = CASE
+			WHEN login_attempt_at IS NULL OR login_attempt_at < ? THEN 1
+			ELSE login_attempts + 1
+		END`, cutoff).
+		Set("login_attempt_at = ?", now).
+		Where("id = ?", userID).
+		Where("deleted_at IS NULL").
+		WhereGroup(" AND ", func(q *bun.UpdateQuery) *bun.UpdateQuery {
+			return q.
+				Where("login_attempt_at IS NULL").
+				WhereOr("login_attempt_at < ?", cutoff).
+				WhereOr("login_attempts < ?", policy.MaxAttempts)
+		}).
+		Returning("login_attempts, login_attempt_at").
+		Scan(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return LoginAttemptReservation{Allowed: false}, nil
+		}
+		return LoginAttemptReservation{}, err
+	}
+
+	return LoginAttemptReservation{
+		Allowed:    true,
+		Attempts:   record.LoginAttempts,
+		RecordedAt: now,
+	}, nil
+}
+
 func (a *users) Upsert(ctx context.Context, record *User, criteria ...repository.UpdateCriteria) (*User, error) {
 	return a.UpsertTx(ctx, a.db, record, criteria...)
 }
@@ -278,6 +332,43 @@ func (a *users) UpsertTx(ctx context.Context, tx bun.IDB, record *User, criteria
 	}
 
 	return a.RegisterTx(ctx, tx, record)
+}
+
+// SyncProviderProfileTx updates only profile attributes owned by an external
+// identity provider. Role, status, password, login state, lifecycle timestamps,
+// and other local authorization data are deliberately excluded.
+func (a *users) SyncProviderProfileTx(
+	ctx context.Context,
+	tx bun.IDB,
+	profile *User,
+) (*User, error) {
+	if a == nil || tx == nil || profile == nil || profile.ID == uuid.Nil {
+		return nil, fmt.Errorf("provider profile sync requires a persisted user")
+	}
+	if _, err := a.GetByIDTx(ctx, tx, profile.ID.String()); err != nil {
+		return nil, err
+	}
+	if _, err := a.UpdateTx(
+		ctx,
+		tx,
+		profile,
+		repository.UpdateColumns(
+			"first_name",
+			"last_name",
+			"username",
+			"profile_picture",
+			"email",
+			"is_email_verified",
+			"metadata",
+		),
+		// Email verification is an explicit provider-owned boolean; false is a
+		// meaningful value and must not be dropped by zero-value omission.
+		repository.UpdateSetColumn("is_email_verified", profile.EmailValidated),
+		repository.UpdateSkipZeroValues(),
+	); err != nil {
+		return nil, err
+	}
+	return a.GetByIDTx(ctx, tx, profile.ID.String())
 }
 
 func (a *users) UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error) {

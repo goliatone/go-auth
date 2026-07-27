@@ -60,8 +60,6 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
-		mockTracker.On("TrackAttemptedLogin", ctx, user).Return(nil).Once()
-
 		identity, err := provider.VerifyIdentity(ctx, "test@example.com", "wrong_password")
 
 		assert.Error(t, err)
@@ -101,6 +99,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 		}
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
+		mockTracker.denyNextReservation = true
 
 		identity, err := provider.VerifyIdentity(ctx, "test@example.com", "password123")
 
@@ -128,7 +127,7 @@ func TestUserProviderVerifyIdentity(t *testing.T) {
 
 		mockTracker.On("GetByIdentifier", ctx, "test@example.com").Return(user, nil).Once()
 		mockTracker.On("TrackSucccessfulLogin", ctx, mock.MatchedBy(func(u *auth.User) bool {
-			return u.ID == userID && u.LoginAttempts == 0 // attempts reset
+			return u.ID == userID
 		})).Return(nil).Once()
 
 		identity, err := provider.VerifyIdentity(ctx, "test@example.com", "password123")

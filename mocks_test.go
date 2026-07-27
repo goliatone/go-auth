@@ -325,6 +325,16 @@ func (m *MockUsers) TrackAttemptedLoginTx(ctx context.Context, tx bun.IDB, user 
 	return args.Error(0)
 }
 
+func (m *MockUsers) ReserveLoginAttempt(ctx context.Context, userID uuid.UUID, policy auth.LoginAttemptPolicy) (auth.LoginAttemptReservation, error) {
+	args := m.Called(ctx, userID, policy)
+	return args.Get(0).(auth.LoginAttemptReservation), args.Error(1)
+}
+
+func (m *MockUsers) ReserveLoginAttemptTx(ctx context.Context, tx bun.IDB, userID uuid.UUID, policy auth.LoginAttemptPolicy) (auth.LoginAttemptReservation, error) {
+	args := m.Called(ctx, tx, userID, policy)
+	return args.Get(0).(auth.LoginAttemptReservation), args.Error(1)
+}
+
 func (m *MockUsers) TrackSucccessfulLogin(ctx context.Context, user *auth.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
@@ -685,6 +695,8 @@ func (m *MockPasswordResets) Handlers() repository.ModelHandlers[*auth.PasswordR
 // ////////////////////////////////////////////////////////////////////
 type MockUserTracker struct {
 	mock.Mock
+	denyNextReservation bool
+	reservationErr      error
 }
 
 func (m *MockUserTracker) GetByIdentifier(ctx context.Context, identifier string) (*auth.User, error) {
@@ -698,6 +710,17 @@ func (m *MockUserTracker) GetByIdentifier(ctx context.Context, identifier string
 func (m *MockUserTracker) TrackAttemptedLogin(ctx context.Context, user *auth.User) error {
 	args := m.Called(ctx, user)
 	return args.Error(0)
+}
+
+func (m *MockUserTracker) ReserveLoginAttempt(ctx context.Context, userID uuid.UUID, policy auth.LoginAttemptPolicy) (auth.LoginAttemptReservation, error) {
+	if m.reservationErr != nil {
+		return auth.LoginAttemptReservation{}, m.reservationErr
+	}
+	if m.denyNextReservation {
+		m.denyNextReservation = false
+		return auth.LoginAttemptReservation{Allowed: false}, nil
+	}
+	return auth.LoginAttemptReservation{Allowed: true, Attempts: 1}, nil
 }
 
 func (m *MockUserTracker) TrackSucccessfulLogin(ctx context.Context, user *auth.User) error {

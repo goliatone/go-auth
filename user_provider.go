@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/goliatone/go-errors"
+	"github.com/google/uuid"
 )
 
 // AccountRegistrerer is the interface we need to handle new user registrations
@@ -20,20 +21,52 @@ type UserTracker interface {
 	TrackSucccessfulLogin(ctx context.Context, user *User) error
 }
 
+type LoginAttemptPolicy struct {
+	MaxAttempts int
+	Window      time.Duration
+}
+
+type LoginAttemptReservation struct {
+	Allowed    bool
+	Attempts   int
+	RecordedAt time.Time
+}
+
+// AtomicLoginAttemptTracker reserves password-verification attempts with one
+// database operation so parallel requests cannot exceed the configured budget.
+type AtomicLoginAttemptTracker interface {
+	ReserveLoginAttempt(context.Context, uuid.UUID, LoginAttemptPolicy) (LoginAttemptReservation, error)
+}
+
 // UserProvider handles users
 type UserProvider struct {
 	store     UserTracker
 	Validator func(*User) error
+	policy    LoginAttemptPolicy
 	logger    Logger
 	provider  LoggerProvider
 }
 
-// MaxLoginAttempts is the maximun number of attempts a user gets
-// in a period
-var MaxLoginAttempts = 5
+const (
+	DefaultMaxLoginAttempts   = 5
+	DefaultLoginAttemptWindow = 24 * time.Hour
+)
 
-// CoolDownPeriod is the period in which we enforce a cool down
-var CoolDownPeriod = "24h"
+// MaxLoginAttempts and CoolDownPeriod remain variables for source
+// compatibility. NewUserProvider uses immutable defaults; configure an
+// instance with WithLoginAttemptPolicy instead.
+var (
+	MaxLoginAttempts = DefaultMaxLoginAttempts
+	CoolDownPeriod   = "24h"
+)
+
+var invalidIdentityPasswordHash = func() string {
+	hash, err := HashPassword("go-auth-invalid-identity-password")
+	if err != nil {
+		panic(err)
+	}
+	return hash
+}()
 
 // NewUserProvider will create a new UserProvider
 func NewUserProvider(store UserTracker) *UserProvider {
@@ -43,6 +76,10 @@ func NewUserProvider(store UserTracker) *UserProvider {
 		logger:    logger,
 		provider:  loggerProvider,
 		Validator: defaultValidator,
+		policy: LoginAttemptPolicy{
+			MaxAttempts: DefaultMaxLoginAttempts,
+			Window:      DefaultLoginAttemptWindow,
+		},
 	}
 }
 
@@ -54,6 +91,13 @@ func (u *UserProvider) WithLogger(l Logger) *UserProvider {
 // WithLoggerProvider overrides the logger provider used by the user provider.
 func (u *UserProvider) WithLoggerProvider(provider LoggerProvider) *UserProvider {
 	u.provider, u.logger = ResolveLogger("auth.user_provider", provider, u.logger)
+	return u
+}
+
+func (u *UserProvider) WithLoginAttemptPolicy(policy LoginAttemptPolicy) *UserProvider {
+	if policy.MaxAttempts > 0 && policy.Window > 0 {
+		u.policy = policy
+	}
 	return u
 }
 
@@ -70,37 +114,29 @@ func (u UserProvider) VerifyIdentity(ctx context.Context, identifier, password s
 	user, err := u.store.GetByIdentifier(ctx, identifier)
 	if err != nil {
 		if errors.IsNotFound(err) {
+			_ = ComparePasswordAndHash(password, invalidIdentityPasswordHash)
 			return nil, ErrMismatchedHashAndPassword
 		}
 		return nil, errors.Wrap(err, errors.CategoryInternal, "failed to retrieve user during verification")
 	}
 
-	if err := ensureAuthenticatableUser(user); err != nil {
-		return nil, err
+	if authenticatableErr := ensureAuthenticatableUser(user); authenticatableErr != nil {
+		return nil, authenticatableErr
 	}
 
-	if user.LoginAttemptAt != nil {
-		expired, err := IsOutsideThresholdPeriod(*user.LoginAttemptAt, CoolDownPeriod)
-		if err != nil {
-			return nil, errors.Wrap(err, errors.CategoryInternal, "failed to calculdate login attempt cooldown")
-		}
-
-		if expired {
-			user.LoginAttempts = 0
-		}
+	attempts, ok := u.store.(AtomicLoginAttemptTracker)
+	if !ok {
+		return nil, errors.New("user tracker does not support atomic login attempt reservations", errors.CategoryInternal)
 	}
-
-	//if we have too many attempts in the given window, cool off!
-	if user.LoginAttempts > MaxLoginAttempts {
+	reservation, err := attempts.ReserveLoginAttempt(ctx, user.ID, u.policy)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.CategoryInternal, "failed to reserve login attempt")
+	}
+	if !reservation.Allowed {
 		return nil, ErrTooManyLoginAttempts
 	}
 
 	if err := ComparePasswordAndHash(password, user.PasswordHash); err != nil {
-		// We have to increment the login_attempts counter and login_attempt_at
-		if err2 := u.store.TrackAttemptedLogin(ctx, user); err2 != nil {
-			return nil, errors.Wrap(err2, errors.CategoryInternal, "failed to track login attempt")
-		}
-
 		return nil, ErrMismatchedHashAndPassword
 	}
 

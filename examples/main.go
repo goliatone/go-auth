@@ -349,6 +349,10 @@ func (a userTrackerAdapter) TrackAttemptedLogin(ctx context.Context, user *auth.
 	return a.users.TrackAttemptedLogin(ctx, user)
 }
 
+func (a userTrackerAdapter) ReserveLoginAttempt(ctx context.Context, userID uuid.UUID, policy auth.LoginAttemptPolicy) (auth.LoginAttemptReservation, error) {
+	return a.users.(auth.AtomicLoginAttemptTracker).ReserveLoginAttempt(ctx, userID, policy)
+}
+
 func (a userTrackerAdapter) TrackSucccessfulLogin(ctx context.Context, user *auth.User) error {
 	return a.users.TrackSucccessfulLogin(ctx, user)
 }
