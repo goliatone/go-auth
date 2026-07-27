@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	csfmw "github.com/goliatone/go-auth/middleware/csrf"
@@ -145,6 +147,46 @@ func TestPasswordResetGetDeniedByFeatureGate(t *testing.T) {
 	require.ErrorIs(t, handledErr, ErrPasswordResetDisabled)
 	require.Equal(t, []string{gate.FeatureUsersPasswordReset}, stubGate.calls)
 	ctx.AssertExpectations(t)
+}
+
+func TestRegisterSecureAuthRoutesProtectsStateChangingRoutesAndUsesPostLogout(t *testing.T) {
+	server := router.NewHTTPServer().(*router.HTTPServer)
+	err := RegisterSecureAuthRoutes(server.Router(), AuthRouteSecurityConfig{
+		CSRF: csfmw.Config{
+			SecureKey: []byte("01234567890123456789012345678901"),
+		},
+	}, func(ac *AuthController) *AuthController {
+		ac.Repo = &mngr{}
+		ac.Auther = &RouteAuthenticator{}
+		return ac
+	})
+	require.NoError(t, err)
+
+	var foundPostLogout bool
+	var foundGetLogout bool
+	for _, route := range server.Router().Routes() {
+		switch route.Name {
+		case "auth.sign-out.post":
+			foundPostLogout = route.Method == router.POST
+		case "auth.sign-out.get":
+			foundGetLogout = true
+		}
+	}
+	require.True(t, foundPostLogout)
+	require.False(t, foundGetLogout)
+
+	req := httptest.NewRequest(http.MethodPost, "https://app.example.com/logout", nil)
+	resp := httptest.NewRecorder()
+	server.WrappedRouter().ServeHTTP(resp, req)
+	require.Equal(t, http.StatusForbidden, resp.Code)
+}
+
+func TestRegisterSecureAuthRoutesRejectsShortCSRFKey(t *testing.T) {
+	server := router.NewHTTPServer().(*router.HTTPServer)
+	err := RegisterSecureAuthRoutes(server.Router(), AuthRouteSecurityConfig{
+		CSRF: csfmw.Config{SecureKey: []byte("short")},
+	})
+	require.Error(t, err)
 }
 
 func newTestAuthController() *AuthController {

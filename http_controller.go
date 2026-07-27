@@ -63,49 +63,88 @@ func GetRouterSession(c router.Context, key string) (*SessionObject, error) {
 }
 
 func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOption) {
+	middleware := []router.MiddlewareFunc{
+		router.OriginProtection(),
+		csfmw.New(),
+	}
+	registerAuthRoutes(app, true, middleware, opts...)
+}
 
+// AuthRouteSecurityConfig configures CSRF and origin checks for the package's
+// browser-facing authentication routes.
+type AuthRouteSecurityConfig struct {
+	CSRF   csfmw.Config
+	Origin router.OriginProtectionConfig
+}
+
+// RegisterSecureAuthRoutes registers browser authentication routes with CSRF
+// and origin protection. Logout is POST-only in this secure route set.
+func RegisterSecureAuthRoutes[T any](app router.Router[T], cfg AuthRouteSecurityConfig, opts ...AuthControllerOption) error {
+	if cfg.CSRF.Storage == nil && len(cfg.CSRF.SecureKey) > 0 && len(cfg.CSRF.SecureKey) < 32 {
+		return fmt.Errorf("csrf: secure key must be at least 32 bytes, got %d", len(cfg.CSRF.SecureKey))
+	}
+	middleware := []router.MiddlewareFunc{
+		router.OriginProtection(cfg.Origin),
+		csfmw.New(cfg.CSRF),
+	}
+	registerAuthRoutes(app, true, middleware, opts...)
+	return nil
+}
+
+func registerAuthRoutes[T any](app router.Router[T], postLogout bool, middleware []router.MiddlewareFunc, opts ...AuthControllerOption) {
 	controller := NewAuthController(opts...)
 
 	app.
 		Get(controller.Routes.Login,
 			controller.LoginShow,
+			middleware...,
 		).
 		SetName("auth.sign-in.get")
 
 	app.
 		Post(
 			controller.Routes.Login,
-			// limitReq,
 			controller.LoginPost,
+			middleware...,
 		).
 		SetName("auth.sign-in.post")
 
-	app.Get(controller.Routes.Logout,
-		controller.LogOut).
-		SetName("auth.sign-out.get")
+	if postLogout {
+		app.Post(controller.Routes.Logout, controller.LogOut, middleware...).
+			SetName("auth.sign-out.post")
+	} else {
+		app.Get(controller.Routes.Logout, controller.LogOut, middleware...).
+			SetName("auth.sign-out.get")
+	}
 
 	app.Get(controller.Routes.Register,
-		controller.RegistrationShow).
+		controller.RegistrationShow,
+		middleware...).
 		SetName("auth.register.get")
 
 	app.Post(controller.Routes.Register,
-		controller.RegistrationCreate).
+		controller.RegistrationCreate,
+		middleware...).
 		SetName("auth.register.post")
 
 	app.Get(controller.Routes.PasswordReset,
-		controller.PasswordResetGet).
+		controller.PasswordResetGet,
+		middleware...).
 		SetName("auth.pwd-reset.get")
 
 	app.Post(controller.Routes.PasswordReset,
-		controller.PasswordResetPost).
+		controller.PasswordResetPost,
+		middleware...).
 		SetName("auth.pwd-reset.post")
 
 	app.Get(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
-		controller.PasswordResetForm).
+		controller.PasswordResetForm,
+		middleware...).
 		SetName("auth.pwd-reset-do.get")
 
 	app.Post(fmt.Sprintf("%s/:uuid", controller.Routes.PasswordReset),
-		controller.PasswordResetExecute).
+		controller.PasswordResetExecute,
+		middleware...).
 		SetName("auth.pwd-reset-do.post")
 }
 
@@ -124,18 +163,19 @@ type AuthControllerViews struct {
 }
 
 type AuthController struct {
-	Debug            bool
-	Logger           Logger
-	LoggerProvider   LoggerProvider
-	Repo             RepositoryManager
-	Routes           *AuthControllerRoutes
-	Views            *AuthControllerViews
-	Auther           HTTPAuthenticator
-	ErrorHandler     router.ErrorHandler
-	RegisterRedirect string
-	UseHashID        bool
-	featureGate      gate.FeatureGate
-	activity         ActivitySink
+	Debug                 bool
+	Logger                Logger
+	LoggerProvider        LoggerProvider
+	Repo                  RepositoryManager
+	Routes                *AuthControllerRoutes
+	Views                 *AuthControllerViews
+	Auther                HTTPAuthenticator
+	ErrorHandler          router.ErrorHandler
+	RegisterRedirect      string
+	UseHashID             bool
+	PasswordResetDelivery PasswordResetDelivery
+	featureGate           gate.FeatureGate
+	activity              ActivitySink
 }
 
 type AuthControllerOption func(*AuthController) *AuthController
@@ -192,6 +232,13 @@ func WithAuthControllerUseHashID(v bool) AuthControllerOption {
 func WithAuthControllerActivitySink(sink ActivitySink) AuthControllerOption {
 	return func(ac *AuthController) *AuthController {
 		ac.activity = normalizeActivitySink(sink)
+		return ac
+	}
+}
+
+func WithPasswordResetDelivery(delivery PasswordResetDelivery) AuthControllerOption {
+	return func(ac *AuthController) *AuthController {
+		ac.PasswordResetDelivery = delivery
 		return ac
 	}
 }
@@ -558,41 +605,23 @@ func (a *AuthController) PasswordResetPost(ctx router.Context) error {
 		},
 	}
 
-	initPwdReset := InitializePasswordResetHandler{repo: a.Repo}
+	initPwdReset := NewInitializePasswordResetHandler(a.Repo).
+		WithDelivery(a.PasswordResetDelivery).
+		WithFeatureGate(a.featureGate).
+		WithLoggerProvider(a.LoggerProvider).
+		WithLogger(a.Logger)
 	if err := initPwdReset.Execute(ctx.Context(), req); err != nil {
 		return a.handleControllerError(ctx, err, a.Views.PasswordReset, payload)
 	}
 
 	if a.Debug {
-		a.Logger.Debug("Password reset response", "response", print.MaybePrettyJSON(res))
+		a.Logger.Debug("Password reset request processed")
 	}
 
 	if res.Success && res.Stage == AccountVerification {
-		if res.Reset == nil {
-			return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
-				"system_message": "If an account with that email exists, a password reset link has been sent.",
-			})).Redirect(a.Routes.Login)
-		}
-
-		sessionID := res.Reset.ID.String()
-		if sessionID == "" {
-			return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
-				"system_message": "If an account with that email exists, a password reset link has been sent.",
-			})).Redirect(a.Routes.Login)
-		}
-
-		email := res.Reset.Email
-		if email == "" {
-			email = req.Email
-		}
-
-		return ctx.Render(a.Views.PasswordReset, MergeTemplateData(ctx, router.ViewContext{
-			"reset": map[string]string{
-				stageKey:   AccountVerification,
-				sessionKey: sessionID,
-				emailKey:   email,
-			},
-		}))
+		return flash.WithSuccess(ctx, MergeTemplateData(ctx, router.ViewContext{
+			"system_message": "If an account with that email exists, a password reset link has been sent.",
+		})).Redirect(a.Routes.Login)
 	}
 
 	// this is unlikely if command works OK, just a safe fallback
