@@ -28,8 +28,9 @@ func TestTokenValidator_ValidateValidToken(t *testing.T) {
 	namespace := "https://acme.test/"
 
 	validator, err := NewTokenValidator(Config{
-		Issuer:   issuer,
-		Audience: []string{audience},
+		AllowInsecureLoopback: true,
+		Issuer:                issuer,
+		Audience:              []string{audience},
 		ClaimsMapper: &Auth0ClaimsMapper{
 			Namespace: namespace,
 		},
@@ -89,6 +90,15 @@ func TestTokenValidator_ValidateValidToken(t *testing.T) {
 	assert.Equal(t, "tenant-123", metadata["tenant_id"])
 }
 
+func TestTokenValidatorRejectsInsecureNonLoopbackIssuer(t *testing.T) {
+	validator, err := NewTokenValidator(Config{
+		Issuer:   "http://auth.example.com/",
+		Audience: []string{"audience"},
+	})
+	require.Error(t, err)
+	require.Nil(t, validator)
+}
+
 func TestTokenValidator_ValidateExpiredToken(t *testing.T) {
 	privateKey, jwksJSON, kid := newTestJWKS(t)
 	server := newJWKSServer(jwksJSON)
@@ -98,8 +108,9 @@ func TestTokenValidator_ValidateExpiredToken(t *testing.T) {
 	audience := "https://api.test"
 
 	validator, err := NewTokenValidator(Config{
-		Issuer:   issuer,
-		Audience: []string{audience},
+		AllowInsecureLoopback: true,
+		Issuer:                issuer,
+		Audience:              []string{audience},
 	})
 	require.NoError(t, err)
 
@@ -131,8 +142,9 @@ func TestTokenValidator_ValidateMalformedToken(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	validator, err := NewTokenValidator(Config{
-		Issuer:   server.URL + "/",
-		Audience: []string{"https://api.test"},
+		AllowInsecureLoopback: true,
+		Issuer:                server.URL + "/",
+		Audience:              []string{"https://api.test"},
 	})
 	require.NoError(t, err)
 
@@ -156,8 +168,9 @@ func TestTokenValidator_ValidateWrongAudience(t *testing.T) {
 	audience := "https://api.test"
 
 	validator, err := NewTokenValidator(Config{
-		Issuer:   issuer,
-		Audience: []string{audience},
+		AllowInsecureLoopback: true,
+		Issuer:                issuer,
+		Audience:              []string{audience},
 	})
 	require.NoError(t, err)
 
@@ -192,8 +205,9 @@ func TestTokenValidator_ValidateWrongIssuer(t *testing.T) {
 	audience := "https://api.test"
 
 	validator, err := NewTokenValidator(Config{
-		Issuer:   issuer,
-		Audience: []string{audience},
+		AllowInsecureLoopback: true,
+		Issuer:                issuer,
+		Audience:              []string{audience},
 	})
 	require.NoError(t, err)
 

@@ -2,6 +2,8 @@ package sync
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
@@ -53,6 +55,8 @@ func NewService(cfg Config) *Service {
 }
 
 // SyncUser upserts the Auth0 user into the local user store.
+//
+//nolint:gocyclo // Provider sync conflict and compatibility branches are intentionally explicit.
 func (s *Service) SyncUser(ctx context.Context, user *management.User) (*auth.User, error) {
 	if s == nil || s.users == nil {
 		return nil, fmt.Errorf("auth0 sync: users repository is required")
@@ -70,25 +74,33 @@ func (s *Service) SyncUser(ctx context.Context, user *management.User) (*auth.Us
 	}
 
 	if s.identifierStore != nil {
+		transactional, ok := s.identifierStore.(auth.TransactionalIdentifierSyncStore)
+		if !ok {
+			return nil, fmt.Errorf("auth0 sync: identifier store must support transactional user synchronization")
+		}
 		localID, findErr := s.identifierStore.FindUserID(ctx, s.provider, user.GetID())
 		if findErr == nil && localID != "" {
 			if parsed, parseErr := uuid.Parse(localID); parseErr == nil {
 				localUser.ID = parsed
+			} else {
+				return nil, fmt.Errorf("auth0 sync: mapped local user ID is invalid: %w", parseErr)
 			}
+		} else if findErr != nil && !errors.Is(findErr, sql.ErrNoRows) &&
+			!repository.IsRecordNotFound(findErr) {
+			return nil, fmt.Errorf("auth0 sync: resolve immutable identifier: %w", findErr)
 		}
+		if user.GetID() == "" {
+			return nil, fmt.Errorf("auth0 sync: provider subject is required")
+		}
+		return transactional.UpsertUserAndBind(ctx, s.users, localUser, s.provider, user.GetID())
 	}
 
 	if localUser.Email == "" && localUser.ID == uuid.Nil {
 		localUser.ID = uuid.New()
 	}
-
 	localUser, err = s.users.Upsert(ctx, localUser, repository.UpdateSkipZeroValues())
 	if err != nil {
 		return nil, err
-	}
-
-	if s.identifierStore != nil && user.GetID() != "" {
-		_ = s.identifierStore.Upsert(ctx, localUser.ID.String(), s.provider, user.GetID())
 	}
 
 	return localUser, nil

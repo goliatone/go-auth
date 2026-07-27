@@ -192,17 +192,25 @@ func (p *IdentityProvider) syncToLocal(ctx context.Context, identity *Auth0Ident
 		return nil, err
 	}
 
+	if p.identifierStore != nil {
+		if strings.TrimSpace(identity.id) == "" {
+			return nil, fmt.Errorf("auth0: provider subject is required")
+		}
+		transactional, ok := p.identifierStore.(auth.TransactionalIdentifierSyncStore)
+		if !ok {
+			return nil, fmt.Errorf("auth0: identifier store must support transactional user synchronization")
+		}
+		return transactional.UpsertUserAndBind(
+			ctx, p.localUsers, localUser, IdentifierProviderAuth0, identity.id,
+		)
+	}
+
 	if localUser.Email == "" && localUser.ID == uuid.Nil {
 		localUser.ID = uuid.New()
 	}
-
 	localUser, err := p.localUsers.Upsert(ctx, localUser, repository.UpdateSkipZeroValues())
 	if err != nil {
 		return nil, err
-	}
-
-	if p.identifierStore != nil && identity.id != "" {
-		_ = p.identifierStore.Upsert(ctx, localUser.ID.String(), IdentifierProviderAuth0, identity.id)
 	}
 
 	return localUser, nil
@@ -227,7 +235,7 @@ func (p *IdentityProvider) applyExistingLocalID(ctx context.Context, auth0ID str
 
 	parsed, err := uuid.Parse(localID)
 	if err != nil {
-		return nil
+		return fmt.Errorf("auth0: mapped local user ID is invalid: %w", err)
 	}
 
 	localUser.ID = parsed

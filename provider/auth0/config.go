@@ -3,6 +3,7 @@ package auth0
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -34,6 +35,12 @@ type Config struct {
 	// ContextFunc provides a context for JWKS fetch/validation.
 	// Default: context.Background.
 	ContextFunc func() context.Context
+
+	// AllowInsecureLoopback permits HTTP issuers only for explicit local tests.
+	AllowInsecureLoopback bool
+
+	// HTTPClient optionally supplies transport settings for discovery/JWKS.
+	HTTPClient *http.Client
 }
 
 // DefaultConfig returns a Config with sensible defaults.
