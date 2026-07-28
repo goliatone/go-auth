@@ -48,8 +48,8 @@ type User struct {
 	Username           string         `bun:"username,notnull,unique" json:"username,omitempty"`
 	ProfilePicture     string         `bun:"profile_picture" json:"profile_picture,omitempty"`
 	Email              string         `bun:"email,notnull,unique" json:"email,omitempty"`
-	ExternalID         string         `bun:"external_id" json:"external_id,omitempty"`
-	ExternalIDProvider string         `bun:"external_id_provider" json:"external_id_provider,omitempty"`
+	ExternalID         string         `bun:"external_id,nullzero" json:"external_id,omitempty"`
+	ExternalIDProvider string         `bun:"external_id_provider,nullzero" json:"external_id_provider,omitempty"`
 	Phone              string         `bun:"phone_number" json:"phone_number,omitempty"`
 	PasswordHash       string         `bun:"password_hash" json:"password_hash,omitempty"`
 	EmailValidated     bool           `bun:"is_email_verified" json:"is_email_verified,omitempty"`

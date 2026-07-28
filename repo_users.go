@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	gerrors "github.com/goliatone/go-errors"
 	"github.com/goliatone/go-repository-bun"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
@@ -183,7 +184,9 @@ func (a *users) Create(ctx context.Context, record *User, criteria ...repository
 }
 
 func (a *users) CreateTx(ctx context.Context, tx bun.IDB, record *User, criteria ...repository.InsertCriteria) (*User, error) {
-	prepareUserDefaults(record)
+	if err := prepareUserDefaults(record); err != nil {
+		return nil, err
+	}
 	return a.Repository.CreateTx(ctx, tx, record, criteria...)
 }
 
@@ -448,9 +451,20 @@ func WithSuspendedAt(at *time.Time) StatusUpdateOption {
 	}
 }
 
-func prepareUserDefaults(record *User) {
+func prepareUserDefaults(record *User) error {
 	if record == nil {
-		return
+		return nil
+	}
+
+	record.ExternalID = strings.TrimSpace(record.ExternalID)
+	record.ExternalIDProvider = strings.TrimSpace(record.ExternalIDProvider)
+	if (record.ExternalID == "") != (record.ExternalIDProvider == "") {
+		return gerrors.New(
+			"external ID and external ID provider must be configured together",
+			gerrors.CategoryValidation,
+		).
+			WithCode(gerrors.CodeBadRequest).
+			WithTextCode("USER_EXTERNAL_IDENTITY_INVALID")
 	}
 
 	if record.Role == "" {
@@ -462,6 +476,8 @@ func prepareUserDefaults(record *User) {
 	if record.ID == uuid.Nil {
 		record.ID = uuid.New()
 	}
+
+	return nil
 }
 
 type identifierOption struct {

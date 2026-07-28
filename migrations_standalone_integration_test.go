@@ -105,6 +105,7 @@ func TestStandaloneMigrationsSQLiteApplyRollbackReapply(t *testing.T) {
 	assertColumnNotExistsSQLite(t, db, "oidc_states", "code_verifier")
 	assertColumnNotExistsSQLite(t, db, "provider_sessions", "access_token")
 	assertColumnNotExistsSQLite(t, db, "provider_session_tokens", "refresh_token")
+	assertOptionalExternalIdentityUniqueness(t, db, "sqlite")
 
 	if err := rollbackStandalone(ctx, db, "sqlite"); err != nil {
 		t.Fatalf("rollback standalone sqlite: %v", err)
@@ -170,6 +171,7 @@ func TestStandaloneMigrationsPostgresApplyRollbackReapply(t *testing.T) {
 	assertColumnNotExistsPostgres(t, db, schemaName, "oidc_states", "code_verifier")
 	assertColumnNotExistsPostgres(t, db, schemaName, "provider_sessions", "access_token")
 	assertColumnNotExistsPostgres(t, db, schemaName, "provider_session_tokens", "refresh_token")
+	assertOptionalExternalIdentityUniqueness(t, db, "postgres")
 
 	if err := rollbackStandalone(ctx, db, "postgres"); err != nil {
 		t.Fatalf("rollback standalone postgres: %v", err)
@@ -271,6 +273,46 @@ func splitSQLStatements(sqlText string) []string {
 		}
 	}
 	return statements
+}
+
+func assertOptionalExternalIdentityUniqueness(t *testing.T, db *sql.DB, dialect string) {
+	t.Helper()
+
+	statement := `INSERT INTO users
+		(id, first_name, last_name, username, email, external_id_provider, external_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	if dialect == "postgres" {
+		statement = `INSERT INTO users
+			(id, first_name, last_name, username, email, external_id_provider, external_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	}
+
+	insert := func(id, username, provider, externalID string) error {
+		_, err := db.Exec(
+			statement,
+			id,
+			"Example",
+			"User",
+			username,
+			username+"@example.com",
+			provider,
+			externalID,
+		)
+		return err
+	}
+
+	if err := insert("migration-local-1", "migration-local-1", "", ""); err != nil {
+		t.Fatalf("insert first user without external identity: %v", err)
+	}
+	if err := insert("migration-local-2", "migration-local-2", "", ""); err != nil {
+		t.Fatalf("insert second user without external identity: %v", err)
+	}
+	if err := insert("migration-external-1", "migration-external-1", "oidc", "subject"); err != nil {
+		t.Fatalf("insert first populated external identity: %v", err)
+	}
+	if err := insert("migration-external-2", "migration-external-2", "oidc", "subject"); err == nil {
+		t.Fatal("duplicate populated external identity unexpectedly succeeded")
+	}
 }
 
 func mustReadMigrationFiles(t *testing.T, source fs.FS, subdir string) map[string]string {

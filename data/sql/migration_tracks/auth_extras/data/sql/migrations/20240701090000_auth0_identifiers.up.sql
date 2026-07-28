@@ -18,4 +18,7 @@ ALTER TABLE users
 
 CREATE UNIQUE INDEX users_external_id_unique
     ON users (external_id_provider, external_id)
-    WHERE external_id IS NOT NULL;
+    WHERE external_id_provider IS NOT NULL
+      AND external_id_provider <> ''
+      AND external_id IS NOT NULL
+      AND external_id <> '';

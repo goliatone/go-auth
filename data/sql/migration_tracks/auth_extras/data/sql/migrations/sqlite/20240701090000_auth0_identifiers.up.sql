@@ -16,4 +16,8 @@ ALTER TABLE users ADD COLUMN external_id TEXT;
 ALTER TABLE users ADD COLUMN external_id_provider TEXT;
 
 CREATE UNIQUE INDEX users_external_id_unique
-    ON users (external_id_provider, external_id);
+    ON users (external_id_provider, external_id)
+    WHERE external_id_provider IS NOT NULL
+      AND external_id_provider <> ''
+      AND external_id IS NOT NULL
+      AND external_id <> '';
