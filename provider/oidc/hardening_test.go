@@ -48,9 +48,9 @@ func TestBrowserProviderSessionModeHandsOffSecretsAfterLinking(t *testing.T) {
 				RefreshTokenValue: auth.NewSecret("refresh-canary"), TokenType: "Bearer", ExpiresIn: 3600,
 			}, nil
 		}),
-		IdentityLinker: linkerFunc(func(_ context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
+		IdentityLinker: capableLinker{IdentityLinker: linkerFunc(func(_ context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
 			return testIdentity{id: "local-user", email: identity.Email}, LinkingDecision{Action: "existing"}, nil
-		}),
+		})},
 		SessionMode: ProviderSessionMode,
 		SessionHandoff: ProviderSessionHandoffFunc(func(_ context.Context, principal auth.AuthenticatedPrincipal, tokens auth.ProviderTokenSet) (ProviderSessionHandoffResult, error) {
 			handedOff = true
@@ -92,6 +92,21 @@ func TestBrowserProviderSessionModeHandsOffSecretsAfterLinking(t *testing.T) {
 	}
 }
 
+func TestBrowserProviderSessionModeRejectsLegacyMutableLinker(t *testing.T) {
+	_, err := NewBrowserAuthenticator(BrowserAuthenticatorConfig{
+		IdentityLinker: linkerFunc(func(context.Context, ExternalIdentity) (auth.Identity, LinkingDecision, error) {
+			return testIdentity{id: "user"}, LinkingDecision{}, nil
+		}),
+		SessionMode: ProviderSessionMode,
+		SessionHandoff: ProviderSessionHandoffFunc(func(context.Context, auth.AuthenticatedPrincipal, auth.ProviderTokenSet) (ProviderSessionHandoffResult, error) {
+			return ProviderSessionHandoffResult{}, nil
+		}),
+	})
+	if err == nil {
+		t.Fatalf("expected immutable-linker construction failure, got %v", err)
+	}
+}
+
 func TestBrowserModeDependencyMismatchesFailClosed(t *testing.T) {
 	base := BrowserAuthenticatorConfig{IdentityLinker: linkerFunc(func(context.Context, ExternalIdentity) (auth.Identity, LinkingDecision, error) {
 		return testIdentity{id: "user"}, LinkingDecision{}, nil
@@ -113,6 +128,14 @@ func TestBrowserModeDependencyMismatchesFailClosed(t *testing.T) {
 			}
 		})
 	}
+}
+
+type capableLinker struct {
+	IdentityLinker
+}
+
+func (capableLinker) IdentifierBindingMode() IdentifierBindingMode {
+	return IdentifierBindingImmutableRequired
 }
 
 func TestDefaultPrincipalMapperCorrelatesSources(t *testing.T) {
@@ -637,13 +660,21 @@ func TestOIDCResultFormattingAndJSONRedactSecrets(t *testing.T) {
 			t.Fatalf("authorization response leaked: %s", output)
 		}
 	}
-	session := BrowserSessionResult{LocalToken: canary, HostSession: auth.NewSecret(canary), ProviderKey: "test"}
+	session := BrowserSessionResult{
+		HostSession: auth.NewSecret(canary), ProviderKey: "test", RedirectTarget: "/admin",
+	}
 	encoded, err = json.Marshal(session)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(encoded), canary) || strings.Contains(fmt.Sprint(session), canary) {
 		t.Fatal("browser session result leaked")
+	}
+	if _, err := json.Marshal(BrowserSessionResult{
+		LocalToken: canary, HostSession: auth.NewSecret(canary),
+		ProviderKey: "test", RedirectTarget: "/admin",
+	}); err == nil {
+		t.Fatal("ambiguous browser session result should fail closed")
 	}
 	handoff, err := NewProviderSessionHandoffResult(auth.NewSecret(canary), "local-session")
 	if err != nil {
@@ -678,6 +709,82 @@ func TestOIDCResultFormattingAndJSONRedactSecrets(t *testing.T) {
 	}
 	if _, err := json.Marshal(StateRecord{State: canary, Nonce: canary, CodeVerifier: canary}); err == nil {
 		t.Fatal("state record JSON should fail closed")
+	}
+}
+
+func TestProviderSessionResultJSONIsStrictSafeView(t *testing.T) {
+	canaries := []string{
+		"email-canary@example.test",
+		"name-canary",
+		"subject-canary",
+		"tenant-canary",
+		"resource-role-canary",
+		"metadata-token-canary",
+		"cookie-secret-canary",
+		"reason-canary",
+		"correlation-canary",
+		"principal-canary",
+	}
+	principal, err := auth.NewAuthenticatedPrincipal(auth.AuthenticatedPrincipalInput{
+		ApplicationSubject: "principal-canary",
+		Provider:           "test",
+		ProviderSubject:    "subject-canary",
+		ClientID:           "client",
+		TenantID:           "tenant-canary",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := BrowserSessionResult{
+		HostSession: auth.NewSecret("cookie-secret-canary"),
+		Principal:   principal,
+		Identity: ExternalIdentity{
+			Provider: "test", Subject: "subject-canary",
+			Email: "email-canary@example.test", Name: "name-canary",
+			TenantID:      "tenant-canary",
+			ResourceRoles: map[string]string{"resource-role-canary": "role"},
+			Metadata:      map[string]any{"token": "metadata-token-canary"},
+		},
+		Claims: &auth.JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{Subject: "subject-canary"},
+		},
+		ProviderKey:    "test",
+		RedirectTarget: "/admin",
+		Audit: AuditMetadata{
+			EventType: auth.ActivityEventSSOLoginSuccess,
+			UserID:    "principal-canary",
+			Metadata: map[string]any{
+				"provider":         "test",
+				"subject":          "subject-canary",
+				"linking_decision": LinkActionExisting,
+				"reason":           "reason-canary",
+				"correlation_id":   "correlation-canary",
+			},
+		},
+	}
+
+	payload, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialized := strings.ToLower(string(payload))
+	for _, canary := range canaries {
+		if strings.Contains(serialized, strings.ToLower(canary)) {
+			t.Fatalf("provider-session JSON contains canary %q: %s", canary, serialized)
+		}
+	}
+	for _, forbidden := range []string{
+		"identity", "claims", "principal", "local_token", "host_session",
+		"user_id", "subject", "reason", "metadata", "resource_roles",
+	} {
+		if strings.Contains(serialized, `"`+forbidden+`"`) {
+			t.Fatalf("provider-session JSON contains forbidden field %q: %s", forbidden, serialized)
+		}
+	}
+	if !strings.Contains(serialized, `"provider_key":"test"`) ||
+		!strings.Contains(serialized, `"redirect_target":"/admin"`) ||
+		!strings.Contains(serialized, `"linking_decision":"existing_subject"`) {
+		t.Fatalf("provider-session JSON omitted safe view: %s", serialized)
 	}
 }
 

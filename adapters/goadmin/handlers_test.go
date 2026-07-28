@@ -115,6 +115,52 @@ func TestCallbackSetsCookieThroughRouteAuthenticator(t *testing.T) {
 	c.AssertExpectations(t)
 }
 
+func TestCallbackSetsOnlyOpaqueProviderSessionCookie(t *testing.T) {
+	cookieAuth := &spyCookieAuthenticator{}
+	browser := stubBrowserFlow{
+		callback: func(context.Context, oidc.CallbackRequest) (oidc.BrowserSessionResult, error) {
+			return oidc.BrowserSessionResult{
+				HostSession:    auth.NewSecret("opaque-provider-session"),
+				ProviderKey:    "auth0",
+				RedirectTarget: "/admin",
+				Identity: oidc.ExternalIdentity{
+					Email: "identity-canary@example.test",
+					Metadata: map[string]any{
+						"access_token": "provider-token-canary",
+					},
+				},
+				Audit: oidc.AuditMetadata{
+					EventType: auth.ActivityEventSSOLoginSuccess,
+					UserID:    "user-canary",
+				},
+			}, nil
+		},
+	}
+	handlers, err := NewHandlers(HandlerConfig{Browser: browser, RouteAuthenticator: cookieAuth})
+	if err != nil {
+		t.Fatalf("NewHandlers: %v", err)
+	}
+
+	c := router.NewMockContext()
+	c.ParamsM["provider"] = "auth0"
+	c.QueriesM["code"] = "code"
+	c.QueriesM["state"] = "state"
+	c.On("Context").Return(context.Background())
+	c.On("Redirect", "/admin", []int{http.StatusFound}).Return(nil)
+
+	if err := handlers.Callback(c); err != nil {
+		t.Fatalf("Callback: %v", err)
+	}
+	if cookieAuth.token != "opaque-provider-session" {
+		t.Fatalf("provider-session cookie = %q", cookieAuth.token)
+	}
+	if strings.Contains(cookieAuth.token, "identity-canary") ||
+		strings.Contains(cookieAuth.token, "provider-token-canary") {
+		t.Fatalf("identity/provider token leaked into cookie: %q", cookieAuth.token)
+	}
+	c.AssertExpectations(t)
+}
+
 func TestCallbackRecordsSafeFailureWithoutCookie(t *testing.T) {
 	cookieAuth := &spyCookieAuthenticator{}
 	activity := &recordingActivitySink{}

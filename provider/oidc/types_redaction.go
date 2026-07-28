@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 
 	auth "github.com/goliatone/go-auth"
 )
@@ -85,12 +87,97 @@ func (r StateRecord) LogValue() slog.Value           { return slog.StringValue(r
 func (r StateRecord) Format(state fmt.State, _ rune) { _, _ = state.Write([]byte(r.String())) }
 
 func (r BrowserSessionResult) MarshalJSON() ([]byte, error) {
+	if !r.HostSession.IsZero() {
+		if r.LocalToken != "" || !safeProviderSessionRedirect(r.RedirectTarget) ||
+			normalizeProviderKey(r.ProviderKey) == "" {
+			return nil, auth.ErrSecretSerialization
+		}
+		audit, err := providerSessionAuditView(r.Audit)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(struct {
+			ProviderKey    string                           `json:"provider_key"`
+			RedirectTarget string                           `json:"redirect_target"`
+			Audit          providerSessionCallbackAuditView `json:"audit"`
+		}{
+			ProviderKey:    normalizeProviderKey(r.ProviderKey),
+			RedirectTarget: strings.TrimSpace(r.RedirectTarget),
+			Audit:          audit,
+		})
+	}
 	return json.Marshal(struct {
 		ProviderKey    string           `json:"provider_key"`
 		RedirectTarget string           `json:"redirect_target"`
 		Identity       ExternalIdentity `json:"identity"`
 		Audit          AuditMetadata    `json:"audit"`
 	}{r.ProviderKey, r.RedirectTarget, r.Identity, r.Audit})
+}
+
+type providerSessionCallbackAuditView struct {
+	EventType       auth.ActivityEventType `json:"event_type,omitempty"`
+	LinkingDecision string                 `json:"linking_decision,omitempty"`
+	Correlations    map[string]string      `json:"correlations,omitempty"`
+}
+
+func providerSessionAuditView(audit AuditMetadata) (providerSessionCallbackAuditView, error) {
+	view := providerSessionCallbackAuditView{}
+	if audit.EventType != "" {
+		if audit.EventType != auth.ActivityEventSSOLoginSuccess {
+			return view, auth.ErrSecretSerialization
+		}
+		view.EventType = audit.EventType
+	}
+	if decision, ok := audit.Metadata["linking_decision"].(string); ok {
+		switch decision {
+		case LinkActionExisting, LinkActionCreated, LinkActionEmailFallback:
+			view.LinkingDecision = decision
+		default:
+			return view, auth.ErrSecretSerialization
+		}
+	}
+	for _, key := range []string{"operation_id", "request_id", "correlation_id", "local_session_id"} {
+		value, exists := audit.Metadata[key]
+		if !exists {
+			continue
+		}
+		var fingerprint auth.ProviderAuditFingerprint
+		switch typed := value.(type) {
+		case auth.ProviderAuditFingerprint:
+			fingerprint = auth.EnsureProviderAuditFingerprint(string(typed))
+		case string:
+			fingerprint = auth.EnsureProviderAuditFingerprint(typed)
+		default:
+			return view, auth.ErrSecretSerialization
+		}
+		if fingerprint == "" {
+			continue
+		}
+		if view.Correlations == nil {
+			view.Correlations = map[string]string{}
+		}
+		view.Correlations[key] = string(fingerprint)
+	}
+	return view, nil
+}
+
+func safeProviderSessionRedirect(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.User != nil || parsed.Fragment != "" {
+		return false
+	}
+	if !parsed.IsAbs() {
+		return strings.HasPrefix(parsed.Path, "/") && !strings.HasPrefix(parsed.Path, "//")
+	}
+	if parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "https" ||
+		(parsed.Scheme == "http" && isLoopbackHostname(parsed.Hostname()))
 }
 func (r BrowserSessionResult) MarshalText() ([]byte, error) {
 	return nil, auth.ErrSecretSerialization
