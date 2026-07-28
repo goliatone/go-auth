@@ -25,6 +25,24 @@ func FingerprintProviderAuditValue(value string) ProviderAuditFingerprint {
 	return ProviderAuditFingerprint(fmt.Sprintf("%s%x", providerAuditFingerprintPrefix, sum))
 }
 
+func EnsureProviderAuditFingerprint(value string) ProviderAuditFingerprint {
+	value = strings.TrimSpace(value)
+	if len(value) == len(providerAuditFingerprintPrefix)+64 &&
+		strings.HasPrefix(value, providerAuditFingerprintPrefix) {
+		valid := true
+		for _, char := range strings.TrimPrefix(value, providerAuditFingerprintPrefix) {
+			if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+				valid = false
+				break
+			}
+		}
+		if valid {
+			return ProviderAuditFingerprint(value)
+		}
+	}
+	return FingerprintProviderAuditValue(value)
+}
+
 // NewProviderLifecycleActivityEvent constructs a secret-free audit event from
 // typed lifecycle inputs. Security-state delivery remains the coordinator's
 // responsibility; this event is best-effort audit context only.

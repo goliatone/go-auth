@@ -289,8 +289,12 @@ func (s *SessionClient) SignOut(ctx context.Context, tokens auth.ProviderTokenSe
 		outcome.Status = auth.ProviderRemoteRevocationUnsupported
 		return outcome, nil
 	default:
-		outcome.Status = auth.ProviderRemoteRevocationPending
 		outcome.Retryable = response.StatusCode == 429 || response.StatusCode >= 500
+		if outcome.Retryable {
+			outcome.Status = auth.ProviderRemoteRevocationPending
+		} else {
+			outcome.Status = auth.ProviderRemoteRevocationFailed
+		}
 		return outcome, providerError(response.StatusCode, "", response.Header.Get("X-Request-ID"))
 	}
 }

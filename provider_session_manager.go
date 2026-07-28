@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
@@ -156,8 +155,8 @@ func (m *ProviderSessionManager) CreateProviderSession(ctx context.Context, prin
 	if err != nil {
 		return ProviderSessionCreation{}, ErrProviderSessionInvalid
 	}
-	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionCreated, stored, map[string]any{
-		"result": "succeeded",
+	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionCreated, stored, ProviderSessionActivityMetadata{
+		Result: "succeeded",
 	})
 	return ProviderSessionCreation{
 		Handle: NewSecret(rawHandle), Session: stored, Principal: storedPrincipal,
@@ -369,8 +368,8 @@ func (m *ProviderSessionManager) commitRefreshedTokens(ctx context.Context, clai
 		Tokens: envelope, AccessExpiresAt: tokens.AccessExpiresAt(), RefreshExpiresAt: tokens.RefreshExpiresAt(),
 	})
 	if err == nil {
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRefreshed, session, map[string]any{
-			"result": "succeeded",
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRefreshed, session, ProviderSessionActivityMetadata{
+			Result: "succeeded",
 		})
 	}
 	return session, err
@@ -379,7 +378,10 @@ func (m *ProviderSessionManager) commitRefreshedTokens(ctx context.Context, clai
 func (m *ProviderSessionManager) reconcileAmbiguousRefresh(ctx context.Context, claim ProviderRefreshClaim, _ ProviderTokenSet, _ error) (ProviderSession, error) {
 	if m.reconciler == nil {
 		_ = m.repository.MarkRefreshUncertain(ctx, claim.Session.ID, claim.AttemptID, claim.Session.TokenRevision, "ambiguous provider refresh")
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionUncertain, claim.Session, map[string]any{"result": "reauthentication_required"})
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionUncertain, claim.Session, ProviderSessionActivityMetadata{
+			Result: "reauthentication_required",
+			Reason: ProviderSessionReasonFromLegacy("ambiguous provider refresh"),
+		})
 		return ProviderSession{}, ErrProviderRefreshAmbiguous
 	}
 	result, err := m.reconciler.ReconcileProviderRefresh(ctx, ProviderRefreshReconcileRequest{
@@ -387,7 +389,10 @@ func (m *ProviderSessionManager) reconcileAmbiguousRefresh(ctx context.Context, 
 	})
 	if err != nil || result.Status == ProviderRefreshReconcileUnknown {
 		_ = m.repository.MarkRefreshUncertain(ctx, claim.Session.ID, claim.AttemptID, claim.Session.TokenRevision, "refresh reconciliation unavailable")
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionUncertain, claim.Session, map[string]any{"result": "reauthentication_required"})
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionUncertain, claim.Session, ProviderSessionActivityMetadata{
+			Result: "reauthentication_required",
+			Reason: ProviderSessionReasonFromLegacy("refresh reconciliation unavailable"),
+		})
 		return ProviderSession{}, ErrProviderRefreshAmbiguous
 	}
 	switch result.Status {
@@ -450,8 +455,9 @@ func (m *ProviderSessionManager) RevokeUserProviderSessions(ctx context.Context,
 			if firstErr == nil {
 				firstErr = loadErr
 			}
-			m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-				"reason": boundedProviderSessionReason(reason), "remote_status": ProviderRemoteRevocationFailed,
+			m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+				Reason:       ProviderSessionReasonFromLegacy(reason),
+				RemoteStatus: ProviderRemoteRevocationFailed,
 			})
 			continue
 		}
@@ -462,8 +468,10 @@ func (m *ProviderSessionManager) RevokeUserProviderSessions(ctx context.Context,
 		if remoteErr != nil && firstErr == nil {
 			firstErr = remoteErr
 		}
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-			"reason": boundedProviderSessionReason(reason), "remote_status": outcome.Status,
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+			Reason:          ProviderSessionReasonFromLegacy(reason),
+			RemoteStatus:    outcome.Status,
+			RemoteRetryable: outcome.Retryable,
 		})
 	}
 	return firstErr
@@ -477,9 +485,10 @@ func (m *ProviderSessionManager) InvalidateProviderSession(ctx context.Context, 
 	if err != nil || !changed {
 		return err
 	}
-	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-		"reason": boundedProviderSessionReason(reason), "remote_status": ProviderRemoteRevocationPending,
-		"local_only": true,
+	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+		Reason:       ProviderSessionReasonFromLegacy(reason),
+		RemoteStatus: ProviderRemoteRevocationPending,
+		LocalOnly:    true,
 	})
 	return nil
 }
@@ -493,9 +502,10 @@ func (m *ProviderSessionManager) InvalidateUserProviderSessions(ctx context.Cont
 		return err
 	}
 	for _, session := range sessions {
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-			"reason": boundedProviderSessionReason(reason), "remote_status": ProviderRemoteRevocationPending,
-			"local_only": true,
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+			Reason:       ProviderSessionReasonFromLegacy(reason),
+			RemoteStatus: ProviderRemoteRevocationPending,
+			LocalOnly:    true,
 		})
 	}
 	return nil
@@ -586,8 +596,9 @@ func (m *ProviderSessionManager) AccessToken(ctx context.Context, request UserTo
 	if err := validateTargetTokenBinding(target, resolved.Session, tokens); err != nil {
 		return Secret{}, err
 	}
-	m.emitProviderSessionEvent(ctx, ActivityEventProviderTokenAccessed, resolved.Session, map[string]any{
-		"target": target.TelemetryName, "result": "succeeded",
+	m.emitProviderSessionEvent(ctx, ActivityEventProviderTokenAccessed, resolved.Session, ProviderSessionActivityMetadata{
+		Target: target.TelemetryName,
+		Result: "succeeded",
 	})
 	return tokens.AccessToken(), nil
 }
@@ -654,9 +665,10 @@ func (m *ProviderSessionManager) revokeLoadedProviderSession(ctx context.Context
 	if updateErr := m.repository.UpdateRemoteRevocation(ctx, session.ID, outcome); updateErr != nil {
 		return updateErr
 	}
-	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-		"reason": boundedProviderSessionReason(reason), "remote_status": outcome.Status,
-		"remote_retryable": outcome.Retryable,
+	m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+		Reason:          ProviderSessionReasonFromLegacy(reason),
+		RemoteStatus:    outcome.Status,
+		RemoteRetryable: outcome.Retryable,
 	})
 	return remoteErr
 }
@@ -669,49 +681,145 @@ func (m *ProviderSessionManager) invokeProviderRevocation(ctx context.Context, r
 	if err != nil {
 		return ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationFailed, Retryable: false}, err
 	}
+	safeReason := ProviderSessionReasonFromLegacy(reason)
 	outcome, err := m.revocationHook.RevokeProviderSession(ctx, ProviderRevocationRequest{
-		Session: resolved.Session, Reason: boundedProviderSessionReason(reason), Tokens: tokens,
+		Session:           resolved.Session,
+		Reason:            string(safeReason.Code),
+		ReasonCode:        safeReason.Code,
+		ReasonFingerprint: safeReason.DetailFingerprint,
+		Tokens:            tokens,
 	})
-	if err != nil {
-		if outcome.Status == "" {
-			outcome.Status = ProviderRemoteRevocationFailed
-		}
-		outcome.Retryable = true
-		return outcome, err
+	if validationErr := outcome.Validate(); validationErr != nil {
+		return ProviderRemoteRevocationOutcome{
+			Status: ProviderRemoteRevocationFailed,
+		}, errors.Join(err, validationErr)
 	}
-	if outcome.Status == "" {
-		outcome.Status = ProviderRemoteRevocationSucceeded
-	}
-	return outcome, nil
+	return outcome, err
 }
 
-func (m *ProviderSessionManager) emitProviderSessionEvent(ctx context.Context, eventType ActivityEventType, session ProviderSession, metadata map[string]any) {
+// RetryRemoteRevocations executes already-locally-revoked remote work claimed
+// through a bounded durable lease. It never changes local session usability.
+func (m *ProviderSessionManager) RetryRemoteRevocations(
+	ctx context.Context,
+	policy ProviderRemoteRevocationClaimPolicy,
+) (ProviderRemoteRevocationRetryResult, error) {
+	if m == nil || m.repository == nil {
+		return ProviderRemoteRevocationRetryResult{}, ErrProviderSessionUnavailable
+	}
+	remoteRepository, ok := m.repository.(ProviderRemoteRevocationRepository)
+	if !ok {
+		return ProviderRemoteRevocationRetryResult{}, ErrProviderSessionUnavailable
+	}
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = 10
+	}
+	claims, err := remoteRepository.ClaimRemoteRevocations(ctx, policy)
+	if err != nil {
+		return ProviderRemoteRevocationRetryResult{}, err
+	}
+	result := ProviderRemoteRevocationRetryResult{Claimed: len(claims)}
+	var attemptErrors []error
+	now := policy.Now.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	for _, claim := range claims {
+		if claim.Session.Status != ProviderSessionRevoked {
+			attemptErrors = append(attemptErrors, ErrProviderSessionConflict)
+			continue
+		}
+		tokens, openErr := m.openProviderTokenSet(ctx, claim.Session, claim.Tokens)
+		outcome := ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationFailed}
+		var remoteErr error
+		safeCode := ""
+		if openErr != nil {
+			remoteErr = openErr
+			safeCode = "ciphertext_unavailable"
+		} else if m.revocationHook == nil {
+			outcome = ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationUnsupported}
+		} else {
+			outcome, remoteErr = m.revocationHook.RevokeProviderSession(ctx, ProviderRevocationRequest{
+				Session:           claim.Session,
+				Reason:            string(claim.Session.RevocationReasonCode),
+				ReasonCode:        claim.Session.RevocationReasonCode,
+				ReasonFingerprint: claim.Session.RevocationReasonFingerprint,
+				Tokens:            tokens,
+			})
+			if validationErr := outcome.Validate(); validationErr != nil {
+				remoteErr = errors.Join(remoteErr, validationErr)
+				outcome = ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationFailed}
+				safeCode = "invalid_remote_outcome"
+			}
+		}
+		terminal := !outcome.Retryable || claim.Attempt >= policy.MaxAttempts ||
+			(!claim.Session.RemoteWorkExpiresAt.IsZero() && !now.Before(claim.Session.RemoteWorkExpiresAt))
+		nextAttemptAt := time.Time{}
+		if !terminal {
+			nextAttemptAt = now.Add(providerRemoteRetryDelay(claim.Attempt))
+			result.Retried++
+			if safeCode == "" {
+				safeCode = "remote_retry_scheduled"
+			}
+		} else {
+			result.Terminal++
+			if outcome.Status == ProviderRemoteRevocationSucceeded ||
+				outcome.Status == ProviderRemoteRevocationUnsupported {
+				result.Succeeded++
+				safeCode = ""
+			} else if safeCode == "" {
+				safeCode = "remote_retry_terminal"
+			}
+		}
+		completionErr := remoteRepository.CompleteRemoteRevocation(ctx, ProviderRemoteRevocationCompletion{
+			SessionID:      claim.Session.ID,
+			RemoteRevision: claim.RemoteRevision,
+			Outcome:        outcome,
+			NextAttemptAt:  nextAttemptAt,
+			SafeErrorCode:  safeCode,
+			Terminal:       terminal,
+		})
+		if completionErr != nil {
+			attemptErrors = append(attemptErrors, completionErr)
+		}
+		if remoteErr != nil {
+			attemptErrors = append(attemptErrors, remoteErr)
+		}
+	}
+	return result, errors.Join(attemptErrors...)
+}
+
+func providerRemoteRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 11 {
+		attempt = 11
+	}
+	delay := time.Minute * time.Duration(1<<(attempt-1))
+	if delay > 24*time.Hour {
+		return 24 * time.Hour
+	}
+	return delay
+}
+
+func (m *ProviderSessionManager) emitProviderSessionEvent(
+	ctx context.Context,
+	eventType ActivityEventType,
+	session ProviderSession,
+	metadata ProviderSessionActivityMetadata,
+) {
 	if m == nil || m.activitySink == nil {
 		return
 	}
-	safe := map[string]any{
-		"local_session_id": session.LocalSessionID,
-		"provider":         session.Binding.Provider,
-		"application_id":   session.Binding.ApplicationID,
-		"environment":      session.Binding.Environment,
-		"status":           session.Status,
-		"token_revision":   session.TokenRevision,
+	event, err := NewProviderSessionActivityEvent(eventType, session, metadata, time.Now().UTC())
+	if err != nil {
+		return
 	}
-	maps.Copy(safe, metadata)
-	_ = m.activitySink.Record(ctx, ActivityEvent{
-		EventType:  eventType,
-		UserID:     session.Principal.ApplicationSubject,
-		Metadata:   safe,
-		OccurredAt: time.Now().UTC(),
-	})
+	_ = m.activitySink.Record(ctx, event)
 }
 
 func boundedProviderSessionReason(reason string) string {
-	reason = strings.TrimSpace(reason)
-	if len(reason) > 512 {
-		return reason[:512]
-	}
-	return reason
+	return EncodeProviderSessionReason(ProviderSessionReasonFromLegacy(reason))
 }
 
 func mergeRefreshedTokenSet(current, refreshed ProviderTokenSet) (ProviderTokenSet, error) {

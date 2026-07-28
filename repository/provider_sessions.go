@@ -17,35 +17,44 @@ import (
 type ProviderSessionModel struct {
 	bun.BaseModel `bun:"table:provider_sessions"`
 
-	ID                        string          `bun:"id,pk,type:uuid"`
-	LocalSessionID            string          `bun:"local_session_id,notnull,type:uuid"`
-	LookupHash                []byte          `bun:"lookup_hash,notnull"`
-	ApplicationSubject        string          `bun:"application_subject,notnull"`
-	ProviderSubject           string          `bun:"provider_subject,notnull"`
-	ProviderSessionID         string          `bun:"provider_session_id"`
-	Host                      string          `bun:"host,notnull"`
-	ApplicationID             string          `bun:"application_id,notnull"`
-	Environment               string          `bun:"environment,notnull"`
-	TenantID                  string          `bun:"tenant_id,notnull"`
-	Provider                  string          `bun:"provider,notnull"`
-	Issuer                    string          `bun:"issuer,notnull"`
-	OAuthClientID             string          `bun:"oauth_client_id,notnull"`
-	Principal                 json.RawMessage `bun:"principal,type:jsonb,notnull"`
-	Status                    string          `bun:"status,notnull"`
-	TokenRevision             int64           `bun:"token_revision,notnull"`
-	CreatedAt                 time.Time       `bun:"created_at,nullzero,notnull,default:current_timestamp"`
-	LastSeenAt                time.Time       `bun:"last_seen_at,nullzero,notnull,default:current_timestamp"`
-	IdleExpiresAt             time.Time       `bun:"idle_expires_at,notnull"`
-	MaxExpiresAt              time.Time       `bun:"max_expires_at,notnull"`
-	RefreshAttemptID          *string         `bun:"refresh_attempt_id"`
-	RefreshBaseRevision       *int64          `bun:"refresh_base_revision"`
-	RefreshLeaseUntil         *time.Time      `bun:"refresh_lease_until"`
-	RevokedAt                 *time.Time      `bun:"revoked_at"`
-	RevocationReason          string          `bun:"revocation_reason"`
-	RemoteRevocationStatus    string          `bun:"remote_revocation_status"`
-	RemoteRevocationRetryable bool            `bun:"remote_revocation_retryable,notnull"`
-	ResidualAccessExpiresAt   *time.Time      `bun:"residual_access_expires_at"`
-	UpdatedAt                 time.Time       `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
+	ID                            string          `bun:"id,pk,type:uuid"`
+	LocalSessionID                string          `bun:"local_session_id,notnull,type:uuid"`
+	LookupHash                    []byte          `bun:"lookup_hash,notnull"`
+	ApplicationSubject            string          `bun:"application_subject,notnull"`
+	ProviderSubject               string          `bun:"provider_subject,notnull"`
+	ProviderSessionID             string          `bun:"provider_session_id"`
+	Host                          string          `bun:"host,notnull"`
+	ApplicationID                 string          `bun:"application_id,notnull"`
+	Environment                   string          `bun:"environment,notnull"`
+	TenantID                      string          `bun:"tenant_id,notnull"`
+	Provider                      string          `bun:"provider,notnull"`
+	Issuer                        string          `bun:"issuer,notnull"`
+	OAuthClientID                 string          `bun:"oauth_client_id,notnull"`
+	Principal                     json.RawMessage `bun:"principal,type:jsonb,notnull"`
+	Status                        string          `bun:"status,notnull"`
+	TokenRevision                 int64           `bun:"token_revision,notnull"`
+	CreatedAt                     time.Time       `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	LastSeenAt                    time.Time       `bun:"last_seen_at,nullzero,notnull,default:current_timestamp"`
+	IdleExpiresAt                 time.Time       `bun:"idle_expires_at,notnull"`
+	MaxExpiresAt                  time.Time       `bun:"max_expires_at,notnull"`
+	RefreshAttemptID              *string         `bun:"refresh_attempt_id"`
+	RefreshBaseRevision           *int64          `bun:"refresh_base_revision"`
+	RefreshLeaseUntil             *time.Time      `bun:"refresh_lease_until"`
+	RevokedAt                     *time.Time      `bun:"revoked_at"`
+	RevocationReason              string          `bun:"revocation_reason"`
+	RevocationReasonFingerprint   string          `bun:"revocation_reason_fingerprint"`
+	RemoteRevocationStatus        string          `bun:"remote_revocation_status"`
+	RemoteRevocationRetryable     bool            `bun:"remote_revocation_retryable,notnull"`
+	ResidualAccessExpiresAt       *time.Time      `bun:"residual_access_expires_at"`
+	RemoteRevocationAttemptCount  int             `bun:"remote_revocation_attempt_count,notnull"`
+	RemoteRevocationNextAttemptAt *time.Time      `bun:"remote_revocation_next_attempt_at"`
+	RemoteRevocationLeaseOwner    string          `bun:"remote_revocation_lease_owner"`
+	RemoteRevocationLeaseUntil    *time.Time      `bun:"remote_revocation_lease_until"`
+	RemoteRevocationRevision      int64           `bun:"remote_revocation_revision,notnull"`
+	RemoteRevocationSafeErrorCode string          `bun:"remote_revocation_safe_error_code"`
+	RemoteRevocationWorkExpiresAt *time.Time      `bun:"remote_revocation_work_expires_at"`
+	RemoteRevocationTerminalAt    *time.Time      `bun:"remote_revocation_terminal_at"`
+	UpdatedAt                     time.Time       `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
 }
 
 type ProviderSessionTokenModel struct {
@@ -672,8 +681,191 @@ func (r *ProviderSessionRepository) UpdateRemoteRevocation(ctx context.Context, 
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return auth.ErrProviderSessionConflict
 	}
+	if !retryable {
+		if _, err := tx.NewDelete().
+			Model((*ProviderSessionTokenModel)(nil)).
+			Where("session_id = ?", sessionID).
+			Exec(ctx); err != nil {
+			return auth.ErrProviderSessionUnavailable
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
 	return nil
 }
+
+func (r *ProviderSessionRepository) ClaimRemoteRevocations(
+	ctx context.Context,
+	policy auth.ProviderRemoteRevocationClaimPolicy,
+) ([]auth.ProviderRemoteRevocationClaim, error) {
+	if r == nil || r.db == nil {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	if policy.Now.IsZero() {
+		var err error
+		policy.Now, err = databaseTime(ctx, r.db)
+		if err != nil {
+			return nil, auth.ErrProviderSessionUnavailable
+		}
+	}
+	policy.WorkerID = strings.TrimSpace(policy.WorkerID)
+	if policy.Lease <= 0 {
+		policy.Lease = 30 * time.Second
+	}
+	if policy.BatchSize <= 0 {
+		policy.BatchSize = 100
+	}
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = 10
+	}
+	if policy.WorkerID == "" || policy.Lease < 5*time.Second || policy.Lease > 5*time.Minute ||
+		policy.BatchSize > 10_000 || policy.MaxAttempts > 100 {
+		return nil, auth.ErrProviderSessionInvalid
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+	var models []ProviderSessionModel
+	query := tx.NewSelect().
+		Model(&models).
+		Where("status = ? AND remote_revocation_retryable = TRUE", auth.ProviderSessionRevoked).
+		Where("(remote_revocation_next_attempt_at IS NULL OR remote_revocation_next_attempt_at <= ?)", policy.Now.UTC()).
+		Where("(remote_revocation_lease_until IS NULL OR remote_revocation_lease_until <= ?)", policy.Now.UTC()).
+		Where("(remote_revocation_work_expires_at IS NULL OR remote_revocation_work_expires_at > ?)", policy.Now.UTC()).
+		Where("remote_revocation_attempt_count < ?", policy.MaxAttempts).
+		Order("remote_revocation_next_attempt_at ASC NULLS FIRST", "id ASC").
+		Limit(policy.BatchSize)
+	if r.db.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE SKIP LOCKED")
+	}
+	if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	claims := make([]auth.ProviderRemoteRevocationClaim, 0, len(models))
+	for index := range models {
+		model := &models[index]
+		tokens, tokenErr := selectProviderSessionTokens(ctx, tx, model.ID)
+		if tokenErr != nil {
+			_, _ = tx.NewUpdate().
+				Model((*ProviderSessionModel)(nil)).
+				Set("remote_revocation_retryable = FALSE").
+				Set("remote_revocation_status = ?", auth.ProviderRemoteRevocationFailed).
+				Set("remote_revocation_safe_error_code = ?", "ciphertext_unavailable").
+				Set("remote_revocation_terminal_at = ?", policy.Now.UTC()).
+				Set("updated_at = ?", policy.Now.UTC()).
+				Where("id = ? AND remote_revocation_revision = ?", model.ID, model.RemoteRevocationRevision).
+				Exec(ctx)
+			continue
+		}
+		leaseUntil := policy.Now.UTC().Add(policy.Lease)
+		result, updateErr := tx.NewUpdate().
+			Model((*ProviderSessionModel)(nil)).
+			Set("remote_revocation_lease_owner = ?", policy.WorkerID).
+			Set("remote_revocation_lease_until = ?", leaseUntil).
+			Set("remote_revocation_attempt_count = remote_revocation_attempt_count + 1").
+			Set("remote_revocation_revision = remote_revocation_revision + 1").
+			Set("updated_at = ?", policy.Now.UTC()).
+			Where("id = ? AND remote_revocation_revision = ?", model.ID, model.RemoteRevocationRevision).
+			Exec(ctx)
+		if updateErr != nil {
+			return nil, auth.ErrProviderSessionUnavailable
+		}
+		affected, _ := result.RowsAffected()
+		if affected != 1 {
+			continue
+		}
+		model.RemoteRevocationLeaseOwner = policy.WorkerID
+		model.RemoteRevocationLeaseUntil = &leaseUntil
+		model.RemoteRevocationAttemptCount++
+		model.RemoteRevocationRevision++
+		session, convertErr := sessionFromModel(model)
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		claims = append(claims, auth.ProviderRemoteRevocationClaim{
+			Session:        session,
+			Tokens:         tokenEnvelopeFromModel(tokens),
+			RemoteRevision: model.RemoteRevocationRevision,
+			Attempt:        model.RemoteRevocationAttemptCount,
+		})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	return claims, nil
+}
+
+func (r *ProviderSessionRepository) CompleteRemoteRevocation(
+	ctx context.Context,
+	completion auth.ProviderRemoteRevocationCompletion,
+) error {
+	if r == nil || r.db == nil || strings.TrimSpace(completion.SessionID) == "" ||
+		completion.RemoteRevision <= 0 {
+		return auth.ErrProviderSessionInvalid
+	}
+	if err := completion.Outcome.Validate(); err != nil {
+		return err
+	}
+	safeErrorCode := safeRemoteErrorCode(completion.SafeErrorCode)
+	retryable := !completion.Terminal && completion.Outcome.Retryable
+	if retryable && completion.NextAttemptAt.IsZero() {
+		return auth.ErrProviderSessionInvalid
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+	now, err := databaseTime(ctx, tx)
+	if err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	var terminalAt any
+	if !retryable {
+		terminalAt = now
+	}
+	result, err := tx.NewUpdate().
+		Model((*ProviderSessionModel)(nil)).
+		Set("remote_revocation_status = ?", completion.Outcome.Status).
+		Set("remote_revocation_retryable = ?", retryable).
+		Set("residual_access_expires_at = ?", nullableTime(completion.Outcome.ResidualAccessExpires)).
+		Set("remote_revocation_next_attempt_at = ?", nullableTime(completion.NextAttemptAt)).
+		Set("remote_revocation_lease_owner = NULL").
+		Set("remote_revocation_lease_until = NULL").
+		Set("remote_revocation_safe_error_code = ?", safeErrorCode).
+		Set("remote_revocation_terminal_at = ?", terminalAt).
+		Set("remote_revocation_revision = remote_revocation_revision + 1").
+		Set("updated_at = ?", now).
+		Where("id = ? AND status = ? AND remote_revocation_revision = ? AND remote_revocation_lease_owner <> ''",
+			completion.SessionID,
+			auth.ProviderSessionRevoked,
+			completion.RemoteRevision,
+		).
+		Exec(ctx)
+	if err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		return auth.ErrProviderSessionConflict
+	}
+	if !retryable {
+		if _, err := tx.NewDelete().
+			Model((*ProviderSessionTokenModel)(nil)).
+			Where("session_id = ?", completion.SessionID).
+			Exec(ctx); err != nil {
+			return auth.ErrProviderSessionUnavailable
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	return nil
+}
+
+var _ auth.ProviderRemoteRevocationRepository = (*ProviderSessionRepository)(nil)
 
 //nolint:gocyclo // Retention, retry, and refresh-lease cleanup rules remain explicit.
 func (r *ProviderSessionRepository) Cleanup(ctx context.Context, policy auth.ProviderSessionCleanupPolicy) (auth.ProviderSessionCleanupResult, error) {
@@ -700,6 +892,40 @@ func (r *ProviderSessionRepository) Cleanup(ctx context.Context, policy auth.Pro
 		}
 	}
 	now := policy.Now.UTC()
+	var expiredRemoteWork []string
+	if err := r.db.NewSelect().
+		Model((*ProviderSessionModel)(nil)).
+		Column("id").
+		Where("remote_revocation_retryable = TRUE AND remote_revocation_work_expires_at IS NOT NULL AND remote_revocation_work_expires_at <= ?", now).
+		Limit(policy.BatchSize).
+		Scan(ctx, &expiredRemoteWork); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return auth.ProviderSessionCleanupResult{}, auth.ErrProviderSessionUnavailable
+	}
+	result := auth.ProviderSessionCleanupResult{}
+	if len(expiredRemoteWork) > 0 {
+		if _, err := r.db.NewUpdate().
+			Model((*ProviderSessionModel)(nil)).
+			Set("remote_revocation_retryable = FALSE").
+			Set("remote_revocation_status = ?", auth.ProviderRemoteRevocationFailed).
+			Set("remote_revocation_safe_error_code = ?", "retry_retention_expired").
+			Set("remote_revocation_lease_owner = NULL").
+			Set("remote_revocation_lease_until = NULL").
+			Set("remote_revocation_terminal_at = ?", now).
+			Set("updated_at = ?", now).
+			Where("id IN (?) AND remote_revocation_retryable = TRUE", bun.In(expiredRemoteWork)).
+			Exec(ctx); err != nil {
+			return result, auth.ErrProviderSessionUnavailable
+		}
+		deleted, err := r.db.NewDelete().
+			Model((*ProviderSessionTokenModel)(nil)).
+			Where("session_id IN (?)", bun.In(expiredRemoteWork)).
+			Exec(ctx)
+		if err != nil {
+			return result, auth.ErrProviderSessionUnavailable
+		}
+		count, _ := deleted.RowsAffected()
+		result.TokenRecords += count
+	}
 	if _, err := r.db.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionExpired).
 		Set("updated_at = ?", now).
@@ -716,7 +942,6 @@ func (r *ProviderSessionRepository) Cleanup(ctx context.Context, policy auth.Pro
 		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return auth.ProviderSessionCleanupResult{}, auth.ErrProviderSessionUnavailable
 	}
-	result := auth.ProviderSessionCleanupResult{}
 	tokenCutoff := now.Add(-policy.TokenRetention)
 	sessionCutoff := now.Add(-policy.SessionRetention)
 	for i := range candidates {
@@ -1053,6 +1278,22 @@ func sessionFromModel(model *ProviderSessionModel) (auth.ProviderSession, error)
 	if model.ResidualAccessExpiresAt != nil {
 		session.RemoteRevocation.ResidualAccessExpires = model.ResidualAccessExpiresAt.UTC()
 	}
+	session.RemoteAttemptCount = model.RemoteRevocationAttemptCount
+	session.RemoteLeaseOwner = model.RemoteRevocationLeaseOwner
+	session.RemoteRevision = model.RemoteRevocationRevision
+	session.RemoteSafeErrorCode = model.RemoteRevocationSafeErrorCode
+	if model.RemoteRevocationNextAttemptAt != nil {
+		session.RemoteNextAttemptAt = model.RemoteRevocationNextAttemptAt.UTC()
+	}
+	if model.RemoteRevocationLeaseUntil != nil {
+		session.RemoteLeaseUntil = model.RemoteRevocationLeaseUntil.UTC()
+	}
+	if model.RemoteRevocationWorkExpiresAt != nil {
+		session.RemoteWorkExpiresAt = model.RemoteRevocationWorkExpiresAt.UTC()
+	}
+	if model.RemoteRevocationTerminalAt != nil {
+		session.RemoteTerminalAt = model.RemoteRevocationTerminalAt.UTC()
+	}
 	return session, nil
 }
 
@@ -1097,12 +1338,27 @@ func nullableTime(value time.Time) any {
 	return value.UTC()
 }
 
-func boundedReason(reason string) string {
-	reason = strings.TrimSpace(reason)
-	if len(reason) > 512 {
-		return reason[:512]
+func providerSessionReasonStorage(value string) (string, string) {
+	reason := auth.ParseProviderSessionReason(value)
+	return string(reason.Code), string(auth.EnsureProviderAuditFingerprint(
+		string(reason.DetailFingerprint),
+	))
+}
+
+func safeRemoteErrorCode(code string) string {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code == "" {
+		return ""
 	}
-	return reason
+	if len(code) > 64 {
+		return "remote_error"
+	}
+	for _, char := range code {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '_' {
+			return "remote_error"
+		}
+	}
+	return code
 }
 
 const sha256Size = 32

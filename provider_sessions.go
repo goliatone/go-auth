@@ -185,8 +185,19 @@ type ProviderSession struct {
 	RefreshBaseRevision int64
 	RefreshLeaseUntil   time.Time
 	RevokedAt           time.Time
-	RevocationReason    string
-	RemoteRevocation    ProviderRemoteRevocationOutcome
+	// Deprecated: contains only the typed reason code after remediation.
+	RevocationReason            string
+	RevocationReasonCode        ProviderSessionReasonCode
+	RevocationReasonFingerprint ProviderAuditFingerprint
+	RemoteRevocation            ProviderRemoteRevocationOutcome
+	RemoteAttemptCount          int
+	RemoteNextAttemptAt         time.Time
+	RemoteLeaseOwner            string
+	RemoteLeaseUntil            time.Time
+	RemoteRevision              int64
+	RemoteSafeErrorCode         string
+	RemoteWorkExpiresAt         time.Time
+	RemoteTerminalAt            time.Time
 }
 
 func (s ProviderSession) String() string {
@@ -396,14 +407,77 @@ type ProviderRemoteRevocationOutcome struct {
 	ResidualAccessExpires time.Time
 }
 
+func (o ProviderRemoteRevocationOutcome) Validate() error {
+	switch o.Status {
+	case ProviderRemoteRevocationSucceeded:
+		if o.Retryable {
+			return fmt.Errorf("%w: successful revocation cannot be retryable", ErrProviderSessionInvalid)
+		}
+	case ProviderRemoteRevocationUnsupported:
+		if o.Retryable {
+			return fmt.Errorf("%w: unsupported revocation cannot be retryable", ErrProviderSessionInvalid)
+		}
+	case ProviderRemoteRevocationPending:
+		if !o.Retryable {
+			return fmt.Errorf("%w: pending revocation must be retryable", ErrProviderSessionInvalid)
+		}
+	case ProviderRemoteRevocationFailed:
+		// Terminal and retryable failures are both valid.
+	default:
+		return fmt.Errorf("%w: invalid remote revocation outcome", ErrProviderSessionInvalid)
+	}
+	return nil
+}
+
 type ProviderRevocationRequest struct {
-	Session ProviderSession
-	Reason  string
-	Tokens  ProviderTokenSet
+	Session           ProviderSession
+	Reason            string
+	ReasonCode        ProviderSessionReasonCode
+	ReasonFingerprint ProviderAuditFingerprint
+	Tokens            ProviderTokenSet
 }
 
 type ProviderRevocationHook interface {
 	RevokeProviderSession(ctx context.Context, request ProviderRevocationRequest) (ProviderRemoteRevocationOutcome, error)
+}
+
+type ProviderRemoteRevocationClaimPolicy struct {
+	Now         time.Time
+	WorkerID    string
+	Lease       time.Duration
+	BatchSize   int
+	MaxAttempts int
+}
+
+type ProviderRemoteRevocationClaim struct {
+	Session        ProviderSession
+	Tokens         TokenEnvelope
+	RemoteRevision int64
+	Attempt        int
+}
+
+type ProviderRemoteRevocationCompletion struct {
+	SessionID      string
+	RemoteRevision int64
+	Outcome        ProviderRemoteRevocationOutcome
+	NextAttemptAt  time.Time
+	SafeErrorCode  string
+	Terminal       bool
+}
+
+type ProviderRemoteRevocationRepository interface {
+	ClaimRemoteRevocations(
+		context.Context,
+		ProviderRemoteRevocationClaimPolicy,
+	) ([]ProviderRemoteRevocationClaim, error)
+	CompleteRemoteRevocation(context.Context, ProviderRemoteRevocationCompletion) error
+}
+
+type ProviderRemoteRevocationRetryResult struct {
+	Claimed   int
+	Succeeded int
+	Retried   int
+	Terminal  int
 }
 
 type TokenTargetCapability struct {

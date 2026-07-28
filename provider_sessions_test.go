@@ -11,6 +11,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProviderRemoteRevocationOutcomeValidationFailsClosed(t *testing.T) {
+	t.Parallel()
+	for name, outcome := range map[string]ProviderRemoteRevocationOutcome{
+		"empty": {},
+		"unknown": {
+			Status: "invented",
+		},
+		"pending_without_retry": {
+			Status: ProviderRemoteRevocationPending,
+		},
+		"success_with_retry": {
+			Status: ProviderRemoteRevocationSucceeded, Retryable: true,
+		},
+		"unsupported_with_retry": {
+			Status: ProviderRemoteRevocationUnsupported, Retryable: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, outcome.Validate())
+		})
+	}
+	require.NoError(t, (ProviderRemoteRevocationOutcome{
+		Status: ProviderRemoteRevocationFailed, Retryable: false,
+	}).Validate())
+	require.NoError(t, (ProviderRemoteRevocationOutcome{
+		Status: ProviderRemoteRevocationFailed, Retryable: true,
+	}).Validate())
+}
+
 func TestProviderSessionContractsDoNotExposeSecrets(t *testing.T) {
 	t.Parallel()
 

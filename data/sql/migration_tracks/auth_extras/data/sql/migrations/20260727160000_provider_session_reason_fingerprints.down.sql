@@ -1,0 +1,2 @@
+ALTER TABLE provider_sessions
+    DROP COLUMN revocation_reason_fingerprint;
