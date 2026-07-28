@@ -10,17 +10,28 @@ run:
 linters:
   default: none
   enable:
+    - bodyclose
     - dupl
+    - durationcheck
+    - errchkjson
     - errcheck
     - funlen
     - gocyclo
     - govet
     - ineffassign
     - nestif
+    - nilerr
+    - nilnesserr
+    - noctx
     - nolintlint
+    - nosprintfhostport
+    - rowserrcheck
+    - sqlclosecheck
     - staticcheck
+    - tagliatelle
     - unconvert
     - unused
+    - usestdlibvars
   settings:
     dupl:
       threshold: 120
@@ -39,6 +50,13 @@ linters:
       require-explanation: true
       require-specific: true
       allow-unused: false
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+          toml: snake
+          mapstructure: snake
   exclusions:
     generated: strict
     warn-unused: true
@@ -52,6 +70,7 @@ linters:
           - funlen
           - gocyclo
           - nestif
+          - noctx
 
 formatters:
   enable:

@@ -353,6 +353,9 @@ func assertColumnNotExistsSQLite(t *testing.T, db *sql.DB, table, column string)
 			t.Fatalf("expected sqlite table %q to omit plaintext column %q", table, column)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate sqlite table %q: %v", table, err)
+	}
 }
 
 func assertTableExistsPostgres(t *testing.T, db *sql.DB, schema, table string) {

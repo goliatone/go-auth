@@ -49,11 +49,21 @@ run_tool() {
 }
 
 normalize_output() {
-    sed "s#${repo_root}/##g" \
-        | sed 's#^\./##' \
-        | sed 's/^[[:space:]]*//' \
-        | awk 'NF' \
-        | sort -u
+    case "${tool_name}" in
+        golangci-lint)
+            sed "s#${repo_root}/##g" \
+                | sed 's#^\./##' \
+                | sed -E -n '/^[^[:space:]].*:[0-9]+:[0-9]+: .+ \([[:alnum:]_-]+\)$/p' \
+                | sort -u
+            ;;
+        gosec)
+            sed "s#${repo_root}/##g" \
+                | sed 's#^\./##' \
+                | sed 's/^[[:space:]]*//' \
+                | awk 'NF' \
+                | sort -u
+            ;;
+    esac
 }
 
 collect_findings() {

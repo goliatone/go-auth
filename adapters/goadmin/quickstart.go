@@ -60,6 +60,8 @@ type QuickstartResult struct {
 }
 
 // SetupSSO wires go-auth SSO into go-admin before adm.Initialize is called.
+//
+//nolint:funlen,gocyclo // Host composition keeps optional authentication and authorization wiring explicit.
 func SetupSSO(cfg QuickstartConfig) (QuickstartResult, error) {
 	if cfg.Admin == nil {
 		return QuickstartResult{}, fmt.Errorf("go-admin instance is required")

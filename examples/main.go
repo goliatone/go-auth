@@ -191,7 +191,9 @@ func main() {
 
 	ProtectedRoutes(app)
 
-	app.srv.Serve(":8572")
+	if err := app.srv.Serve(":8572"); err != nil {
+		panic(err)
+	}
 
 	WaitExitSignal()
 
@@ -219,6 +221,7 @@ func renderWithGlobals(ctx router.Context, name string, data router.ViewContext)
 	return ctx.Render(name, auth.MergeTemplateData(ctx, data))
 }
 
+//nolint:funlen // The example keeps filesystem, view-engine, and server wiring together for readability.
 func WithHTTPServer(ctx context.Context, app *App) error {
 	vcfg := app.Config().GetViews()
 	viewLogger := app.GetLogger("views")
@@ -273,7 +276,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	// For disk overrides, prefer examples/<templateDir> when running from repo root;
 	// fall back to <templateDir> if running from inside the examples dir.
 	diskPath := filepath.Join("examples", templateDir)
-	if _, err := os.Stat(templateDir); err == nil {
+	if _, statErr := os.Stat(templateDir); statErr == nil {
 		diskPath = templateDir
 	}
 	diskTemplates := os.DirFS(diskPath)
@@ -657,19 +660,19 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 
 		payload := new(UserRecord)
 
-		if err := c.Bind(payload); err != nil {
+		if bindErr := c.Bind(payload); bindErr != nil {
 			return renderWithGlobals(c, "errors/500", router.ViewContext{
-				"message": err.Error(),
+				"message": bindErr.Error(),
 			})
 		}
 
-		if err := payload.Validate(); err != nil {
+		if validationErr := payload.Validate(); validationErr != nil {
 			return flash.WithError(c, auth.MergeTemplateData(c, router.ViewContext{
-				"error_message":  err.Message,
+				"error_message":  validationErr.Message,
 				"system_message": "Error validating payload",
 			})).Render("profile", auth.MergeTemplateData(c, router.ViewContext{
 				"record":     payload,
-				"validation": err.ValidationMap(),
+				"validation": validationErr.ValidationMap(),
 			}))
 		}
 

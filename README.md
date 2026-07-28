@@ -1175,3 +1175,9 @@ err := initReset.Execute(ctx, auth.InitializePasswordResetMessage{
     Stage: "show-reset",
 })
 ```
+
+## Development
+
+See [`docs/GUIDE_DEVELOPMENT_CICD.md`](docs/GUIDE_DEVELOPMENT_CICD.md) for the
+multi-module formatting, test, lint, security, CI, and release-validation
+workflow.

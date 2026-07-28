@@ -289,7 +289,7 @@ func (s *SessionClient) SignOut(ctx context.Context, tokens auth.ProviderTokenSe
 		outcome.Status = auth.ProviderRemoteRevocationUnsupported
 		return outcome, nil
 	default:
-		outcome.Retryable = response.StatusCode == 429 || response.StatusCode >= 500
+		outcome.Retryable = response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
 		if outcome.Retryable {
 			outcome.Status = auth.ProviderRemoteRevocationPending
 		} else {

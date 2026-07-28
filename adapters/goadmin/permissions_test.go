@@ -44,10 +44,10 @@ func TestClaimPermissionResolverMapsConfiguredClaimPermissions(t *testing.T) {
 func TestClaimPermissionResolverMapsRolesAndGroups(t *testing.T) {
 	resolver := NewClaimPermissionResolver(ClaimPermissionConfig{
 		RolePermissions: map[string][]string{
-			"sso-admin": []string{"admin.users.invite"},
+			"sso-admin": {"admin.users.invite"},
 		},
 		GroupPermissions: map[string][]string{
-			"finance": []string{"admin.billing.approve"},
+			"finance": {"admin.billing.approve"},
 		},
 	})
 	ctx := auth.WithClaimsContext(context.Background(), &auth.JWTClaims{
