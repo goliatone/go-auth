@@ -11,6 +11,60 @@ import (
 
 const MaxEmergencyAccessDuration = time.Hour
 
+type IssuedEmergencyAccessGrant struct {
+	EmergencyAccessGrant
+	Version       string
+	PolicyVersion string
+}
+
+type EmergencyAccessGrantResolver interface {
+	ResolveEmergencyAccessGrant(context.Context, string) (IssuedEmergencyAccessGrant, error)
+}
+
+type EmergencyAccessGrantResolverFunc func(context.Context, string) (IssuedEmergencyAccessGrant, error)
+
+func (f EmergencyAccessGrantResolverFunc) ResolveEmergencyAccessGrant(
+	ctx context.Context,
+	grantID string,
+) (IssuedEmergencyAccessGrant, error) {
+	if f == nil {
+		return IssuedEmergencyAccessGrant{}, ErrEmergencyAccessUnavailable
+	}
+	return f(ctx, grantID)
+}
+
+type EmergencyCredentialVerification struct {
+	GrantID         string
+	GrantVersion    string
+	ActorID         string
+	CredentialClass string
+}
+
+type EmergencyCredentialVerifier interface {
+	VerifyEmergencyCredential(
+		context.Context,
+		IssuedEmergencyAccessGrant,
+		Secret,
+	) (EmergencyCredentialVerification, error)
+}
+
+type EmergencyCredentialVerifierFunc func(
+	context.Context,
+	IssuedEmergencyAccessGrant,
+	Secret,
+) (EmergencyCredentialVerification, error)
+
+func (f EmergencyCredentialVerifierFunc) VerifyEmergencyCredential(
+	ctx context.Context,
+	grant IssuedEmergencyAccessGrant,
+	proof Secret,
+) (EmergencyCredentialVerification, error) {
+	if f == nil {
+		return EmergencyCredentialVerification{}, ErrEmergencyAccessUnavailable
+	}
+	return f(ctx, grant, proof)
+}
+
 type EmergencyAccessRevocationResolver interface {
 	EmergencyAccessRevoked(context.Context, string) (bool, error)
 }
@@ -40,6 +94,7 @@ func (f EmergencyAccessRevokerFunc) RevokeEmergencyAccess(ctx context.Context, g
 type EmergencyAccessPolicyConfig struct {
 	Owner                 string
 	ApprovedAt            time.Time
+	PolicyVersion         string
 	CredentialClass       string
 	AllowedOperations     []string
 	ApprovedApprovers     []string
@@ -49,13 +104,19 @@ type EmergencyAccessPolicyConfig struct {
 	ExerciseCadence       time.Duration
 	Revocations           EmergencyAccessRevocationResolver
 	Revoker               EmergencyAccessRevoker
-	ActivitySink          ActivitySink
-	Now                   func() time.Time
+	GrantResolver         EmergencyAccessGrantResolver
+	CredentialVerifier    EmergencyCredentialVerifier
+	// AllowLegacyAuthorize permits the deprecated caller-constructed grant API.
+	// Hardened deployments must leave it false.
+	AllowLegacyAuthorize bool
+	ActivitySink         ActivitySink
+	Now                  func() time.Time
 }
 
 type EmergencyAccessPolicy struct {
 	owner                 string
 	approvedAt            time.Time
+	policyVersion         string
 	credentialClass       string
 	allowedOperations     map[string]struct{}
 	approvedApprovers     map[string]struct{}
@@ -65,6 +126,9 @@ type EmergencyAccessPolicy struct {
 	exerciseCadence       time.Duration
 	revocations           EmergencyAccessRevocationResolver
 	revoker               EmergencyAccessRevoker
+	grantResolver         EmergencyAccessGrantResolver
+	credentialVerifier    EmergencyCredentialVerifier
+	allowLegacyAuthorize  bool
 	activitySink          ActivitySink
 	now                   func() time.Time
 }
@@ -101,17 +165,19 @@ const (
 )
 
 type EmergencyAccessResult struct {
-	Decision  EmergencyAccessDecision
-	Reason    EmergencyAccessReason
-	GrantID   string
-	ActorID   string
-	Operation string
-	ExpiresAt time.Time
+	Decision     EmergencyAccessDecision
+	Reason       EmergencyAccessReason
+	GrantID      string
+	GrantVersion string
+	ActorID      string
+	Operation    string
+	ExpiresAt    time.Time
 }
 
 //nolint:gocyclo // Every emergency-policy invariant is validated explicitly at construction.
 func NewEmergencyAccessPolicy(cfg EmergencyAccessPolicyConfig) (*EmergencyAccessPolicy, error) {
 	cfg.Owner = strings.TrimSpace(cfg.Owner)
+	cfg.PolicyVersion = strings.TrimSpace(cfg.PolicyVersion)
 	cfg.CredentialClass = strings.TrimSpace(cfg.CredentialClass)
 	cfg.MonitoringDestination = strings.TrimSpace(cfg.MonitoringDestination)
 	if cfg.Owner == "" || cfg.ApprovedAt.IsZero() || cfg.CredentialClass == "" ||
@@ -121,6 +187,13 @@ func NewEmergencyAccessPolicy(cfg EmergencyAccessPolicyConfig) (*EmergencyAccess
 		cfg.ExerciseCadence <= 0 || cfg.ExerciseCadence > 90*24*time.Hour ||
 		cfg.Revocations == nil || cfg.Revoker == nil || cfg.ActivitySink == nil {
 		return nil, fmt.Errorf("%w: emergency policy requires approval, isolation, monitoring, revocation, and audit", ErrFreshnessPolicyInvalid)
+	}
+	if !cfg.AllowLegacyAuthorize &&
+		(cfg.PolicyVersion == "" || cfg.GrantResolver == nil || cfg.CredentialVerifier == nil) {
+		return nil, fmt.Errorf(
+			"%w: authoritative emergency grant resolution and credential verification are required",
+			ErrFreshnessPolicyInvalid,
+		)
 	}
 	operations := map[string]struct{}{}
 	for _, operation := range cfg.AllowedOperations {
@@ -154,13 +227,19 @@ func NewEmergencyAccessPolicy(cfg EmergencyAccessPolicyConfig) (*EmergencyAccess
 		cfg.Now = time.Now
 	}
 	return &EmergencyAccessPolicy{
-		owner: cfg.Owner, approvedAt: cfg.ApprovedAt,
+		owner: cfg.Owner, approvedAt: cfg.ApprovedAt, policyVersion: cfg.PolicyVersion,
 		credentialClass: cfg.CredentialClass, allowedOperations: operations,
 		approvedApprovers: approvers,
 		requiredApprovals: cfg.RequiredApprovals, maxDuration: cfg.MaxDuration,
 		monitoringDestination: cfg.MonitoringDestination,
-		exerciseCadence:       cfg.ExerciseCadence, revocations: cfg.Revocations, revoker: cfg.Revoker,
-		activitySink: cfg.ActivitySink, now: cfg.Now,
+		exerciseCadence:       cfg.ExerciseCadence,
+		revocations:           cfg.Revocations,
+		revoker:               cfg.Revoker,
+		grantResolver:         cfg.GrantResolver,
+		credentialVerifier:    cfg.CredentialVerifier,
+		allowLegacyAuthorize:  cfg.AllowLegacyAuthorize,
+		activitySink:          cfg.ActivitySink,
+		now:                   cfg.Now,
 	}, nil
 }
 
@@ -168,6 +247,28 @@ func (p *EmergencyAccessPolicy) Revoke(
 	ctx context.Context,
 	grantID, actorID, reason string,
 ) error {
+	return p.revoke(ctx, strings.TrimSpace(grantID), actorID, reason)
+}
+
+// RevokeIssuedGrant revokes one immutable grant version without affecting a
+// separately issued version with the same logical grant identifier.
+func (p *EmergencyAccessPolicy) RevokeIssuedGrant(
+	ctx context.Context,
+	grantID, grantVersion, actorID, reason string,
+) error {
+	grantID = strings.TrimSpace(grantID)
+	grantVersion = strings.TrimSpace(grantVersion)
+	if grantID == "" || grantVersion == "" {
+		return ErrEmergencyAccessDenied
+	}
+	return p.revoke(ctx, emergencyAccessRevocationKey(grantID, grantVersion), actorID, reason)
+}
+
+func (p *EmergencyAccessPolicy) revoke(
+	ctx context.Context,
+	revocationKey, actorID, reason string,
+) error {
+	grantID := strings.TrimSpace(revocationKey)
 	grantID = strings.TrimSpace(grantID)
 	actorID = strings.TrimSpace(actorID)
 	reason = strings.TrimSpace(reason)
@@ -197,6 +298,10 @@ func (p *EmergencyAccessPolicy) Revoke(
 	return nil
 }
 
+// Authorize validates a caller-constructed compatibility grant.
+//
+// Deprecated: use AuthorizeGrant with an authoritative resolver and isolated
+// credential verifier.
 func (p *EmergencyAccessPolicy) Authorize(
 	ctx context.Context,
 	grant EmergencyAccessGrant,
@@ -210,12 +315,97 @@ func (p *EmergencyAccessPolicy) Authorize(
 	if p == nil {
 		return result, ErrEmergencyAccessUnavailable
 	}
+	if !p.allowLegacyAuthorize {
+		return p.deny(ctx, result, EmergencyAccessReasonInvalidGrant, ErrEmergencyAccessDenied)
+	}
+	return p.authorizeIssued(ctx, IssuedEmergencyAccessGrant{
+		EmergencyAccessGrant: grant,
+		Version:              "legacy",
+	}, result.Operation, EmergencyCredentialVerification{
+		GrantID: grant.ID, GrantVersion: "legacy",
+		ActorID: grant.ActorID, CredentialClass: credentialClass,
+	}, false)
+}
+
+// AuthorizeGrant resolves immutable issuance data and independently verifies
+// opaque isolated-credential evidence. Caller-supplied labels are never used
+// as authority.
+func (p *EmergencyAccessPolicy) AuthorizeGrant(
+	ctx context.Context,
+	grantID, operation string,
+	presentedProof Secret,
+) (EmergencyAccessResult, error) {
+	result := EmergencyAccessResult{
+		Decision:  EmergencyAccessDenied,
+		Reason:    EmergencyAccessReasonInvalidGrant,
+		GrantID:   strings.TrimSpace(grantID),
+		Operation: strings.TrimSpace(operation),
+	}
+	if p == nil || p.grantResolver == nil || p.credentialVerifier == nil {
+		return result, ErrEmergencyAccessUnavailable
+	}
+	if result.GrantID == "" || presentedProof.IsZero() {
+		return p.deny(ctx, result, EmergencyAccessReasonInvalidGrant, ErrEmergencyAccessDenied)
+	}
+	issued, err := p.grantResolver.ResolveEmergencyAccessGrant(ctx, result.GrantID)
+	if err != nil {
+		return p.deny(
+			ctx,
+			result,
+			EmergencyAccessReasonDependencyOutage,
+			errors.Join(ErrEmergencyAccessUnavailable, err),
+		)
+	}
+	result.GrantVersion = strings.TrimSpace(issued.Version)
+	result.ActorID = strings.TrimSpace(issued.ActorID)
+	result.ExpiresAt = issued.ExpiresAt
+	if strings.TrimSpace(issued.ID) != result.GrantID {
+		return p.deny(ctx, result, EmergencyAccessReasonInvalidGrant, ErrEmergencyAccessDenied)
+	}
+	verified, err := p.credentialVerifier.VerifyEmergencyCredential(ctx, issued, presentedProof)
+	if err != nil {
+		if errors.Is(err, ErrEmergencyAccessDenied) {
+			return p.deny(ctx, result, EmergencyAccessReasonCredential, ErrEmergencyAccessDenied)
+		}
+		return p.deny(
+			ctx,
+			result,
+			EmergencyAccessReasonDependencyOutage,
+			errors.Join(ErrEmergencyAccessUnavailable, err),
+		)
+	}
+	return p.authorizeIssued(ctx, issued, result.Operation, verified, true)
+}
+
+func (p *EmergencyAccessPolicy) authorizeIssued(
+	ctx context.Context,
+	issued IssuedEmergencyAccessGrant,
+	operation string,
+	verified EmergencyCredentialVerification,
+	authoritative bool,
+) (EmergencyAccessResult, error) {
+	grant := issued.EmergencyAccessGrant
+	result := EmergencyAccessResult{
+		Decision: EmergencyAccessDenied, Reason: EmergencyAccessReasonInvalidGrant,
+		GrantID: strings.TrimSpace(grant.ID), GrantVersion: strings.TrimSpace(issued.Version),
+		ActorID: strings.TrimSpace(grant.ActorID), Operation: strings.TrimSpace(operation),
+		ExpiresAt: grant.ExpiresAt,
+	}
 	if err := p.validateGrant(grant); err != nil {
 		return p.deny(ctx, result, EmergencyAccessReasonInvalidGrant, err)
 	}
-	if strings.TrimSpace(credentialClass) != p.credentialClass ||
+	if result.GrantVersion == "" ||
+		strings.TrimSpace(verified.GrantID) != result.GrantID ||
+		strings.TrimSpace(verified.GrantVersion) != result.GrantVersion ||
+		strings.TrimSpace(verified.ActorID) != result.ActorID ||
+		strings.TrimSpace(verified.CredentialClass) != p.credentialClass ||
 		strings.TrimSpace(grant.CredentialClass) != p.credentialClass {
 		return p.deny(ctx, result, EmergencyAccessReasonCredential, ErrEmergencyAccessDenied)
+	}
+	if authoritative &&
+		(strings.TrimSpace(issued.PolicyVersion) == "" ||
+			strings.TrimSpace(issued.PolicyVersion) != p.policyVersion) {
+		return p.deny(ctx, result, EmergencyAccessReasonInvalidGrant, ErrEmergencyAccessDenied)
 	}
 	if _, ok := p.allowedOperations[result.Operation]; !ok ||
 		!slices.Contains(grant.AllowedOperations, result.Operation) {
@@ -225,7 +415,11 @@ func (p *EmergencyAccessPolicy) Authorize(
 	if now.Before(grant.IssuedAt) || !now.Before(grant.ExpiresAt) {
 		return p.deny(ctx, result, EmergencyAccessReasonExpired, ErrEmergencyAccessDenied)
 	}
-	revoked, err := p.revocations.EmergencyAccessRevoked(ctx, result.GrantID)
+	revocationKey := result.GrantID
+	if authoritative {
+		revocationKey = emergencyAccessRevocationKey(result.GrantID, result.GrantVersion)
+	}
+	revoked, err := p.revocations.EmergencyAccessRevoked(ctx, revocationKey)
 	if err != nil {
 		return p.deny(ctx, result, EmergencyAccessReasonDependencyOutage, errors.Join(ErrEmergencyAccessUnavailable, err))
 	}
@@ -240,6 +434,10 @@ func (p *EmergencyAccessPolicy) Authorize(
 		return result, errors.Join(ErrEmergencyAccessUnavailable, err)
 	}
 	return result, nil
+}
+
+func emergencyAccessRevocationKey(grantID, version string) string {
+	return strings.TrimSpace(grantID) + "@" + strings.TrimSpace(version)
 }
 
 func (p *EmergencyAccessPolicy) validateGrant(grant EmergencyAccessGrant) error {
@@ -287,6 +485,7 @@ func (p *EmergencyAccessPolicy) audit(ctx context.Context, result EmergencyAcces
 		Actor:     ActorRef{ID: result.ActorID, Type: "emergency_actor"},
 		Metadata: map[string]any{
 			"grant_id":               result.GrantID,
+			"grant_version":          result.GrantVersion,
 			"operation":              result.Operation,
 			"decision":               result.Decision,
 			"reason":                 result.Reason,
