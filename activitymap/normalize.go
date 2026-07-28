@@ -196,7 +196,7 @@ func providerLifecycleMetadata(input map[string]any) map[string]any {
 		case string:
 			output[key] = string(auth.EnsureProviderAuditFingerprint(typed))
 		case auth.ProviderAuditFingerprint:
-			output[key] = string(typed)
+			output[key] = string(auth.EnsureProviderAuditFingerprint(string(typed)))
 		case bool, time.Time, auth.ProviderOperationAction,
 			auth.ProviderOperationStatus, auth.ProviderSessionEffect:
 			output[key] = value
@@ -231,7 +231,7 @@ func providerSessionMetadata(input map[string]any) map[string]any {
 			case string:
 				output[key] = string(auth.EnsureProviderAuditFingerprint(typed))
 			case auth.ProviderAuditFingerprint:
-				output[key] = string(typed)
+				output[key] = string(auth.EnsureProviderAuditFingerprint(string(typed)))
 			}
 		case "result":
 			if typed, ok := value.(string); ok &&

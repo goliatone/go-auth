@@ -191,12 +191,15 @@ func TestNormalizeProviderLifecycleEventFiltersSensitiveMetadata(t *testing.T) {
 		Actor:     auth.ActorRef{ID: "admin-42", Type: "admin"},
 		UserID:    "user-100",
 		Metadata: map[string]any{
-			"operation_id":       "operation-1",
-			"action":             auth.ProviderActionAuthorizationApprove,
-			"result":             auth.ProviderOperationSucceeded,
-			"reason":             "authorization: bearer private-token",
-			"request_id":         "request-1",
-			"target_provider":    "supabase",
+			"operation_id":    "operation-1",
+			"action":          auth.ProviderActionAuthorizationApprove,
+			"result":          auth.ProviderOperationSucceeded,
+			"reason":          "authorization: bearer private-token",
+			"request_id":      "request-1",
+			"target_provider": "supabase",
+			"provider_session_id": auth.ProviderAuditFingerprint(
+				"typed-lifecycle-canary",
+			),
 			"retryable":          false,
 			"authorization_code": "secret-code",
 			"refresh_token":      "secret-refresh-token",
@@ -221,7 +224,10 @@ func TestNormalizeProviderLifecycleEventFiltersSensitiveMetadata(t *testing.T) {
 			t.Fatalf("expected metadata key %q to be removed, got %+v", key, out.Metadata)
 		}
 	}
-	for _, secret := range []string{"private-token", "secret-code", "secret-refresh-token", "client_secret"} {
+	for _, secret := range []string{
+		"private-token", "secret-code", "secret-refresh-token", "client_secret",
+		"typed-lifecycle-canary",
+	} {
 		if strings.Contains(serialized, secret) {
 			t.Fatalf("normalized lifecycle audit contains secret marker %q: %s", secret, serialized)
 		}
@@ -254,7 +260,7 @@ func TestNormalizeProviderSessionEventFiltersAndFingerprintsCanaries(t *testing.
 			"token_revision":     int64(2),
 			"result":             "failed",
 			"reason_code":        auth.ProviderSessionReasonLegacyExternal,
-			"reason_fingerprint": auth.FingerprintProviderAuditValue("raw-reason-canary"),
+			"reason_fingerprint": auth.ProviderAuditFingerprint("raw-reason-canary"),
 			"remote_status":      auth.ProviderRemoteRevocationFailed,
 			"refresh_token":      "refresh-secret-canary",
 			"reason":             "raw-reason-canary",
@@ -281,6 +287,10 @@ func TestNormalizeProviderSessionEventFiltersAndFingerprintsCanaries(t *testing.
 		if _, exists := out.Metadata[key]; exists {
 			t.Fatalf("expected provider-session metadata key %q to be removed: %+v", key, out.Metadata)
 		}
+	}
+	if out.Metadata["reason_fingerprint"] !=
+		string(auth.FingerprintProviderAuditValue("raw-reason-canary")) {
+		t.Fatalf("expected typed raw reason to be fingerprinted: %+v", out.Metadata)
 	}
 }
 
