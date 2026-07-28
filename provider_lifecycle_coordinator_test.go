@@ -294,6 +294,174 @@ func TestLifecycleCoordinatorResumesCompletedOperationAcrossInstances(t *testing
 	require.Equal(t, int32(1), freshnessCalls.Load())
 }
 
+func TestLifecycleCoordinatorRecoversExpiredLocalPhaseAfterRestart(t *testing.T) {
+	now := time.Date(2026, 7, 27, 18, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store := NewInMemoryLifecycleOperationStore(clock)
+	request := LifecycleCoordinationRequest{
+		Operation:           coordinatorOperation(),
+		SecurityRestricting: true,
+		LocalSessionEffect:  ProviderSessionEffectAllForUser,
+		Remote: ProviderOperationExecutorFunc(
+			func(context.Context, AuthorizedOperationContext) (ProviderOperationOutcome, error) {
+				return ProviderOperationOutcome{Status: ProviderOperationSucceeded}, nil
+			},
+		),
+	}
+	fingerprint, err := lifecycleFingerprint(request)
+	require.NoError(t, err)
+	record, _, err := store.Claim(context.Background(), LifecycleOperationClaim{
+		OperationID: request.Operation.OperationID,
+		Fingerprint: fingerprint,
+		Action:      request.Operation.Action,
+	})
+	require.NoError(t, err)
+	record.LocalPhase = LifecyclePhaseInFlight
+	record.LocalLeaseOwner = "crashed-worker"
+	record.LocalLeaseUntil = now.Add(-time.Second)
+	_, err = store.Advance(context.Background(), record.Revision, record)
+	require.NoError(t, err)
+
+	revoker := &revokerStub{}
+	var freshnessCalls atomic.Int32
+	restarted, err := NewLifecycleCoordinator(LifecycleCoordinatorConfig{
+		LocalInvalidator: revoker,
+		Freshness: LifecycleFreshnessInvalidatorFunc(
+			func(context.Context, LifecycleFreshnessRequest) error {
+				freshnessCalls.Add(1)
+				return nil
+			},
+		),
+		OperationStore: store,
+		PhaseLease:     30 * time.Second,
+		Clock:          clock,
+	})
+	require.NoError(t, err)
+
+	result, err := restarted.Coordinate(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ProviderOperationSucceeded, result.Local.Status)
+	require.EqualValues(t, 1, revoker.all.Load())
+	require.EqualValues(t, 1, freshnessCalls.Load())
+	stored, err := store.Load(context.Background(), request.Operation.OperationID)
+	require.NoError(t, err)
+	require.True(t, stored.Completed)
+	require.Empty(t, stored.LocalLeaseOwner)
+	require.True(t, stored.LocalLeaseUntil.IsZero())
+}
+
+func TestLifecycleCoordinatorDoesNotStealLiveLocalPhaseLease(t *testing.T) {
+	now := time.Date(2026, 7, 27, 18, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store := NewInMemoryLifecycleOperationStore(clock)
+	request := LifecycleCoordinationRequest{
+		Operation:           coordinatorOperation(),
+		SecurityRestricting: true,
+		LocalSessionEffect:  ProviderSessionEffectAllForUser,
+		Remote: ProviderOperationExecutorFunc(
+			func(context.Context, AuthorizedOperationContext) (ProviderOperationOutcome, error) {
+				return ProviderOperationOutcome{Status: ProviderOperationSucceeded}, nil
+			},
+		),
+	}
+	fingerprint, err := lifecycleFingerprint(request)
+	require.NoError(t, err)
+	record, _, err := store.Claim(context.Background(), LifecycleOperationClaim{
+		OperationID: request.Operation.OperationID,
+		Fingerprint: fingerprint,
+		Action:      request.Operation.Action,
+	})
+	require.NoError(t, err)
+	record.LocalPhase = LifecyclePhaseInFlight
+	record.LocalLeaseOwner = "live-worker"
+	record.LocalLeaseUntil = now.Add(time.Minute)
+	_, err = store.Advance(context.Background(), record.Revision, record)
+	require.NoError(t, err)
+
+	revoker := &revokerStub{}
+	coordinator, err := NewLifecycleCoordinator(LifecycleCoordinatorConfig{
+		LocalInvalidator: revoker,
+		Freshness: LifecycleFreshnessInvalidatorFunc(
+			func(context.Context, LifecycleFreshnessRequest) error { return nil },
+		),
+		OperationStore: store,
+		PhaseLease:     30 * time.Second,
+		Clock:          clock,
+	})
+	require.NoError(t, err)
+
+	_, err = coordinator.Coordinate(context.Background(), request)
+	require.ErrorIs(t, err, ErrProviderOperationPending)
+	require.Zero(t, revoker.all.Load())
+}
+
+func TestLifecycleCoordinatorRecoversExpiredFreshnessPhaseAfterRestart(t *testing.T) {
+	now := time.Date(2026, 7, 27, 18, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store := NewInMemoryLifecycleOperationStore(clock)
+	request := LifecycleCoordinationRequest{
+		Operation:           coordinatorOperation(),
+		SecurityRestricting: true,
+		LocalSessionEffect:  ProviderSessionEffectAllForUser,
+		Remote: ProviderOperationExecutorFunc(
+			func(context.Context, AuthorizedOperationContext) (ProviderOperationOutcome, error) {
+				return ProviderOperationOutcome{Status: ProviderOperationSucceeded}, nil
+			},
+		),
+	}
+	fingerprint, err := lifecycleFingerprint(request)
+	require.NoError(t, err)
+	record, _, err := store.Claim(context.Background(), LifecycleOperationClaim{
+		OperationID: request.Operation.OperationID,
+		Fingerprint: fingerprint,
+		Action:      request.Operation.Action,
+	})
+	require.NoError(t, err)
+	record.LocalPhase = LifecyclePhaseSucceeded
+	record.Local = ProviderOperationOutcome{
+		Status:                ProviderOperationSucceeded,
+		ProviderSessionEffect: ProviderSessionEffectAllForUser,
+	}
+	record.RemotePhase = LifecyclePhaseSucceeded
+	record.Remote = ProviderOperationOutcome{Status: ProviderOperationSucceeded}
+	record.FreshnessPhase = LifecyclePhaseInFlight
+	record.FreshnessLeaseOwner = "crashed-worker"
+	record.FreshnessLeaseUntil = now.Add(-time.Second)
+	_, err = store.Advance(context.Background(), record.Revision, record)
+	require.NoError(t, err)
+
+	var remoteCalls, freshnessCalls atomic.Int32
+	request.Remote = ProviderOperationExecutorFunc(
+		func(context.Context, AuthorizedOperationContext) (ProviderOperationOutcome, error) {
+			remoteCalls.Add(1)
+			return ProviderOperationOutcome{Status: ProviderOperationSucceeded}, nil
+		},
+	)
+	restarted, err := NewLifecycleCoordinator(LifecycleCoordinatorConfig{
+		LocalInvalidator: &revokerStub{},
+		Freshness: LifecycleFreshnessInvalidatorFunc(
+			func(context.Context, LifecycleFreshnessRequest) error {
+				freshnessCalls.Add(1)
+				return nil
+			},
+		),
+		OperationStore: store,
+		PhaseLease:     30 * time.Second,
+		Clock:          clock,
+	})
+	require.NoError(t, err)
+
+	result, err := restarted.Coordinate(context.Background(), request)
+	require.NoError(t, err)
+	require.Equal(t, ProviderOperationSucceeded, result.Freshness.Status)
+	require.Zero(t, remoteCalls.Load())
+	require.EqualValues(t, 1, freshnessCalls.Load())
+	stored, err := store.Load(context.Background(), request.Operation.OperationID)
+	require.NoError(t, err)
+	require.Empty(t, stored.FreshnessLeaseOwner)
+	require.True(t, stored.FreshnessLeaseUntil.IsZero())
+}
+
 func TestLifecycleCoordinatorRejectsInMemoryStoreWhenDurabilityRequired(t *testing.T) {
 	_, err := NewLifecycleCoordinator(LifecycleCoordinatorConfig{
 		Freshness:      LifecycleFreshnessInvalidatorFunc(func(context.Context, LifecycleFreshnessRequest) error { return nil }),

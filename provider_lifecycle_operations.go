@@ -49,9 +49,13 @@ type LifecycleOperationRecord struct {
 	Remote                 ProviderOperationOutcome
 	Freshness              ProviderOperationOutcome
 	ProviderIdempotencyKey string
+	LocalLeaseOwner        string
+	LocalLeaseUntil        time.Time
 	RemoteAttempt          int
 	RemoteLeaseOwner       string
 	RemoteLeaseUntil       time.Time
+	FreshnessLeaseOwner    string
+	FreshnessLeaseUntil    time.Time
 	Revision               int64
 	Completed              bool
 	CreatedAt              time.Time

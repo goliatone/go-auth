@@ -48,6 +48,7 @@ func TestProviderSessionsPostgresCrossReplicaAndDurableState(t *testing.T) {
 		"20260727140000_lifecycle_operation_ledger.up.sql",
 		"20260727150000_provider_remote_revocation_queue.up.sql",
 		"20260727160000_provider_session_reason_fingerprints.up.sql",
+		"20260727170000_lifecycle_phase_leases.up.sql",
 	} {
 		raw, readErr := fs.ReadFile(auth.GetAuthExtrasMigrationsFS(), "data/sql/migrations/"+name)
 		require.NoError(t, readErr)

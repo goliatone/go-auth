@@ -40,9 +40,19 @@ func TestLifecycleOperationRepositoryClaimsAndAdvancesWithRevisionFence(t *testi
 		Status:                auth.ProviderOperationSucceeded,
 		ProviderSessionEffect: auth.ProviderSessionEffectAllForUser,
 	}
+	first.LocalLeaseOwner = "local-worker"
+	first.LocalLeaseUntil = time.Now().UTC().Add(time.Minute)
+	first.FreshnessLeaseOwner = "freshness-worker"
+	first.FreshnessLeaseUntil = time.Now().UTC().Add(2 * time.Minute)
 	advanced, err := store.Advance(context.Background(), first.Revision, first)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, advanced.Revision)
+	loaded, err := store.Load(context.Background(), claim.OperationID)
+	require.NoError(t, err)
+	require.Equal(t, first.LocalLeaseOwner, loaded.LocalLeaseOwner)
+	require.WithinDuration(t, first.LocalLeaseUntil, loaded.LocalLeaseUntil, time.Millisecond)
+	require.Equal(t, first.FreshnessLeaseOwner, loaded.FreshnessLeaseOwner)
+	require.WithinDuration(t, first.FreshnessLeaseUntil, loaded.FreshnessLeaseUntil, time.Millisecond)
 
 	_, err = store.Advance(context.Background(), first.Revision, first)
 	require.ErrorIs(t, err, auth.ErrLifecycleOperationConflict)

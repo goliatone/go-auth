@@ -96,6 +96,7 @@ type LifecycleCoordinatorConfig struct {
 	RequireDurable       bool
 	RequirePermits       bool
 	RemoteLease          time.Duration
+	PhaseLease           time.Duration
 	// Deprecated: retained for source compatibility with the previous
 	// process-local result cache. Durable stores own retention.
 	ResultTTL time.Duration
@@ -111,6 +112,7 @@ type LifecycleCoordinator struct {
 	store                LifecycleOperationStore
 	requirePermits       bool
 	remoteLease          time.Duration
+	phaseLease           time.Duration
 	clock                func() time.Time
 	group                singleflight.Group
 }
@@ -134,6 +136,12 @@ func NewLifecycleCoordinator(config LifecycleCoordinatorConfig) (*LifecycleCoord
 	if config.RemoteLease < 5*time.Second || config.RemoteLease > 5*time.Minute {
 		return nil, fmt.Errorf("%w: remote lease must be between 5 seconds and 5 minutes", ErrProviderOperationInvalid)
 	}
+	if config.PhaseLease == 0 {
+		config.PhaseLease = config.RemoteLease
+	}
+	if config.PhaseLease < 5*time.Second || config.PhaseLease > 5*time.Minute {
+		return nil, fmt.Errorf("%w: phase lease must be between 5 seconds and 5 minutes", ErrProviderOperationInvalid)
+	}
 	return &LifecycleCoordinator{
 		localInvalidator:     config.LocalInvalidator,
 		lifecycleInvalidator: config.LifecycleInvalidator,
@@ -141,6 +149,7 @@ func NewLifecycleCoordinator(config LifecycleCoordinatorConfig) (*LifecycleCoord
 		store:                config.OperationStore,
 		requirePermits:       config.RequirePermits,
 		remoteLease:          config.RemoteLease,
+		phaseLease:           config.PhaseLease,
 		clock:                config.Clock,
 	}, nil
 }
@@ -316,19 +325,15 @@ func (c *LifecycleCoordinator) runLocalPhase(
 	if record.LocalPhase == LifecyclePhaseSucceeded || record.LocalPhase == LifecyclePhaseSkipped {
 		return record, nil
 	}
-	if record.LocalPhase == LifecyclePhaseInFlight {
-		return record, ErrProviderOperationPending
-	}
-	claimed := record
-	claimed.LocalPhase = LifecyclePhaseInFlight
-	next, err := c.store.Advance(ctx, record.Revision, claimed)
+	next, err := c.claimRecoverablePhase(ctx, record, lifecycleRecoverablePhaseLocal)
 	if err != nil {
-		return c.reloadAfterConflict(ctx, record.OperationID, err)
+		return next, err
 	}
 	record = next
 
 	if !request.SecurityRestricting {
 		record.LocalPhase = LifecyclePhaseSkipped
+		clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseLocal)
 		record.Local = ProviderOperationOutcome{
 			Status:                ProviderOperationAlreadyComplete,
 			ProviderSessionEffect: ProviderSessionEffectNone,
@@ -338,7 +343,10 @@ func (c *LifecycleCoordinator) runLocalPhase(
 	if c.lifecycleInvalidator != nil {
 		policy, policyErr := LifecyclePolicyForAction(request.Operation.Action)
 		if policyErr != nil {
-			return record, policyErr
+			record.LocalPhase = LifecyclePhaseFailed
+			clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseLocal)
+			stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+			return stored, errors.Join(policyErr, storeErr)
 		}
 		transition := ProviderSessionLifecycleTransition{
 			ApplicationSubject:    request.Operation.Target.ApplicationSubject,
@@ -370,6 +378,7 @@ func (c *LifecycleCoordinator) runLocalPhase(
 	}
 	if err != nil {
 		record.LocalPhase = LifecyclePhaseFailed
+		clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseLocal)
 		record.Local = ProviderOperationOutcome{
 			Status: ProviderOperationFailed, ProviderSessionEffect: request.LocalSessionEffect,
 		}
@@ -377,6 +386,7 @@ func (c *LifecycleCoordinator) runLocalPhase(
 		return stored, errors.Join(err, storeErr)
 	}
 	record.LocalPhase = LifecyclePhaseSucceeded
+	clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseLocal)
 	record.Local = ProviderOperationOutcome{
 		Status: ProviderOperationSucceeded, ProviderSessionEffect: request.LocalSessionEffect,
 	}
@@ -487,18 +497,17 @@ func (c *LifecycleCoordinator) runFreshnessPhase(
 	if record.FreshnessPhase == LifecyclePhaseSucceeded || record.FreshnessPhase == LifecyclePhaseSkipped {
 		return record, nil
 	}
-	if record.FreshnessPhase == LifecyclePhaseInFlight {
-		return record, ErrProviderOperationPending
-	}
-	record.FreshnessPhase = LifecyclePhaseInFlight
-	next, err := c.store.Advance(ctx, record.Revision, record)
+	next, err := c.claimRecoverablePhase(ctx, record, lifecycleRecoverablePhaseFreshness)
 	if err != nil {
-		return c.reloadAfterConflict(ctx, record.OperationID, err)
+		return next, err
 	}
 	record = next
 	policy, policyErr := LifecyclePolicyForAction(request.Operation.Action)
 	if policyErr != nil {
-		return record, policyErr
+		record.FreshnessPhase = LifecyclePhaseFailed
+		clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseFreshness)
+		stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+		return stored, errors.Join(policyErr, storeErr)
 	}
 	if policy.LifecycleState == ProviderSessionLifecycleActive &&
 		(record.Remote.Status == ProviderOperationSucceeded ||
@@ -517,6 +526,7 @@ func (c *LifecycleCoordinator) runFreshnessPhase(
 		)
 		if lifecycleErr != nil {
 			record.FreshnessPhase = LifecyclePhaseFailed
+			clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseFreshness)
 			record.Freshness = ProviderOperationOutcome{Status: ProviderOperationFailed}
 			stored, storeErr := c.store.Advance(ctx, record.Revision, record)
 			return stored, errors.Join(lifecycleErr, storeErr)
@@ -524,6 +534,7 @@ func (c *LifecycleCoordinator) runFreshnessPhase(
 	}
 	if !policy.FreshnessRequired {
 		record.FreshnessPhase = LifecyclePhaseSkipped
+		clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseFreshness)
 		record.Freshness = ProviderOperationOutcome{Status: ProviderOperationAlreadyComplete}
 		return c.store.Advance(ctx, record.Revision, record)
 	}
@@ -538,8 +549,75 @@ func (c *LifecycleCoordinator) runFreshnessPhase(
 		record.FreshnessPhase = LifecyclePhaseSucceeded
 		record.Freshness = ProviderOperationOutcome{Status: ProviderOperationSucceeded}
 	}
+	clearLifecyclePhaseLease(&record, lifecycleRecoverablePhaseFreshness)
 	stored, storeErr := c.store.Advance(ctx, record.Revision, record)
 	return stored, errors.Join(freshnessErr, storeErr)
+}
+
+type lifecycleRecoverablePhase uint8
+
+const (
+	lifecycleRecoverablePhaseLocal lifecycleRecoverablePhase = iota + 1
+	lifecycleRecoverablePhaseFreshness
+)
+
+func (c *LifecycleCoordinator) claimRecoverablePhase(
+	ctx context.Context,
+	record LifecycleOperationRecord,
+	phase lifecycleRecoverablePhase,
+) (LifecycleOperationRecord, error) {
+	now := c.clock().UTC()
+	var current LifecycleOperationPhase
+	var leaseUntil time.Time
+	switch phase {
+	case lifecycleRecoverablePhaseLocal:
+		current = record.LocalPhase
+		leaseUntil = record.LocalLeaseUntil
+	case lifecycleRecoverablePhaseFreshness:
+		current = record.FreshnessPhase
+		leaseUntil = record.FreshnessLeaseUntil
+	default:
+		return record, ErrProviderOperationInvalid
+	}
+	if current == LifecyclePhaseInFlight && !leaseUntil.IsZero() && now.Before(leaseUntil) {
+		return record, ErrProviderOperationPending
+	}
+	leaseOwner, err := randomProviderSessionValue(18)
+	if err != nil {
+		return record, err
+	}
+	switch phase {
+	case lifecycleRecoverablePhaseLocal:
+		record.LocalPhase = LifecyclePhaseInFlight
+		record.LocalLeaseOwner = leaseOwner
+		record.LocalLeaseUntil = now.Add(c.phaseLease)
+	case lifecycleRecoverablePhaseFreshness:
+		record.FreshnessPhase = LifecyclePhaseInFlight
+		record.FreshnessLeaseOwner = leaseOwner
+		record.FreshnessLeaseUntil = now.Add(c.phaseLease)
+	}
+	next, err := c.store.Advance(ctx, record.Revision, record)
+	if err != nil {
+		return c.reloadAfterConflict(ctx, record.OperationID, err)
+	}
+	return next, nil
+}
+
+func clearLifecyclePhaseLease(
+	record *LifecycleOperationRecord,
+	phase lifecycleRecoverablePhase,
+) {
+	if record == nil {
+		return
+	}
+	switch phase {
+	case lifecycleRecoverablePhaseLocal:
+		record.LocalLeaseOwner = ""
+		record.LocalLeaseUntil = time.Time{}
+	case lifecycleRecoverablePhaseFreshness:
+		record.FreshnessLeaseOwner = ""
+		record.FreshnessLeaseUntil = time.Time{}
+	}
 }
 
 func (c *LifecycleCoordinator) completeOperation(

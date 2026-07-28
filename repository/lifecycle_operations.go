@@ -31,9 +31,13 @@ type LifecycleOperationModel struct {
 	RemoteResidualAccessExpiresAt *time.Time `bun:"remote_residual_access_expires_at"`
 	FreshnessStatus               string     `bun:"freshness_status"`
 	ProviderIdempotencyKey        string     `bun:"provider_idempotency_key,notnull"`
+	LocalLeaseOwner               string     `bun:"local_lease_owner"`
+	LocalLeaseUntil               *time.Time `bun:"local_lease_until"`
 	RemoteAttempt                 int        `bun:"remote_attempt,notnull"`
 	RemoteLeaseOwner              string     `bun:"remote_lease_owner"`
 	RemoteLeaseUntil              *time.Time `bun:"remote_lease_until"`
+	FreshnessLeaseOwner           string     `bun:"freshness_lease_owner"`
+	FreshnessLeaseUntil           *time.Time `bun:"freshness_lease_until"`
 	Revision                      int64      `bun:"revision,notnull"`
 	Completed                     bool       `bun:"completed,notnull"`
 	CreatedAt                     time.Time  `bun:"created_at,nullzero,notnull,default:current_timestamp"`
@@ -145,9 +149,13 @@ func (r *LifecycleOperationRepository) Advance(
 		Set("remote_residual_access_expires_at = ?", nullableTime(next.Remote.ResidualAccessExpires)).
 		Set("freshness_status = ?", next.Freshness.Status).
 		Set("provider_idempotency_key = ?", next.ProviderIdempotencyKey).
+		Set("local_lease_owner = ?", next.LocalLeaseOwner).
+		Set("local_lease_until = ?", nullableTime(next.LocalLeaseUntil)).
 		Set("remote_attempt = ?", next.RemoteAttempt).
 		Set("remote_lease_owner = ?", next.RemoteLeaseOwner).
 		Set("remote_lease_until = ?", nullableTime(next.RemoteLeaseUntil)).
+		Set("freshness_lease_owner = ?", next.FreshnessLeaseOwner).
+		Set("freshness_lease_until = ?", nullableTime(next.FreshnessLeaseUntil)).
 		Set("revision = ?", nextRevision).
 		Set("completed = ?", next.Completed).
 		Set("updated_at = ?", now).
@@ -279,8 +287,10 @@ func lifecycleOperationFromModel(model *LifecycleOperationModel) auth.LifecycleO
 		RemotePhase:            auth.LifecycleOperationPhase(model.RemotePhase),
 		FreshnessPhase:         auth.LifecycleOperationPhase(model.FreshnessPhase),
 		ProviderIdempotencyKey: model.ProviderIdempotencyKey,
+		LocalLeaseOwner:        model.LocalLeaseOwner,
 		RemoteAttempt:          model.RemoteAttempt,
 		RemoteLeaseOwner:       model.RemoteLeaseOwner,
+		FreshnessLeaseOwner:    model.FreshnessLeaseOwner,
 		Revision:               model.Revision,
 		Completed:              model.Completed,
 		CreatedAt:              model.CreatedAt.UTC(),
@@ -304,6 +314,12 @@ func lifecycleOperationFromModel(model *LifecycleOperationModel) auth.LifecycleO
 	}
 	if model.RemoteLeaseUntil != nil {
 		record.RemoteLeaseUntil = model.RemoteLeaseUntil.UTC()
+	}
+	if model.LocalLeaseUntil != nil {
+		record.LocalLeaseUntil = model.LocalLeaseUntil.UTC()
+	}
+	if model.FreshnessLeaseUntil != nil {
+		record.FreshnessLeaseUntil = model.FreshnessLeaseUntil.UTC()
 	}
 	return record
 }
