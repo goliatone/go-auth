@@ -238,6 +238,52 @@ func TestNormalizeProviderLifecycleEventFiltersSensitiveMetadata(t *testing.T) {
 	}
 }
 
+func TestNormalizeProviderSessionEventFiltersAndFingerprintsCanaries(t *testing.T) {
+	t.Parallel()
+
+	event := auth.ActivityEvent{
+		EventType: auth.ActivityEventProviderSessionRevoked,
+		Actor:     auth.ActorRef{ID: "actor-canary", Type: "actor-type-canary"},
+		UserID:    "subject-canary",
+		Metadata: map[string]any{
+			"local_session_id":   "session-canary",
+			"provider":           "provider-canary",
+			"application_id":     "application-canary",
+			"environment":        "environment-canary",
+			"status":             auth.ProviderSessionRevoked,
+			"token_revision":     int64(2),
+			"result":             "failed",
+			"reason_code":        auth.ProviderSessionReasonLegacyExternal,
+			"reason_fingerprint": auth.FingerprintProviderAuditValue("raw-reason-canary"),
+			"remote_status":      auth.ProviderRemoteRevocationFailed,
+			"refresh_token":      "refresh-secret-canary",
+			"reason":             "raw-reason-canary",
+			"arbitrary":          map[string]any{"secret": "nested-secret-canary"},
+		},
+	}
+
+	out := activitymap.Normalize(event)
+	payload, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal normalized provider session activity: %v", err)
+	}
+	serialized := strings.ToLower(string(payload))
+	for _, canary := range []string{
+		"actor-canary", "actor-type-canary", "subject-canary", "session-canary",
+		"provider-canary", "application-canary", "environment-canary",
+		"raw-reason-canary", "refresh-secret-canary", "nested-secret-canary",
+	} {
+		if strings.Contains(serialized, canary) {
+			t.Fatalf("normalized provider-session audit contains canary %q: %s", canary, serialized)
+		}
+	}
+	for _, key := range []string{"refresh_token", "reason", "arbitrary"} {
+		if _, exists := out.Metadata[key]; exists {
+			t.Fatalf("expected provider-session metadata key %q to be removed: %+v", key, out.Metadata)
+		}
+	}
+}
+
 func TestNormalizeNonLifecycleEventPreservesExistingMetadataBehavior(t *testing.T) {
 	t.Parallel()
 

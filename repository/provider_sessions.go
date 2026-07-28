@@ -436,9 +436,11 @@ func (r *ProviderSessionRepository) CommitRefresh(ctx context.Context, input aut
 }
 
 func (r *ProviderSessionRepository) MarkRefreshUncertain(ctx context.Context, sessionID, attemptID string, baseRevision int64, reason string) error {
+	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
 	result, err := r.db.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionUncertain).
-		Set("revocation_reason = ?", boundedReason(reason)).
+		Set("revocation_reason = ?", reasonCode).
+		Set("revocation_reason_fingerprint = ?", reasonFingerprint).
 		Set("refresh_lease_until = NULL").
 		Set("updated_at = CURRENT_TIMESTAMP").
 		Where("id = ? AND status = ? AND token_revision = ? AND refresh_attempt_id = ?",
@@ -502,10 +504,12 @@ func (r *ProviderSessionRepository) Revoke(ctx context.Context, sessionID, reaso
 	if err != nil {
 		return auth.ProviderSession{}, false, auth.ErrProviderSessionUnavailable
 	}
+	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
 	result, err := r.db.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionRevoked).
 		Set("revoked_at = COALESCE(revoked_at, ?)", now).
-		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", boundedReason(reason)).
+		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", reasonCode).
+		Set("revocation_reason_fingerprint = CASE WHEN revocation_reason_fingerprint IS NULL OR revocation_reason_fingerprint = '' THEN ? ELSE revocation_reason_fingerprint END", reasonFingerprint).
 		Set("refresh_lease_until = NULL").
 		Set("updated_at = ?", now).
 		Where("id = ? AND status NOT IN (?, ?)", sessionID, auth.ProviderSessionRevoked, auth.ProviderSessionExpired).
@@ -539,10 +543,12 @@ func (r *ProviderSessionRepository) RevokeUser(ctx context.Context, applicationS
 	if len(models) == 0 {
 		return []auth.ProviderSession{}, nil
 	}
+	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
 	if _, err := r.db.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionRevoked).
 		Set("revoked_at = COALESCE(revoked_at, ?)", now).
-		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", boundedReason(reason)).
+		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", reasonCode).
+		Set("revocation_reason_fingerprint = CASE WHEN revocation_reason_fingerprint IS NULL OR revocation_reason_fingerprint = '' THEN ? ELSE revocation_reason_fingerprint END", reasonFingerprint).
 		Set("refresh_lease_until = NULL").
 		Set("updated_at = ?", now).
 		Where("application_subject = ? AND status NOT IN (?, ?)", applicationSubject, auth.ProviderSessionRevoked, auth.ProviderSessionExpired).
@@ -553,6 +559,8 @@ func (r *ProviderSessionRepository) RevokeUser(ctx context.Context, applicationS
 	for i := range models {
 		models[i].Status = string(auth.ProviderSessionRevoked)
 		models[i].RevokedAt = &now
+		models[i].RevocationReason = reasonCode
+		models[i].RevocationReasonFingerprint = reasonFingerprint
 		session, convertErr := sessionFromModel(&models[i])
 		if convertErr != nil {
 			return nil, convertErr
@@ -639,10 +647,12 @@ func (r *ProviderSessionRepository) RevokeScope(
 	if err != nil {
 		return nil, false, auth.ErrProviderSessionUnavailable
 	}
+	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
 	if _, err := tx.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionRevoked).
 		Set("revoked_at = COALESCE(revoked_at, ?)", now).
-		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", boundedReason(reason)).
+		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", reasonCode).
+		Set("revocation_reason_fingerprint = CASE WHEN revocation_reason_fingerprint IS NULL OR revocation_reason_fingerprint = '' THEN ? ELSE revocation_reason_fingerprint END", reasonFingerprint).
 		Set("refresh_lease_until = NULL").
 		Set("updated_at = ?", now).
 		Where("id IN (?) AND status NOT IN (?, ?)", bun.In(ids), auth.ProviderSessionRevoked, auth.ProviderSessionExpired).
@@ -656,6 +666,8 @@ func (r *ProviderSessionRepository) RevokeScope(
 	for index := range models {
 		models[index].Status = string(auth.ProviderSessionRevoked)
 		models[index].RevokedAt = &now
+		models[index].RevocationReason = reasonCode
+		models[index].RevocationReasonFingerprint = reasonFingerprint
 		session, convertErr := sessionFromModel(&models[index])
 		if convertErr != nil {
 			return nil, false, convertErr
@@ -1243,6 +1255,13 @@ func sessionFromModel(model *ProviderSessionModel) (auth.ProviderSession, error)
 	if err := json.Unmarshal(model.Principal, &principal); err != nil {
 		return auth.ProviderSession{}, auth.ErrProviderSessionInvalid
 	}
+	reason := auth.ProviderSessionReason{
+		Code:              auth.ProviderSessionReasonCode(model.RevocationReason),
+		DetailFingerprint: auth.EnsureProviderAuditFingerprint(model.RevocationReasonFingerprint),
+	}
+	if !reason.Code.Valid() && model.RevocationReason != "" {
+		reason = auth.ProviderSessionReasonFromLegacy(model.RevocationReason)
+	}
 	session := auth.ProviderSession{
 		ID:             model.ID,
 		LocalSessionID: model.LocalSessionID,
@@ -1251,13 +1270,15 @@ func sessionFromModel(model *ProviderSessionModel) (auth.ProviderSession, error)
 			Host: model.Host, ApplicationID: model.ApplicationID, Environment: model.Environment,
 			TenantID: model.TenantID, Provider: model.Provider, Issuer: model.Issuer, ClientID: model.OAuthClientID,
 		},
-		Status:           auth.ProviderSessionStatus(model.Status),
-		TokenRevision:    model.TokenRevision,
-		CreatedAt:        model.CreatedAt.UTC(),
-		LastSeenAt:       model.LastSeenAt.UTC(),
-		IdleExpiresAt:    model.IdleExpiresAt.UTC(),
-		MaxExpiresAt:     model.MaxExpiresAt.UTC(),
-		RevocationReason: model.RevocationReason,
+		Status:                      auth.ProviderSessionStatus(model.Status),
+		TokenRevision:               model.TokenRevision,
+		CreatedAt:                   model.CreatedAt.UTC(),
+		LastSeenAt:                  model.LastSeenAt.UTC(),
+		IdleExpiresAt:               model.IdleExpiresAt.UTC(),
+		MaxExpiresAt:                model.MaxExpiresAt.UTC(),
+		RevocationReason:            string(reason.Code),
+		RevocationReasonCode:        reason.Code,
+		RevocationReasonFingerprint: reason.DetailFingerprint,
 		RemoteRevocation: auth.ProviderRemoteRevocationOutcome{
 			Status:    auth.ProviderRemoteRevocationStatus(model.RemoteRevocationStatus),
 			Retryable: model.RemoteRevocationRetryable,

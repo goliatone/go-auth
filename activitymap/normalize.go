@@ -60,10 +60,11 @@ func Normalize(event auth.ActivityEvent, opts ...Option) Normalized {
 	)
 
 	objectID := resolveObjectID(event, options.objectIDResolver)
-	providerLifecycle := auth.IsProviderLifecycleActivity(event.EventType)
-	if providerLifecycle {
-		actorID = string(auth.FingerprintProviderAuditValue(actorID))
-		objectID = string(auth.FingerprintProviderAuditValue(objectID))
+	providerSecurity := auth.IsProviderLifecycleActivity(event.EventType) ||
+		auth.IsProviderSessionActivity(event.EventType)
+	if providerSecurity {
+		actorID = string(auth.EnsureProviderAuditFingerprint(actorID))
+		objectID = string(auth.EnsureProviderAuditFingerprint(objectID))
 	}
 	occurredAt := event.OccurredAt
 	if occurredAt.IsZero() {
@@ -140,11 +141,14 @@ func normalizeMetadata(event auth.ActivityEvent) map[string]any {
 	metadata := cloneMap(event.Metadata)
 	if auth.IsProviderLifecycleActivity(event.EventType) {
 		metadata = providerLifecycleMetadata(metadata)
+	} else if auth.IsProviderSessionActivity(event.EventType) {
+		metadata = providerSessionMetadata(metadata)
 	}
 
 	if actorType := strings.TrimSpace(event.Actor.Type); actorType != "" {
-		if auth.IsProviderLifecycleActivity(event.EventType) {
-			actorType = string(auth.FingerprintProviderAuditValue(actorType))
+		if auth.IsProviderLifecycleActivity(event.EventType) ||
+			auth.IsProviderSessionActivity(event.EventType) {
+			actorType = string(auth.EnsureProviderAuditFingerprint(actorType))
 		}
 		if metadata == nil {
 			metadata = map[string]any{}
@@ -190,7 +194,7 @@ func providerLifecycleMetadata(input map[string]any) map[string]any {
 		}
 		switch typed := value.(type) {
 		case string:
-			output[key] = string(auth.FingerprintProviderAuditValue(typed))
+			output[key] = string(auth.EnsureProviderAuditFingerprint(typed))
 		case auth.ProviderAuditFingerprint:
 			output[key] = string(typed)
 		case bool, time.Time, auth.ProviderOperationAction,
@@ -202,6 +206,91 @@ func providerLifecycleMetadata(input map[string]any) map[string]any {
 		return nil
 	}
 	return output
+}
+
+var providerSessionMetadataKeys = map[string]struct{}{
+	"local_session_id": {}, "provider": {}, "application_id": {}, "environment": {},
+	"status": {}, "token_revision": {}, "result": {}, "reason_code": {},
+	"reason_fingerprint": {}, "remote_status": {}, "remote_retryable": {},
+	"local_only": {}, "target": {}, "lifecycle_generation": {},
+}
+
+func providerSessionMetadata(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]any, len(providerSessionMetadataKeys))
+	for key, value := range input {
+		if _, allowed := providerSessionMetadataKeys[key]; !allowed {
+			continue
+		}
+		switch key {
+		case "local_session_id", "provider", "application_id", "environment", "target", "reason_fingerprint":
+			switch typed := value.(type) {
+			case string:
+				output[key] = string(auth.EnsureProviderAuditFingerprint(typed))
+			case auth.ProviderAuditFingerprint:
+				output[key] = string(typed)
+			}
+		case "result":
+			if typed, ok := value.(string); ok &&
+				(typed == "succeeded" || typed == "failed" || typed == "reauthentication_required") {
+				output[key] = typed
+			}
+		case "status":
+			if typed, ok := value.(auth.ProviderSessionStatus); ok && providerSessionStatusValid(typed) {
+				output[key] = typed
+			}
+		case "reason_code":
+			if typed, ok := value.(auth.ProviderSessionReasonCode); ok && typed.Valid() {
+				output[key] = typed
+			}
+		case "remote_status":
+			if typed, ok := value.(auth.ProviderRemoteRevocationStatus); ok && providerRemoteStatusValid(typed) {
+				output[key] = typed
+			}
+		case "token_revision", "lifecycle_generation":
+			switch typed := value.(type) {
+			case int:
+				if typed >= 0 {
+					output[key] = typed
+				}
+			case int64:
+				if typed >= 0 {
+					output[key] = typed
+				}
+			}
+		case "remote_retryable", "local_only":
+			if typed, ok := value.(bool); ok {
+				output[key] = typed
+			}
+		}
+	}
+	if len(output) == 0 {
+		return nil
+	}
+	return output
+}
+
+func providerSessionStatusValid(status auth.ProviderSessionStatus) bool {
+	switch status {
+	case auth.ProviderSessionAvailable, auth.ProviderSessionRefreshing,
+		auth.ProviderSessionUncertain, auth.ProviderSessionRevoked,
+		auth.ProviderSessionExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+func providerRemoteStatusValid(status auth.ProviderRemoteRevocationStatus) bool {
+	switch status {
+	case auth.ProviderRemoteRevocationPending, auth.ProviderRemoteRevocationSucceeded,
+		auth.ProviderRemoteRevocationFailed, auth.ProviderRemoteRevocationUnsupported:
+		return true
+	default:
+		return false
+	}
 }
 
 func cloneMap(in map[string]any) map[string]any {
