@@ -401,6 +401,7 @@ func TestProviderSessionManagerRetriesRetainedRemoteWorkAfterRestart(t *testing.
 	require.Equal(t, 1, retry.Claimed)
 	require.Equal(t, 1, retry.Succeeded)
 	require.EqualValues(t, 2, hook.calls.Load())
+	require.True(t, hook.deadlineObserved.Load())
 
 	resolved, err := repo.Load(context.Background(), created.Session.ID)
 	require.ErrorIs(t, err, auth.ErrProviderSessionUnavailable)
@@ -801,13 +802,17 @@ type countingProviderRevocationHook struct {
 }
 
 type retryThenSucceedRevocationHook struct {
-	calls atomic.Int32
+	calls            atomic.Int32
+	deadlineObserved atomic.Bool
 }
 
 func (h *retryThenSucceedRevocationHook) RevokeProviderSession(
-	context.Context,
-	auth.ProviderRevocationRequest,
+	ctx context.Context,
+	_ auth.ProviderRevocationRequest,
 ) (auth.ProviderRemoteRevocationOutcome, error) {
+	if _, ok := ctx.Deadline(); ok {
+		h.deadlineObserved.Store(true)
+	}
 	if h.calls.Add(1) == 1 {
 		return auth.ProviderRemoteRevocationOutcome{
 			Status: auth.ProviderRemoteRevocationPending, Retryable: true,

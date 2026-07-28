@@ -889,12 +889,9 @@ func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 	if r == nil || r.db == nil {
 		return nil, auth.ErrProviderSessionUnavailable
 	}
-	if policy.Now.IsZero() {
-		var err error
-		policy.Now, err = databaseTime(ctx, r.db)
-		if err != nil {
-			return nil, auth.ErrProviderSessionUnavailable
-		}
+	databaseNow, err := databaseTime(ctx, r.db)
+	if err != nil {
+		return nil, auth.ErrProviderSessionUnavailable
 	}
 	policy.WorkerID = strings.TrimSpace(policy.WorkerID)
 	if policy.Lease <= 0 {
@@ -919,16 +916,16 @@ func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 	query := tx.NewSelect().
 		Model(&models).
 		Where("status = ? AND remote_revocation_retryable = TRUE", auth.ProviderSessionRevoked).
-		Where("(remote_revocation_next_attempt_at IS NULL OR remote_revocation_next_attempt_at <= ?)", policy.Now.UTC()).
-		Where("(remote_revocation_lease_until IS NULL OR remote_revocation_lease_until <= ?)", policy.Now.UTC()).
-		Where("(remote_revocation_work_expires_at IS NULL OR remote_revocation_work_expires_at > ?)", policy.Now.UTC()).
+		Where("(remote_revocation_next_attempt_at IS NULL OR remote_revocation_next_attempt_at <= ?)", databaseNow).
+		Where("(remote_revocation_lease_until IS NULL OR remote_revocation_lease_until <= ?)", databaseNow).
+		Where("(remote_revocation_work_expires_at IS NULL OR remote_revocation_work_expires_at > ?)", databaseNow).
 		Where("remote_revocation_attempt_count < ?", policy.MaxAttempts).
 		Order("remote_revocation_next_attempt_at ASC NULLS FIRST", "id ASC").
 		Limit(policy.BatchSize)
 	if r.db.Dialect().Name() == dialect.PG {
 		query = query.For("UPDATE SKIP LOCKED")
 	}
-	if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if scanErr := query.Scan(ctx); scanErr != nil && !errors.Is(scanErr, sql.ErrNoRows) {
 		return nil, auth.ErrProviderSessionUnavailable
 	}
 	claims := make([]auth.ProviderRemoteRevocationClaim, 0, len(models))
@@ -941,20 +938,20 @@ func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 				Set("remote_revocation_retryable = FALSE").
 				Set("remote_revocation_status = ?", auth.ProviderRemoteRevocationFailed).
 				Set("remote_revocation_safe_error_code = ?", "ciphertext_unavailable").
-				Set("remote_revocation_terminal_at = ?", policy.Now.UTC()).
-				Set("updated_at = ?", policy.Now.UTC()).
+				Set("remote_revocation_terminal_at = ?", databaseNow).
+				Set("updated_at = ?", databaseNow).
 				Where("id = ? AND remote_revocation_revision = ?", model.ID, model.RemoteRevocationRevision).
 				Exec(ctx)
 			continue
 		}
-		leaseUntil := policy.Now.UTC().Add(policy.Lease)
+		leaseUntil := databaseNow.Add(policy.Lease)
 		result, updateErr := tx.NewUpdate().
 			Model((*ProviderSessionModel)(nil)).
 			Set("remote_revocation_lease_owner = ?", policy.WorkerID).
 			Set("remote_revocation_lease_until = ?", leaseUntil).
 			Set("remote_revocation_attempt_count = remote_revocation_attempt_count + 1").
 			Set("remote_revocation_revision = remote_revocation_revision + 1").
-			Set("updated_at = ?", policy.Now.UTC()).
+			Set("updated_at = ?", databaseNow).
 			Where("id = ? AND remote_revocation_revision = ?", model.ID, model.RemoteRevocationRevision).
 			Exec(ctx)
 		if updateErr != nil {
@@ -977,29 +974,41 @@ func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 			Tokens:         tokenEnvelopeFromModel(tokens),
 			RemoteRevision: model.RemoteRevocationRevision,
 			Attempt:        model.RemoteRevocationAttemptCount,
+			LeaseOwner:     policy.WorkerID,
+			LeaseUntil:     leaseUntil,
 		})
 	}
-	if err := tx.Commit(); err != nil {
+	if commitErr := tx.Commit(); commitErr != nil {
 		return nil, auth.ErrProviderSessionUnavailable
+	}
+	completionNow, err := databaseTime(ctx, r.db)
+	if err != nil {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	for index := range claims {
+		claims[index].LeaseRemaining = claims[index].LeaseUntil.Sub(completionNow)
+		if claims[index].LeaseRemaining <= 0 {
+			return nil, auth.ErrProviderSessionConflict
+		}
 	}
 	return claims, nil
 }
 
-//nolint:gocyclo // Completion keeps retry, terminal, ciphertext, and lease transitions atomic.
+//nolint:funlen,gocyclo // Completion keeps retry, terminal, ciphertext, and lease transitions atomic.
 func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 	ctx context.Context,
 	completion auth.ProviderRemoteRevocationCompletion,
 ) error {
 	if r == nil || r.db == nil || strings.TrimSpace(completion.SessionID) == "" ||
-		completion.RemoteRevision <= 0 {
+		completion.RemoteRevision <= 0 || strings.TrimSpace(completion.LeaseOwner) == "" ||
+		completion.LeaseUntil.IsZero() {
 		return auth.ErrProviderSessionInvalid
 	}
 	if err := completion.Outcome.Validate(); err != nil {
 		return err
 	}
-	safeErrorCode := safeRemoteErrorCode(completion.SafeErrorCode)
-	retryable := !completion.Terminal && completion.Outcome.Retryable
-	if retryable && completion.NextAttemptAt.IsZero() {
+	semanticRetryable := !completion.Terminal && completion.Outcome.Retryable
+	if semanticRetryable && (completion.RetryDelay <= 0 || completion.RetryDelay > 24*time.Hour) {
 		return auth.ErrProviderSessionInvalid
 	}
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
@@ -1007,9 +1016,41 @@ func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 		return auth.ErrProviderSessionUnavailable
 	}
 	defer func() { _ = tx.Rollback() }()
+	model := &ProviderSessionModel{}
+	query := tx.NewSelect().
+		Model(model).
+		Where("id = ?", completion.SessionID).
+		Limit(1)
+	if r.db.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	if scanErr := query.Scan(ctx); scanErr != nil {
+		if errors.Is(scanErr, sql.ErrNoRows) {
+			return auth.ErrProviderSessionConflict
+		}
+		return auth.ErrProviderSessionUnavailable
+	}
 	now, err := databaseTime(ctx, tx)
 	if err != nil {
 		return auth.ErrProviderSessionUnavailable
+	}
+	if auth.ProviderSessionStatus(model.Status) != auth.ProviderSessionRevoked ||
+		model.RemoteRevocationRevision != completion.RemoteRevision ||
+		strings.TrimSpace(model.RemoteRevocationLeaseOwner) != strings.TrimSpace(completion.LeaseOwner) ||
+		model.RemoteRevocationLeaseUntil == nil ||
+		!model.RemoteRevocationLeaseUntil.UTC().Equal(completion.LeaseUntil.UTC()) ||
+		!now.Before(model.RemoteRevocationLeaseUntil.UTC()) {
+		return auth.ErrProviderSessionConflict
+	}
+	workExpired := model.RemoteRevocationWorkExpiresAt != nil &&
+		!now.Before(model.RemoteRevocationWorkExpiresAt.UTC())
+	retryable := semanticRetryable && !workExpired
+	nextAttemptAt := time.Time{}
+	safeErrorCode := safeRemoteErrorCode(completion.SafeErrorCode)
+	if retryable {
+		nextAttemptAt = now.Add(completion.RetryDelay)
+	} else if workExpired && completion.Outcome.Retryable {
+		safeErrorCode = "remote_retry_terminal"
 	}
 	var terminalAt any
 	if !retryable {
@@ -1020,17 +1061,19 @@ func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 		Set("remote_revocation_status = ?", completion.Outcome.Status).
 		Set("remote_revocation_retryable = ?", retryable).
 		Set("residual_access_expires_at = ?", nullableTime(completion.Outcome.ResidualAccessExpires)).
-		Set("remote_revocation_next_attempt_at = ?", nullableTime(completion.NextAttemptAt)).
+		Set("remote_revocation_next_attempt_at = ?", nullableTime(nextAttemptAt)).
 		Set("remote_revocation_lease_owner = NULL").
 		Set("remote_revocation_lease_until = NULL").
 		Set("remote_revocation_safe_error_code = ?", safeErrorCode).
 		Set("remote_revocation_terminal_at = ?", terminalAt).
 		Set("remote_revocation_revision = remote_revocation_revision + 1").
 		Set("updated_at = ?", now).
-		Where("id = ? AND status = ? AND remote_revocation_revision = ? AND remote_revocation_lease_owner <> ''",
+		Where("id = ? AND status = ? AND remote_revocation_revision = ? AND remote_revocation_lease_owner = ? AND remote_revocation_lease_until = ?",
 			completion.SessionID,
 			auth.ProviderSessionRevoked,
 			completion.RemoteRevision,
+			strings.TrimSpace(completion.LeaseOwner),
+			completion.LeaseUntil.UTC(),
 		).
 		Exec(ctx)
 	if err != nil {

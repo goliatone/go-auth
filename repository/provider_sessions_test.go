@@ -485,6 +485,118 @@ func TestProviderSessionRepositoryCleanupSkipsRefreshingSession(t *testing.T) {
 	requireTableCount(t, db, "provider_session_tokens", 1)
 }
 
+func TestProviderSessionRepositoryFencesRemoteRevocationLeaseAndUsesDatabaseTime(t *testing.T) {
+	repo, db := openProviderSessionTestRepository(t)
+	now := time.Now().UTC()
+	input := providerSessionCreateFixture(t, now, "lease-fence", "user-lease-fence")
+	require.NoError(t, createProviderSession(t, repo, input))
+	_, changed, err := repo.Revoke(context.Background(), input.Session.ID, "administrative revoke")
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.NoError(t, repo.UpdateRemoteRevocation(
+		context.Background(),
+		input.Session.ID,
+		auth.ProviderRemoteRevocationOutcome{
+			Status: auth.ProviderRemoteRevocationPending, Retryable: true,
+		},
+	))
+
+	claims, err := repo.ClaimRemoteRevocations(
+		context.Background(),
+		auth.ProviderRemoteRevocationClaimPolicy{
+			Now: now.Add(24 * time.Hour), WorkerID: "worker-1",
+			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
+		},
+	)
+	require.NoError(t, err)
+	require.Len(t, claims, 1)
+	first := claims[0]
+	require.Equal(t, "worker-1", first.LeaseOwner)
+	require.False(t, first.LeaseUntil.IsZero())
+	require.Positive(t, first.LeaseRemaining)
+	require.LessOrEqual(t, first.LeaseRemaining, 30*time.Second)
+
+	competing, err := repo.ClaimRemoteRevocations(
+		context.Background(),
+		auth.ProviderRemoteRevocationClaimPolicy{
+			Now: now.Add(48 * time.Hour), WorkerID: "worker-2",
+			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
+		},
+	)
+	require.NoError(t, err)
+	require.Empty(t, competing, "caller clock must not steal a live database lease")
+
+	retryableFailure := auth.ProviderRemoteRevocationOutcome{
+		Status: auth.ProviderRemoteRevocationFailed, Retryable: true,
+	}
+	err = repo.CompleteRemoteRevocation(
+		context.Background(),
+		auth.ProviderRemoteRevocationCompletion{
+			SessionID: input.Session.ID, RemoteRevision: first.RemoteRevision,
+			LeaseOwner: "worker-2", LeaseUntil: first.LeaseUntil,
+			Outcome: retryableFailure, RetryDelay: time.Minute,
+		},
+	)
+	require.ErrorIs(t, err, auth.ErrProviderSessionConflict)
+
+	_, err = db.Exec(
+		"UPDATE provider_sessions SET remote_revocation_lease_until = datetime('now', '-1 second') WHERE id = ?",
+		input.Session.ID,
+	)
+	require.NoError(t, err)
+	err = repo.CompleteRemoteRevocation(
+		context.Background(),
+		auth.ProviderRemoteRevocationCompletion{
+			SessionID: input.Session.ID, RemoteRevision: first.RemoteRevision,
+			LeaseOwner: first.LeaseOwner, LeaseUntil: first.LeaseUntil,
+			Outcome: retryableFailure, RetryDelay: time.Minute,
+		},
+	)
+	require.ErrorIs(t, err, auth.ErrProviderSessionConflict)
+
+	reclaimed, err := repo.ClaimRemoteRevocations(
+		context.Background(),
+		auth.ProviderRemoteRevocationClaimPolicy{
+			Now: now.Add(-48 * time.Hour), WorkerID: "worker-2",
+			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
+		},
+	)
+	require.NoError(t, err)
+	require.Len(t, reclaimed, 1)
+	second := reclaimed[0]
+	require.Greater(t, second.RemoteRevision, first.RemoteRevision)
+	require.Equal(t, "worker-2", second.LeaseOwner)
+	require.NoError(t, repo.CompleteRemoteRevocation(
+		context.Background(),
+		auth.ProviderRemoteRevocationCompletion{
+			SessionID: input.Session.ID, RemoteRevision: second.RemoteRevision,
+			LeaseOwner: second.LeaseOwner, LeaseUntil: second.LeaseUntil,
+			Outcome: retryableFailure, RetryDelay: time.Minute,
+		},
+	))
+
+	var leaseOwner sql.NullString
+	var nextAttempt time.Time
+	var retryable bool
+	require.NoError(t, db.QueryRow(
+		"SELECT remote_revocation_lease_owner, remote_revocation_next_attempt_at, remote_revocation_retryable FROM provider_sessions WHERE id = ?",
+		input.Session.ID,
+	).Scan(&leaseOwner, &nextAttempt, &retryable))
+	require.False(t, leaseOwner.Valid)
+	require.True(t, retryable)
+	require.True(t, nextAttempt.After(time.Now().UTC().Add(30*time.Second)))
+
+	notDue, err := repo.ClaimRemoteRevocations(
+		context.Background(),
+		auth.ProviderRemoteRevocationClaimPolicy{
+			Now: now.Add(48 * time.Hour), WorkerID: "worker-3",
+			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
+		},
+	)
+	require.NoError(t, err)
+	require.Empty(t, notDue, "caller clock must not bypass database-scheduled backoff")
+}
+
 func openProviderSessionTestRepository(t *testing.T) (*ProviderSessionRepository, *bun.DB) {
 	t.Helper()
 	sqlDB, err := sql.Open("sqlite3", "file:"+t.TempDir()+"/provider-sessions.db?_busy_timeout=5000&_journal_mode=WAL&_fk=1")

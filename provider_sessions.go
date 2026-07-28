@@ -442,6 +442,7 @@ type ProviderRevocationHook interface {
 }
 
 type ProviderRemoteRevocationClaimPolicy struct {
+	// Deprecated: repositories use their authoritative database clock.
 	Now         time.Time
 	WorkerID    string
 	Lease       time.Duration
@@ -454,15 +455,23 @@ type ProviderRemoteRevocationClaim struct {
 	Tokens         TokenEnvelope
 	RemoteRevision int64
 	Attempt        int
+	LeaseOwner     string
+	LeaseUntil     time.Time
+	LeaseRemaining time.Duration
 }
 
 type ProviderRemoteRevocationCompletion struct {
 	SessionID      string
 	RemoteRevision int64
+	LeaseOwner     string
+	LeaseUntil     time.Time
 	Outcome        ProviderRemoteRevocationOutcome
-	NextAttemptAt  time.Time
-	SafeErrorCode  string
-	Terminal       bool
+	// Deprecated: repositories derive the next attempt from their database
+	// clock and RetryDelay.
+	NextAttemptAt time.Time
+	RetryDelay    time.Duration
+	SafeErrorCode string
+	Terminal      bool
 }
 
 type ProviderRemoteRevocationRepository interface {

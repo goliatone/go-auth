@@ -411,6 +411,34 @@ func TestProviderSessionsPostgresCrossReplicaAndDurableState(t *testing.T) {
 	require.NoError(t, claimedA.err)
 	require.NoError(t, claimedB.err)
 	require.Equal(t, 1, len(claimedA.claims)+len(claimedB.claims))
+	winningClaims := claimedA.claims
+	if len(winningClaims) == 0 {
+		winningClaims = claimedB.claims
+	}
+	winningClaim := winningClaims[0]
+	require.NotEmpty(t, winningClaim.LeaseOwner)
+	require.False(t, winningClaim.LeaseUntil.IsZero())
+	require.Positive(t, winningClaim.LeaseRemaining)
+	require.ErrorIs(t, repoA.CompleteRemoteRevocation(
+		context.Background(),
+		auth.ProviderRemoteRevocationCompletion{
+			SessionID: revocationSession.Session.ID, RemoteRevision: winningClaim.RemoteRevision,
+			LeaseOwner: "wrong-postgres-worker", LeaseUntil: winningClaim.LeaseUntil,
+			Outcome: auth.ProviderRemoteRevocationOutcome{
+				Status: auth.ProviderRemoteRevocationFailed, Retryable: true,
+			},
+			RetryDelay: time.Minute,
+		},
+	), auth.ErrProviderSessionConflict)
+	require.NoError(t, repoB.CompleteRemoteRevocation(
+		context.Background(),
+		auth.ProviderRemoteRevocationCompletion{
+			SessionID: revocationSession.Session.ID, RemoteRevision: winningClaim.RemoteRevision,
+			LeaseOwner: winningClaim.LeaseOwner, LeaseUntil: winningClaim.LeaseUntil,
+			Outcome:  auth.ProviderRemoteRevocationOutcome{Status: auth.ProviderRemoteRevocationSucceeded},
+			Terminal: true,
+		},
+	))
 }
 
 type postgresPermitExecutor struct {

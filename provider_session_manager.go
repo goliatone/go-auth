@@ -729,7 +729,7 @@ func (m *ProviderSessionManager) invokeProviderRevocation(ctx context.Context, r
 // RetryRemoteRevocations executes already-locally-revoked remote work claimed
 // through a bounded durable lease. It never changes local session usability.
 //
-//nolint:gocyclo // Retry processing keeps terminal, retained-work, and safe-error outcomes explicit.
+//nolint:funlen,gocyclo // Retry processing keeps terminal, retained-work, and safe-error outcomes explicit.
 func (m *ProviderSessionManager) RetryRemoteRevocations(
 	ctx context.Context,
 	policy ProviderRemoteRevocationClaimPolicy,
@@ -750,16 +750,16 @@ func (m *ProviderSessionManager) RetryRemoteRevocations(
 	}
 	result := ProviderRemoteRevocationRetryResult{Claimed: len(claims)}
 	var attemptErrors []error
-	now := policy.Now.UTC()
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
 	for _, claim := range claims {
-		if claim.Session.Status != ProviderSessionRevoked {
+		if claim.Session.Status != ProviderSessionRevoked ||
+			strings.TrimSpace(claim.LeaseOwner) == "" ||
+			claim.LeaseUntil.IsZero() ||
+			claim.LeaseRemaining <= 0 {
 			attemptErrors = append(attemptErrors, ErrProviderSessionConflict)
 			continue
 		}
-		tokens, openErr := m.openProviderTokenSet(ctx, claim.Session, claim.Tokens)
+		attemptCtx, cancelAttempt := context.WithTimeout(ctx, claim.LeaseRemaining)
+		tokens, openErr := m.openProviderTokenSet(attemptCtx, claim.Session, claim.Tokens)
 		outcome := ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationFailed}
 		var remoteErr error
 		safeCode := ""
@@ -769,7 +769,7 @@ func (m *ProviderSessionManager) RetryRemoteRevocations(
 		} else if m.revocationHook == nil {
 			outcome = ProviderRemoteRevocationOutcome{Status: ProviderRemoteRevocationUnsupported}
 		} else {
-			outcome, remoteErr = m.revocationHook.RevokeProviderSession(ctx, ProviderRevocationRequest{
+			outcome, remoteErr = m.revocationHook.RevokeProviderSession(attemptCtx, ProviderRevocationRequest{
 				Session:           claim.Session,
 				Reason:            string(claim.Session.RevocationReasonCode),
 				ReasonCode:        claim.Session.RevocationReasonCode,
@@ -782,20 +782,17 @@ func (m *ProviderSessionManager) RetryRemoteRevocations(
 				safeCode = "invalid_remote_outcome"
 			}
 		}
-		terminal := !outcome.Retryable || claim.Attempt >= policy.MaxAttempts ||
-			(!claim.Session.RemoteWorkExpiresAt.IsZero() && !now.Before(claim.Session.RemoteWorkExpiresAt))
-		nextAttemptAt := time.Time{}
+		cancelAttempt()
+		terminal := !outcome.Retryable || claim.Attempt >= policy.MaxAttempts
+		retryDelay := time.Duration(0)
 		if !terminal {
-			nextAttemptAt = now.Add(providerRemoteRetryDelay(claim.Attempt))
-			result.Retried++
+			retryDelay = providerRemoteRetryDelay(claim.Attempt)
 			if safeCode == "" {
 				safeCode = "remote_retry_scheduled"
 			}
 		} else {
-			result.Terminal++
 			if outcome.Status == ProviderRemoteRevocationSucceeded ||
 				outcome.Status == ProviderRemoteRevocationUnsupported {
-				result.Succeeded++
 				safeCode = ""
 			} else if safeCode == "" {
 				safeCode = "remote_retry_terminal"
@@ -804,13 +801,23 @@ func (m *ProviderSessionManager) RetryRemoteRevocations(
 		completionErr := remoteRepository.CompleteRemoteRevocation(ctx, ProviderRemoteRevocationCompletion{
 			SessionID:      claim.Session.ID,
 			RemoteRevision: claim.RemoteRevision,
+			LeaseOwner:     claim.LeaseOwner,
+			LeaseUntil:     claim.LeaseUntil,
 			Outcome:        outcome,
-			NextAttemptAt:  nextAttemptAt,
+			RetryDelay:     retryDelay,
 			SafeErrorCode:  safeCode,
 			Terminal:       terminal,
 		})
 		if completionErr != nil {
 			attemptErrors = append(attemptErrors, completionErr)
+		} else if terminal {
+			result.Terminal++
+			if outcome.Status == ProviderRemoteRevocationSucceeded ||
+				outcome.Status == ProviderRemoteRevocationUnsupported {
+				result.Succeeded++
+			}
+		} else {
+			result.Retried++
 		}
 		if remoteErr != nil {
 			attemptErrors = append(attemptErrors, remoteErr)
