@@ -26,28 +26,29 @@ const (
 var ErrInvalidConfig = errors.New("supabase: invalid configuration")
 
 type Config struct {
-	ProjectURL              string
-	Issuer                  string
-	DiscoveryURL            string
-	ClientID                string
-	ClientSecret            auth.Secret
-	TokenEndpointAuthMethod oidc.TokenEndpointAuthMethod
-	CallbackURL             string
-	Scopes                  []string
-	IDTokenAudience         []string
-	AccessTokenAudience     []string
-	AllowedAlgorithms       []string
-	AuthorizationUIURL      string
-	AllowedReturnURLs       []string
-	AdminCredential         auth.Secret
-	PublishableKey          auth.Secret
-	ManagementCredential    auth.Secret
-	Environment             string
-	AuthAPIVersion          string
-	OAuthAPIVersion         string
-	AllowInsecureLoopback   bool
-	RequestTimeout          time.Duration
-	ResponseBodyBytes       int64
+	ProjectURL                string
+	Issuer                    string
+	DiscoveryURL              string
+	ClientID                  string
+	ClientSecret              auth.Secret
+	TokenEndpointAuthMethod   oidc.TokenEndpointAuthMethod
+	CallbackURL               string
+	Scopes                    []string
+	IDTokenAudience           []string
+	AccessTokenAudience       []string
+	AllowedAlgorithms         []string
+	AuthorizationUIURL        string
+	AllowedReturnURLs         []string
+	AdminCredential           auth.Secret
+	PublishableKey            auth.Secret
+	ManagementCredential      auth.Secret
+	Environment               string
+	ProviderSessionDeployment auth.ProviderSessionDeployment
+	AuthAPIVersion            string
+	OAuthAPIVersion           string
+	AllowInsecureLoopback     bool
+	RequestTimeout            time.Duration
+	ResponseBodyBytes         int64
 }
 
 //nolint:gocyclo,funlen // Provider security configuration is exhaustively validated in one public boundary.
@@ -105,6 +106,12 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Environment) == "" {
 		return configError("environment", "is required")
+	}
+	if c.ProviderSessionDeployment == "" {
+		return configError("provider_session_deployment", "is required")
+	}
+	if err := c.ProviderSessionDeployment.Validate(); err != nil {
+		return configError("provider_session_deployment", "is invalid")
 	}
 	if c.AdminCredential.IsZero() || c.PublishableKey.IsZero() {
 		return configError("credentials", "admin and publishable credentials are required")

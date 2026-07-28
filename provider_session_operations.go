@@ -6,6 +6,29 @@ import (
 	"time"
 )
 
+type ProviderSessionDeployment string
+
+const (
+	ProviderSessionDeploymentDevelopment ProviderSessionDeployment = "development"
+	ProviderSessionDeploymentTest        ProviderSessionDeployment = "test"
+	ProviderSessionDeploymentProduction  ProviderSessionDeployment = "production"
+	ProviderSessionDeploymentHardened    ProviderSessionDeployment = "hardened"
+)
+
+func (d ProviderSessionDeployment) Validate() error {
+	switch d {
+	case ProviderSessionDeploymentDevelopment, ProviderSessionDeploymentTest,
+		ProviderSessionDeploymentProduction, ProviderSessionDeploymentHardened:
+		return nil
+	default:
+		return fmt.Errorf("%w: invalid provider-session deployment class", ErrProviderSessionInvalid)
+	}
+}
+
+func (d ProviderSessionDeployment) RequiresOperations() bool {
+	return d == ProviderSessionDeploymentProduction || d == ProviderSessionDeploymentHardened
+}
+
 // ProviderSessionOperationsConfig is the production enablement gate. Values
 // are intentionally supplied by the host/deployment rather than guessed by
 // this library.

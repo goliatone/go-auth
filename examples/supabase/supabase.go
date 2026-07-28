@@ -13,19 +13,20 @@ import (
 // RuntimeConfig contains values loaded by the host from configuration and its
 // secret manager. Secret values must never originate in browser input.
 type RuntimeConfig struct {
-	ProjectURL            string
-	ClientID              string
-	ClientSecret          auth.Secret
-	CallbackURL           string
-	AdminCredential       auth.Secret
-	PublishableKey        auth.Secret
-	AuthorizationProofKey auth.Secret
-	Environment           string
-	AuthorizationUIURL    string
-	ReturnURLs            []string
-	IDTokenAudience       []string
-	AccessAudience        []string
-	OAuthClients          map[string]supabase.AuthorizationClientPolicy
+	ProjectURL                string
+	ClientID                  string
+	ClientSecret              auth.Secret
+	CallbackURL               string
+	AdminCredential           auth.Secret
+	PublishableKey            auth.Secret
+	AuthorizationProofKey     auth.Secret
+	Environment               string
+	ProviderSessionDeployment auth.ProviderSessionDeployment
+	AuthorizationUIURL        string
+	ReturnURLs                []string
+	IDTokenAudience           []string
+	AccessAudience            []string
+	OAuthClients              map[string]supabase.AuthorizationClientPolicy
 }
 
 type Services struct {
@@ -47,18 +48,19 @@ func Build(
 	httpClient *http.Client,
 ) (Services, error) {
 	providerConfig := supabase.Config{
-		ProjectURL:              config.ProjectURL,
-		ClientID:                config.ClientID,
-		ClientSecret:            config.ClientSecret,
-		TokenEndpointAuthMethod: oidc.TokenEndpointAuthClientSecretBasic,
-		CallbackURL:             config.CallbackURL,
-		IDTokenAudience:         config.IDTokenAudience,
-		AccessTokenAudience:     config.AccessAudience,
-		AuthorizationUIURL:      config.AuthorizationUIURL,
-		AllowedReturnURLs:       config.ReturnURLs,
-		AdminCredential:         config.AdminCredential,
-		PublishableKey:          config.PublishableKey,
-		Environment:             config.Environment,
+		ProjectURL:                config.ProjectURL,
+		ClientID:                  config.ClientID,
+		ClientSecret:              config.ClientSecret,
+		TokenEndpointAuthMethod:   oidc.TokenEndpointAuthClientSecretBasic,
+		CallbackURL:               config.CallbackURL,
+		IDTokenAudience:           config.IDTokenAudience,
+		AccessTokenAudience:       config.AccessAudience,
+		AuthorizationUIURL:        config.AuthorizationUIURL,
+		AllowedReturnURLs:         config.ReturnURLs,
+		AdminCredential:           config.AdminCredential,
+		PublishableKey:            config.PublishableKey,
+		Environment:               config.Environment,
+		ProviderSessionDeployment: config.ProviderSessionDeployment,
 	}.WithDefaults()
 	oidcConfig, err := providerConfig.OIDCConfig()
 	if err != nil {

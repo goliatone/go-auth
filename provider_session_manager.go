@@ -28,6 +28,7 @@ type ProviderSessionManagerConfig struct {
 	TargetRegistry *TokenTargetRegistry
 	AccessPolicy   TokenAccessPolicy
 	ActivitySink   ActivitySink
+	Deployment     ProviderSessionDeployment
 	Operations     *ProviderSessionOperationsConfig
 }
 
@@ -67,11 +68,19 @@ func NewProviderSessionManager(cfg ProviderSessionManagerConfig) (*ProviderSessi
 	if cfg.RefreshLease < 5*time.Second || cfg.RefreshLease > 2*time.Minute {
 		return nil, fmt.Errorf("%w: refresh lease must be between 5 seconds and 2 minutes", ErrProviderSessionInvalid)
 	}
+	if err := cfg.Deployment.Validate(); err != nil {
+		return nil, err
+	}
 	environment := strings.ToLower(strings.TrimSpace(cfg.Binding.Environment))
-	if environment == "prod" || environment == "production" {
+	legacyProductionName := environment == "prod" || environment == "production"
+	if cfg.Deployment.RequiresOperations() || legacyProductionName {
 		if cfg.Operations == nil {
 			return nil, fmt.Errorf("%w: production operations configuration is required", ErrProviderSessionInvalid)
 		}
+		if err := cfg.Operations.Validate(cfg.Binding, cfg.IdleLifetime, cfg.MaxLifetime); err != nil {
+			return nil, err
+		}
+	} else if cfg.Operations != nil {
 		if err := cfg.Operations.Validate(cfg.Binding, cfg.IdleLifetime, cfg.MaxLifetime); err != nil {
 			return nil, err
 		}

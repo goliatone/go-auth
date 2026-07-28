@@ -13,18 +13,19 @@ import (
 
 func validConfig() Config {
 	return Config{
-		ProjectURL:              "https://project.supabase.co",
-		ClientID:                "client-1",
-		ClientSecret:            auth.NewSecret("client-secret"),
-		TokenEndpointAuthMethod: oidc.TokenEndpointAuthClientSecretBasic,
-		CallbackURL:             "https://backoffice.example/auth/callback",
-		IDTokenAudience:         []string{"client-1"},
-		AccessTokenAudience:     []string{"authenticated"},
-		AuthorizationUIURL:      "https://backoffice.example/oauth/authorize",
-		AllowedReturnURLs:       []string{"https://client.example/callback"},
-		AdminCredential:         auth.NewSecret("admin-secret"),
-		PublishableKey:          auth.NewSecret("publishable-key"),
-		Environment:             "test",
+		ProjectURL:                "https://project.supabase.co",
+		ClientID:                  "client-1",
+		ClientSecret:              auth.NewSecret("client-secret"),
+		TokenEndpointAuthMethod:   oidc.TokenEndpointAuthClientSecretBasic,
+		CallbackURL:               "https://backoffice.example/auth/callback",
+		IDTokenAudience:           []string{"client-1"},
+		AccessTokenAudience:       []string{"authenticated"},
+		AuthorizationUIURL:        "https://backoffice.example/oauth/authorize",
+		AllowedReturnURLs:         []string{"https://client.example/callback"},
+		AdminCredential:           auth.NewSecret("admin-secret"),
+		PublishableKey:            auth.NewSecret("publishable-key"),
+		Environment:               "test",
+		ProviderSessionDeployment: auth.ProviderSessionDeploymentTest,
 	}.WithDefaults()
 }
 

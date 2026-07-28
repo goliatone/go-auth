@@ -19,6 +19,15 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
+func newTestProviderSessionManager(
+	config auth.ProviderSessionManagerConfig,
+) (*auth.ProviderSessionManager, error) {
+	if config.Deployment == "" {
+		config.Deployment = auth.ProviderSessionDeploymentTest
+	}
+	return auth.NewProviderSessionManager(config)
+}
+
 func TestProviderSessionManagerOIDCHandoffCreatesAtomicEncryptedSession(t *testing.T) {
 	db, repo := openManagerIntegrationRepository(t)
 	key, err := auth.NewTokenEncryptionKey("key-1", make([]byte, 32), false)
@@ -27,7 +36,7 @@ func TestProviderSessionManagerOIDCHandoffCreatesAtomicEncryptedSession(t *testi
 	require.NoError(t, err)
 	tokenCipher, err := auth.NewAESGCMTokenCipher(keys)
 	require.NoError(t, err)
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo,
 		Cipher:     tokenCipher,
 		Binding: auth.ProviderSessionBinding{
@@ -70,7 +79,7 @@ func TestProviderSessionManagerLocalInvalidationDoesNotInvokeRemoteHook(t *testi
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
 	hook := &countingProviderRevocationHook{}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour, RevocationHook: hook,
 	})
@@ -86,7 +95,7 @@ func TestProviderSessionManagerLocalInvalidationDoesNotInvokeRemoteHook(t *testi
 
 func TestProviderSessionManagerSealFailureLeavesNoPartialSession(t *testing.T) {
 	db, repo := openManagerIntegrationRepository(t)
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo,
 		Cipher:     failingManagerCipher{},
 		Binding: auth.ProviderSessionBinding{
@@ -116,7 +125,7 @@ func TestProviderSessionManagerReencryptsWithActiveKey(t *testing.T) {
 		Host: "app.example.com", ApplicationID: "app", Environment: "test",
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
 	})
@@ -156,7 +165,7 @@ func TestProviderSessionManagerRotatesOpaqueHandle(t *testing.T) {
 		Host: "app.example.com", ApplicationID: "app", Environment: "test",
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
 	})
@@ -191,12 +200,12 @@ func TestProviderSessionManagerCrossReplicaRefreshConverges(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	managerA, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	managerA, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repoA, Cipher: tokenCipher, Binding: binding, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour, RefreshLease: 5 * time.Second,
 	})
 	require.NoError(t, err)
-	managerB, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	managerB, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repoB, Cipher: tokenCipher, Binding: binding, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour, RefreshLease: 5 * time.Second,
 	})
@@ -242,7 +251,7 @@ func TestProviderSessionManagerAmbiguousRefreshBecomesUnusable(t *testing.T) {
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
 	refresher := &failingProviderRefresher{}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
 	})
@@ -280,7 +289,7 @@ func TestProviderSessionManagerAuthoritativeReconciliationCommitsTokens(t *testi
 		TokenType: "Bearer", AcquiredAt: time.Now().UTC(),
 	})
 	require.NoError(t, err)
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		Refresher: &failingProviderRefresher{},
 		Reconciler: fixedProviderReconciler{
@@ -313,7 +322,7 @@ func TestProviderSessionManagerRevokesLocallyBeforeProviderFailure(t *testing.T)
 	}
 	sink := &captureProviderActivitySink{}
 	hook := &assertLocalFirstRevocationHook{db: db}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		RevocationHook: hook, ActivitySink: sink,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
@@ -357,7 +366,7 @@ func TestProviderSessionManagerRevokesAllUserSessions(t *testing.T) {
 		Host: "app.example.com", ApplicationID: "app", Environment: "test",
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
 	})
@@ -393,7 +402,7 @@ func TestProviderSessionManagerAccessTokenRequiresCurrentSessionTargetAndPolicy(
 		RequirePolicy: true, Capability: capability,
 	})
 	require.NoError(t, err)
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		TargetRegistry: registry, AccessPolicy: allowTokenAccessPolicy{},
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
@@ -443,7 +452,7 @@ func TestProviderSessionManagerAccessTokenFailsClosedWithoutRequiredPolicy(t *te
 		Audience: "business-api", TelemetryName: "business", RequirePolicy: true, Capability: capability,
 	})
 	require.NoError(t, err)
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding, TargetRegistry: registry,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
 	})
@@ -479,7 +488,7 @@ func TestProviderSessionManagerAccessTokenRefreshesInternally(t *testing.T) {
 	require.NoError(t, err)
 	refreshed := managerBoundAccessTokens(t, time.Now().UTC().Add(time.Hour))
 	refresher := &fixedProviderRefresher{tokens: refreshed}
-	manager, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repo, Cipher: tokenCipher, Binding: binding,
 		TargetRegistry: registry, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,

@@ -82,12 +82,12 @@ func TestProviderSessionsPostgresCrossReplicaAndDurableState(t *testing.T) {
 		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
 	}
 	refresher := &blockingProviderRefresher{started: make(chan struct{}), release: make(chan struct{})}
-	managerA, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	managerA, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repoA, Cipher: tokenCipher, Binding: binding, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour, RefreshLease: 5 * time.Second,
 	})
 	require.NoError(t, err)
-	managerB, err := auth.NewProviderSessionManager(auth.ProviderSessionManagerConfig{
+	managerB, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
 		Repository: repoB, Cipher: tokenCipher, Binding: binding, Refresher: refresher,
 		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour, RefreshLease: 5 * time.Second,
 	})
