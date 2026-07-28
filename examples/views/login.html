@@ -3,7 +3,7 @@
 {% block content %}
 <div class="flex flex-col h-[calc(100vh-250px)] justify-center items-center p-8">
   <div class="mb-6">
-    <img class="w-64 logo" src="/logo_dark.svg" alt="brand logo">
+    <img class="w-64 logo" src="{{ asset_url("logo_dark.svg") }}" alt="brand logo">
   </div>
   <form action="/login" method="post" class="group flex flex-col gap-8 max-w-md bg-white p-8 rounded shadow" novalidate>
     {{ csrf_field|safe }}

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon_dark.svg" />
+    <link rel="icon" type="image/svg+xml" href="{{ asset_url("icon_dark.svg") }}" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     {{ csrf_meta|safe }}
     <title>Auth | {{title}}</title>
@@ -14,12 +14,6 @@
     {% block content %}
     {% endblock %}
 
-    <code>
-      is valid? {{jwt.SigningString()}}
-      <pre>
-        {{to_json(jwt)}}
-      </pre>
-    </code>
     <!-- {% include "partials/footer.html" %} -->
     {{ js("main-*.js") | safe }}
 

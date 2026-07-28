@@ -31,6 +31,6 @@
     "dir_fs": "./views",
     "dev_dir": "",
     "assets_dir": "public",
-    "url_prefix": ""
+    "url_prefix": "assets"
   }
 }

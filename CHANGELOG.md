@@ -76,6 +76,12 @@
   activity boundary instead of trusting the exported string type.
 - Keep Supabase local-token client, OIDC, and principal-mapper construction
   independent from provider-session deployment configuration.
+- Persist absent legacy external-identity fields as `NULL` and scope their
+  unique index to populated provider/identifier pairs so local users and
+  example fixtures can coexist.
+- Report example startup failures with stage-coded, secret-safe operational
+  diagnostics instead of a generic panic, and stop printing the raw loaded
+  configuration and signing key during startup.
 
 ## Migration
 

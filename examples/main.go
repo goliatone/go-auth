@@ -6,10 +6,10 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -27,7 +27,6 @@ import (
 	"github.com/goliatone/go-errors"
 	"github.com/goliatone/go-logger/glog"
 	"github.com/goliatone/go-persistence-bun"
-	"github.com/goliatone/go-print"
 	"github.com/goliatone/go-router"
 	"github.com/goliatone/go-router/flash"
 	mflash "github.com/goliatone/go-router/middleware/flash"
@@ -165,12 +164,8 @@ func main() {
 
 	ctx := context.Background()
 	if err := cfg.Load(ctx); err != nil {
-		panic(err)
+		exitStartup(startupFailure("config.load", startupCodeConfigLoad, err))
 	}
-
-	fmt.Println("============")
-	fmt.Println(print.MaybeHighlightJSON(cfg.Raw()))
-	fmt.Println("============")
 
 	app := &App{
 		config: cfg,
@@ -178,21 +173,21 @@ func main() {
 	}
 
 	if err := WithPersistence(ctx, app); err != nil {
-		panic(err)
+		exitStartup(err)
 	}
 
 	if err := WithHTTPServer(ctx, app); err != nil {
-		panic(err)
+		exitStartup(startupFailure("http.server.construct", startupCodeHTTPServerConstruct, err))
 	}
 
 	if err := WithHTTPAuth(ctx, app); err != nil {
-		panic(err)
+		exitStartup(startupFailure("http.auth.construct", startupCodeHTTPAuthConstruct, err))
 	}
 
 	ProtectedRoutes(app)
 
 	if err := app.srv.Serve(":8572"); err != nil {
-		panic(err)
+		exitStartup(startupFailure("http.server.serve", startupCodeHTTPServerServe, err))
 	}
 
 	WaitExitSignal()
@@ -221,49 +216,96 @@ func renderWithGlobals(ctx router.Context, name string, data router.ViewContext)
 	return ctx.Render(name, auth.MergeTemplateData(ctx, data))
 }
 
-//nolint:funlen // The example keeps filesystem, view-engine, and server wiring together for readability.
+func cleanFSPath(value string) string {
+	value = filepath.ToSlash(filepath.Clean(strings.TrimSpace(value)))
+	value = strings.TrimPrefix(value, "./")
+	value = strings.Trim(value, "/")
+	if value == "" {
+		return "."
+	}
+	return value
+}
+
+func subOrRoot(fsys fs.FS, dir string) fs.FS {
+	dir = cleanFSPath(dir)
+	if dir == "." {
+		return fsys
+	}
+	if _, err := fs.Stat(fsys, dir); err == nil {
+		if sub, subErr := fs.Sub(fsys, dir); subErr == nil {
+			return sub
+		}
+	}
+	return fsys
+}
+
+func resolveExampleDirectory(dir string) string {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		workingDir = "."
+	}
+	return resolveExampleDirectoryFrom(workingDir, dir)
+}
+
+func resolveExampleDirectoryFrom(workingDir, dir string) string {
+	dir = filepath.FromSlash(cleanFSPath(dir))
+	candidates := []string{
+		filepath.Join(workingDir, dir),
+		filepath.Join(workingDir, "examples", dir),
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+func normalizeAssetURLPrefix(value string) (string, error) {
+	prefix := router.NormalizePath(value)
+	if prefix == "" || prefix == ".." || strings.HasPrefix(prefix, "../") {
+		return "", errors.New(
+			startupMessages[startupCodeAssetPrefixInvalid],
+			errors.CategoryValidation,
+		).
+			WithTextCode(startupCodeAssetPrefixInvalid).
+			WithMetadata(map[string]any{"field": "views.url_prefix"})
+	}
+	return "/" + prefix, nil
+}
+
+func assetURL(prefix, name string) string {
+	return path.Join(prefix, strings.TrimLeft(filepath.ToSlash(name), "/"))
+}
+
+func newAssetFileSystem(embeddedSource fs.FS, assetDir, diskDir string) fs.FS {
+	embeddedAssets := subOrRoot(embeddedSource, assetDir)
+	return cfs.NewOverlayFS(os.DirFS(diskDir), embeddedAssets)
+}
+
 func WithHTTPServer(ctx context.Context, app *App) error {
 	vcfg := app.Config().GetViews()
 	viewLogger := app.GetLogger("views")
 
-	assetDir := strings.Trim(strings.TrimSpace(vcfg.GetAssetsDir()), "/")
-	if assetDir == "" {
-		assetDir = "."
+	assetDir := cleanFSPath(vcfg.GetAssetsDir())
+	assetPrefix, err := normalizeAssetURLPrefix(vcfg.GetURLPrefix())
+	if err != nil {
+		return err
 	}
 
-	// Helper to root an fs.FS if the path exists; falls back to the original FS otherwise.
-	subOrRoot := func(fsys fs.FS, dir string) fs.FS {
-		// Clean the path so fs.Stat sees a valid, relative dir (fs.ValidPath forbids "./").
-		dir = filepath.ToSlash(filepath.Clean(strings.TrimSpace(dir)))
-		dir = strings.TrimPrefix(dir, "./")
-		dir = strings.Trim(dir, "/")
-		if dir == "" || dir == "." {
-			return fsys
-		}
-		if _, err := fs.Stat(fsys, dir); err == nil {
-			if sub, err := fs.Sub(fsys, dir); err == nil {
-				return sub
-			}
-		}
-		return fsys
-	}
-
-	// Layer embedded assets with an optional disk override. We root the embedded FS
-	// to the configured assetDir up front and then tell the view engine the assets
-	// are already rooted (AssetsDir="."), so it won't attempt another fs.Sub on
-	// CompositeFS (which doesn't implement Sub for embed.FS).
-	embeddedAssets := subOrRoot(fs.FS(embeddedFS), assetDir)
-	diskAssets := os.DirFS(filepath.Join("examples", assetDir))
-	assetFS := cfs.NewCompositeFS(embeddedAssets, diskAssets)
+	// Disk assets override embedded defaults. NewOverlayFS merges directory
+	// entries so a development override can replace one file without hiding
+	// embedded siblings from the view engine's glob helpers.
+	assetDiskPath := resolveExampleDirectory(assetDir)
+	assetFS := newAssetFileSystem(fs.FS(embeddedFS), assetDir, assetDiskPath)
 	vcfg.AssetsDir = "."
 	vcfg.SetAssetsFS(assetFS)
 
 	// Templates: let the view initializer perform exactly one sub by providing an
 	// unscoped composite and setting DirFS to the clean template root.
-	templateDir := filepath.ToSlash(filepath.Clean(strings.TrimSpace(vcfg.GetDirFS())))
-	templateDir = strings.TrimPrefix(templateDir, "./")
-	templateDir = strings.Trim(templateDir, "/")
-	if templateDir == "" {
+	templateDir := cleanFSPath(vcfg.GetDirFS())
+	if templateDir == "." {
 		templateDir = "views"
 	}
 
@@ -273,22 +315,23 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 		return fmt.Errorf("unable to scope embedded templates to %q: %w", templateDir, err)
 	}
 
-	// For disk overrides, prefer examples/<templateDir> when running from repo root;
-	// fall back to <templateDir> if running from inside the examples dir.
-	diskPath := filepath.Join("examples", templateDir)
-	if _, statErr := os.Stat(templateDir); statErr == nil {
-		diskPath = templateDir
-	}
+	// Use the same repository-root/examples-directory resolution for templates
+	// and assets so both documented invocation locations behave identically.
+	diskPath := resolveExampleDirectory(templateDir)
 	diskTemplates := os.DirFS(diskPath)
 
 	// Disk overrides embedded, so it comes first.
-	var templatesFS fs.FS = cfs.NewCompositeFS(diskTemplates, embeddedTemplates)
+	var templatesFS fs.FS = cfs.NewOverlayFS(diskTemplates, embeddedTemplates)
 	// We already scoped the FSs, so expose them at root to the view engine.
 	vcfg.DirFS = "."
 	vcfg.SetTemplatesFS([]fs.FS{templatesFS})
 
-	// Add authentication template helpers globally
-	vcfg.SetTemplateFunctions(auth.TemplateHelpers())
+	// Keep every generated asset URL on the same configured namespace.
+	templateFunctions := auth.TemplateHelpers()
+	templateFunctions["asset_url"] = func(name string) string {
+		return assetURL(assetPrefix, name)
+	}
+	vcfg.SetTemplateFunctions(templateFunctions)
 
 	engine, err := router.InitializeViewEngine(vcfg, viewLogger)
 	if err != nil {
@@ -330,7 +373,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 		})
 	})
 
-	srv.Router().Static("/", ".", router.Static{
+	srv.Router().Static(assetPrefix, ".", router.Static{
 		FS:   assetFS,
 		Root: ".",
 	})
@@ -363,9 +406,14 @@ func (a userTrackerAdapter) TrackSucccessfulLogin(ctx context.Context, user *aut
 func WithPersistence(ctx context.Context, app *App) error {
 	db, err := sql.Open(sqliteshim.ShimName, app.config.Raw().GetPersistence().GetDSN())
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return startupFailure("persistence.open", startupCodePersistenceOpen, err)
 	}
+	ready := false
+	defer func() {
+		if !ready {
+			_ = db.Close()
+		}
+	}()
 
 	persistence.RegisterModel((*auth.User)(nil))
 	persistence.RegisterModel((*auth.PasswordReset)(nil))
@@ -375,14 +423,13 @@ func WithPersistence(ctx context.Context, app *App) error {
 	dialect := sqlitedialect.New()
 	client, err := persistence.New(cfg, db, dialect)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return startupFailure("persistence.construct", startupCodePersistenceConstruct, err)
 	}
 
 	client.SetLogger(app.GetLogger("persistence"))
 	migrationsFS, err := fs.Sub(auth.GetMigrationsFS(), "data/sql/migrations")
 	if err != nil {
-		return err
+		return startupFailure("persistence.migrations.source", startupCodeMigrationSource, err)
 	}
 	client.RegisterDialectMigrations(
 		migrationsFS,
@@ -390,17 +437,17 @@ func WithPersistence(ctx context.Context, app *App) error {
 		persistence.WithValidationTargets("postgres", "sqlite"),
 	)
 	if err := client.ValidateDialects(context.Background()); err != nil {
-		return err
+		return startupFailure("persistence.migrations.validate", startupCodeMigrationValidation, err)
 	}
 
 	if err := client.Migrate(ctx); err != nil {
-		return err
+		return startupFailure("persistence.migrations.apply", startupCodeMigrationApply, err)
 	}
 
 	client.RegisterFixtures(fixturesFS).AddOptions(persistence.WithTrucateTables())
 
 	if err := client.Seed(ctx); err != nil {
-		return err
+		return startupFailure("persistence.fixtures.seed", startupCodeFixtureSeed, err)
 	}
 
 	if report := client.Report(); report != nil && !report.IsZero() {
@@ -409,6 +456,7 @@ func WithPersistence(ctx context.Context, app *App) error {
 
 	app.SetDB(client.DB())
 	app.SetRepository(repo.NewRepositoryManager(client.DB()))
+	ready = true
 
 	return nil
 }
