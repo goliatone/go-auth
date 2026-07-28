@@ -589,6 +589,109 @@ type ProviderSessionInvalidationScope struct {
 	PermissionVersionObservedAt time.Time
 }
 
+// ProviderSessionLifecycleState is the durable session-admission state for one
+// application subject and optional tenant. The empty value means "unchanged"
+// on a transition; persisted fences always use one of the named values.
+type ProviderSessionLifecycleState string
+
+const (
+	ProviderSessionLifecycleActive    ProviderSessionLifecycleState = "active"
+	ProviderSessionLifecycleSuspended ProviderSessionLifecycleState = "suspended"
+	ProviderSessionLifecycleDisabled  ProviderSessionLifecycleState = "disabled"
+	ProviderSessionLifecycleArchived  ProviderSessionLifecycleState = "archived"
+)
+
+func (s ProviderSessionLifecycleState) validPersisted() bool {
+	switch s {
+	case ProviderSessionLifecycleActive,
+		ProviderSessionLifecycleSuspended,
+		ProviderSessionLifecycleDisabled,
+		ProviderSessionLifecycleArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+type ProviderSessionLifecycleOrdering string
+
+const (
+	// ProviderSessionLifecycleObservedOrder preserves externally observed event
+	// ordering. Older or duplicate timestamps are no-ops.
+	ProviderSessionLifecycleObservedOrder ProviderSessionLifecycleOrdering = "observed"
+	// ProviderSessionLifecycleRepositoryOrder serializes a locally initiated
+	// transition under the durable fence lock and advances generation
+	// regardless of replica wall-clock skew.
+	ProviderSessionLifecycleRepositoryOrder ProviderSessionLifecycleOrdering = "repository"
+)
+
+// ProviderSessionLifecycleTransition advances a durable lifecycle fence.
+// BlockedState may be empty to leave the account state unchanged. An explicit
+// active state is the only transition that clears a prior block.
+type ProviderSessionLifecycleTransition struct {
+	ApplicationSubject    string
+	TenantID              string
+	BlockedState          ProviderSessionLifecycleState
+	CredentialsNotBefore  time.Time
+	AdvanceCredentials    bool
+	EventObservedAt       time.Time
+	Reason                string
+	Ordering              ProviderSessionLifecycleOrdering
+	QueueRemoteRevocation bool
+}
+
+func (t ProviderSessionLifecycleTransition) Validate() error {
+	if strings.TrimSpace(t.ApplicationSubject) == "" {
+		return ErrProviderSessionInvalid
+	}
+	switch t.Ordering {
+	case "":
+		if t.EventObservedAt.IsZero() {
+			return ErrProviderSessionInvalid
+		}
+	case ProviderSessionLifecycleObservedOrder:
+		if t.EventObservedAt.IsZero() {
+			return ErrProviderSessionInvalid
+		}
+	case ProviderSessionLifecycleRepositoryOrder:
+	default:
+		return ErrProviderSessionInvalid
+	}
+	if t.BlockedState != "" && !t.BlockedState.validPersisted() {
+		return ErrProviderSessionInvalid
+	}
+	if t.BlockedState == "" && t.CredentialsNotBefore.IsZero() && !t.AdvanceCredentials {
+		return ErrProviderSessionInvalid
+	}
+	return nil
+}
+
+// ProviderSessionLifecycleFence is the observable non-secret lifecycle state.
+type ProviderSessionLifecycleFence struct {
+	ApplicationSubject   string
+	TenantID             string
+	BlockedState         ProviderSessionLifecycleState
+	CredentialsNotBefore time.Time
+	EventObservedAt      time.Time
+	Generation           int64
+}
+
+// ProviderSessionLifecycleRepository is the additive durable capability used
+// by hardened lifecycle coordination and provider-session admission.
+type ProviderSessionLifecycleRepository interface {
+	AdvanceProviderSessionLifecycle(
+		ctx context.Context,
+		transition ProviderSessionLifecycleTransition,
+	) (fence ProviderSessionLifecycleFence, revoked []ProviderSession, err error)
+}
+
+type ProviderSessionLifecycleInvalidator interface {
+	ApplyProviderSessionLifecycle(
+		ctx context.Context,
+		transition ProviderSessionLifecycleTransition,
+	) (fence ProviderSessionLifecycleFence, revoked []ProviderSession, err error)
+}
+
 type ProviderSessionScopeRepository interface {
 	RevokeScope(
 		ctx context.Context,

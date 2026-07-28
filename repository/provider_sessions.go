@@ -85,6 +85,19 @@ type ProviderSessionAuthorizationFenceModel struct {
 	UpdatedAt                   time.Time  `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
 }
 
+type ProviderSessionLifecycleFenceModel struct {
+	bun.BaseModel `bun:"table:provider_session_lifecycle_fences"`
+
+	ApplicationSubject   string     `bun:"application_subject,pk,notnull"`
+	TenantID             string     `bun:"tenant_id,pk,notnull"`
+	BlockedState         string     `bun:"blocked_state,notnull"`
+	CredentialsNotBefore *time.Time `bun:"credentials_not_before"`
+	EventObservedAt      *time.Time `bun:"event_observed_at"`
+	Generation           int64      `bun:"generation,notnull"`
+	CreatedAt            time.Time  `bun:"created_at,nullzero,notnull,default:current_timestamp"`
+	UpdatedAt            time.Time  `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
+}
+
 type ProviderSessionRepository struct {
 	db *bun.DB
 }
@@ -122,6 +135,17 @@ func (r *ProviderSessionRepository) Create(ctx context.Context, input auth.Provi
 	sessionModel.LastSeenAt = dbNow
 	sessionModel.IdleExpiresAt = dbNow.Add(idleWindow)
 	sessionModel.MaxExpiresAt = dbNow.Add(maxWindow)
+	if err := lockProviderSessionLifecycleFences(
+		ctx,
+		tx,
+		r.db.Dialect().Name(),
+		sessionModel.ApplicationSubject,
+		sessionModel.TenantID,
+		input.Session.Principal.AuthenticationAt,
+		input.Session.Principal.IssuedAt,
+	); err != nil {
+		return auth.ProviderSession{}, err
+	}
 	if err := lockProviderSessionAuthorizationFence(
 		ctx,
 		tx,
@@ -677,14 +701,162 @@ func (r *ProviderSessionRepository) RevokeScope(
 	return out, more, nil
 }
 
+// AdvanceProviderSessionLifecycle serializes session admission and
+// security-restricting lifecycle transitions through the same subject fence.
+func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
+	ctx context.Context,
+	transition auth.ProviderSessionLifecycleTransition,
+) (auth.ProviderSessionLifecycleFence, []auth.ProviderSession, error) {
+	if r == nil || r.db == nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+	if err := transition.Validate(); err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, err
+	}
+	transition.ApplicationSubject = strings.TrimSpace(transition.ApplicationSubject)
+	transition.TenantID = strings.TrimSpace(transition.TenantID)
+	if !transition.EventObservedAt.IsZero() {
+		transition.EventObservedAt = transition.EventObservedAt.UTC()
+	}
+	if !transition.CredentialsNotBefore.IsZero() {
+		transition.CredentialsNotBefore = transition.CredentialsNotBefore.UTC()
+	}
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	candidate := &ProviderSessionLifecycleFenceModel{
+		ApplicationSubject: transition.ApplicationSubject,
+		TenantID:           transition.TenantID,
+		BlockedState:       string(auth.ProviderSessionLifecycleActive),
+	}
+	if _, err := tx.NewInsert().
+		Model(candidate).
+		On("CONFLICT (application_subject, tenant_id) DO NOTHING").
+		Exec(ctx); err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+	current := &ProviderSessionLifecycleFenceModel{}
+	query := tx.NewSelect().
+		Model(current).
+		Where("application_subject = ? AND tenant_id = ?", transition.ApplicationSubject, transition.TenantID).
+		Limit(1)
+	if r.db.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+	repositoryOrdered := transition.Ordering == auth.ProviderSessionLifecycleRepositoryOrder
+	if repositoryOrdered {
+		observedAt, timeErr := databaseTime(ctx, tx)
+		if timeErr != nil {
+			return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+		}
+		credentialObservedAt := observedAt
+		if current.EventObservedAt != nil && !observedAt.After(current.EventObservedAt.UTC()) {
+			observedAt = current.EventObservedAt.UTC().Add(time.Nanosecond)
+		}
+		transition.EventObservedAt = observedAt
+		if transition.AdvanceCredentials {
+			transition.CredentialsNotBefore = credentialObservedAt
+		}
+	}
+	if !repositoryOrdered && current.EventObservedAt != nil &&
+		!transition.EventObservedAt.After(current.EventObservedAt.UTC()) {
+		if err := tx.Commit(); err != nil {
+			return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+		}
+		return lifecycleFenceFromModel(current), []auth.ProviderSession{}, nil
+	}
+
+	nextState := auth.ProviderSessionLifecycleState(current.BlockedState)
+	if transition.BlockedState != "" {
+		nextState = transition.BlockedState
+	}
+	var nextCredentialsNotBefore *time.Time
+	if current.CredentialsNotBefore != nil {
+		value := current.CredentialsNotBefore.UTC()
+		nextCredentialsNotBefore = &value
+	}
+	if !transition.CredentialsNotBefore.IsZero() &&
+		(nextCredentialsNotBefore == nil || transition.CredentialsNotBefore.After(*nextCredentialsNotBefore)) {
+		value := transition.CredentialsNotBefore
+		nextCredentialsNotBefore = &value
+	}
+	nextGeneration := current.Generation + 1
+	if _, err := tx.NewUpdate().
+		Model((*ProviderSessionLifecycleFenceModel)(nil)).
+		Set("blocked_state = ?", nextState).
+		Set("credentials_not_before = ?", nextCredentialsNotBefore).
+		Set("event_observed_at = ?", transition.EventObservedAt).
+		Set("generation = ?", nextGeneration).
+		Set("updated_at = CURRENT_TIMESTAMP").
+		Where("application_subject = ? AND tenant_id = ?", transition.ApplicationSubject, transition.TenantID).
+		Exec(ctx); err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+
+	securityRestricting := nextState != auth.ProviderSessionLifecycleActive ||
+		!transition.CredentialsNotBefore.IsZero()
+	revoked, err := revokeSessionsForLifecycleTransition(
+		ctx,
+		tx,
+		r.db.Dialect().Name(),
+		transition,
+		securityRestricting,
+	)
+	if err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
+	}
+	current.BlockedState = string(nextState)
+	current.CredentialsNotBefore = nextCredentialsNotBefore
+	current.EventObservedAt = &transition.EventObservedAt
+	current.Generation = nextGeneration
+	return lifecycleFenceFromModel(current), revoked, nil
+}
+
 var _ auth.ProviderSessionScopeRepository = (*ProviderSessionRepository)(nil)
+var _ auth.ProviderSessionLifecycleRepository = (*ProviderSessionRepository)(nil)
 
 func (r *ProviderSessionRepository) UpdateRemoteRevocation(ctx context.Context, sessionID string, outcome auth.ProviderRemoteRevocationOutcome) error {
-	result, err := r.db.NewUpdate().Model((*ProviderSessionModel)(nil)).
+	if err := outcome.Validate(); err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	defer func() { _ = tx.Rollback() }()
+	now, err := databaseTime(ctx, tx)
+	if err != nil {
+		return auth.ErrProviderSessionUnavailable
+	}
+	retryable := outcome.Retryable &&
+		(outcome.Status == auth.ProviderRemoteRevocationPending ||
+			outcome.Status == auth.ProviderRemoteRevocationFailed)
+	var nextAttemptAt, workExpiresAt, terminalAt any
+	if retryable {
+		nextAttemptAt = now
+		workExpiresAt = now.Add(auth.DefaultProviderTokenRetention)
+	} else {
+		terminalAt = now
+	}
+	result, err := tx.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("remote_revocation_status = ?", outcome.Status).
-		Set("remote_revocation_retryable = ?", outcome.Retryable).
+		Set("remote_revocation_retryable = ?", retryable).
 		Set("residual_access_expires_at = ?", nullableTime(outcome.ResidualAccessExpires)).
-		Set("updated_at = CURRENT_TIMESTAMP").
+		Set("remote_revocation_next_attempt_at = ?", nextAttemptAt).
+		Set("remote_revocation_work_expires_at = ?", workExpiresAt).
+		Set("remote_revocation_terminal_at = ?", terminalAt).
+		Set("remote_revocation_revision = remote_revocation_revision + 1").
+		Set("updated_at = ?", now).
 		Where("id = ? AND status = ?", sessionID, auth.ProviderSessionRevoked).
 		Exec(ctx)
 	if err != nil {
@@ -1056,6 +1228,207 @@ func providerSessionCreateModels(input auth.ProviderSessionCreate) (*ProviderSes
 		return nil, nil, auth.ErrProviderTokenEnvelope
 	}
 	return session, token, nil
+}
+
+func lockProviderSessionLifecycleFences(
+	ctx context.Context,
+	tx bun.Tx,
+	dialectName dialect.Name,
+	applicationSubject string,
+	tenantID string,
+	authenticationAt time.Time,
+	issuedAt time.Time,
+) error {
+	applicationSubject = strings.TrimSpace(applicationSubject)
+	tenantID = strings.TrimSpace(tenantID)
+	if applicationSubject == "" {
+		return auth.ErrProviderSessionInvalid
+	}
+	tenantIDs := []string{""}
+	if tenantID != "" {
+		tenantIDs = append(tenantIDs, tenantID)
+	}
+	for _, scopeTenantID := range tenantIDs {
+		candidate := &ProviderSessionLifecycleFenceModel{
+			ApplicationSubject: applicationSubject,
+			TenantID:           scopeTenantID,
+			BlockedState:       string(auth.ProviderSessionLifecycleActive),
+		}
+		if _, err := tx.NewInsert().
+			Model(candidate).
+			On("CONFLICT (application_subject, tenant_id) DO NOTHING").
+			Exec(ctx); err != nil {
+			return fmt.Errorf("%w: initialize lifecycle fence", auth.ErrProviderSessionUnavailable)
+		}
+	}
+	var current []ProviderSessionLifecycleFenceModel
+	query := tx.NewSelect().
+		Model(&current).
+		Where("application_subject = ? AND tenant_id IN (?)", applicationSubject, bun.In(tenantIDs)).
+		Order("tenant_id ASC")
+	if dialectName == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil || len(current) != len(tenantIDs) {
+		return fmt.Errorf("%w: load lifecycle fences", auth.ErrProviderSessionUnavailable)
+	}
+	var newestCredentialFence time.Time
+	for index := range current {
+		fence := &current[index]
+		state := auth.ProviderSessionLifecycleState(fence.BlockedState)
+		if state != auth.ProviderSessionLifecycleActive {
+			return fmt.Errorf("%w: subject lifecycle state is %s", auth.ErrProviderSessionConflict, state)
+		}
+		if fence.CredentialsNotBefore != nil && fence.CredentialsNotBefore.After(newestCredentialFence) {
+			newestCredentialFence = fence.CredentialsNotBefore.UTC()
+		}
+	}
+	if newestCredentialFence.IsZero() {
+		return nil
+	}
+	credentialAt := authenticationAt.UTC()
+	if issuedAt.After(credentialAt) {
+		credentialAt = issuedAt.UTC()
+	}
+	if credentialAt.IsZero() || !credentialAt.After(newestCredentialFence) {
+		return fmt.Errorf("%w: provider credential predates lifecycle fence", auth.ErrProviderSessionConflict)
+	}
+	return nil
+}
+
+func revokeSessionsForLifecycleTransition(
+	ctx context.Context,
+	tx bun.Tx,
+	dialectName dialect.Name,
+	transition auth.ProviderSessionLifecycleTransition,
+	securityRestricting bool,
+) ([]auth.ProviderSession, error) {
+	if !securityRestricting {
+		return []auth.ProviderSession{}, nil
+	}
+	now, err := databaseTime(ctx, tx)
+	if err != nil {
+		return nil, auth.ErrProviderSessionUnavailable
+	}
+	reason := transition.Reason
+	if reason == "" {
+		reason = "lifecycle_security_change"
+	}
+	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
+	remoteStatus := auth.ProviderRemoteRevocationUnsupported
+	remoteRetryable := false
+	var nextAttemptAt, workExpiresAt, terminalAt any
+	if transition.QueueRemoteRevocation {
+		remoteStatus = auth.ProviderRemoteRevocationPending
+		remoteRetryable = true
+		nextAttemptAt = now
+		workExpiresAt = now.Add(auth.DefaultProviderTokenRetention)
+	} else {
+		terminalAt = now
+	}
+	update := tx.NewUpdate().
+		Model((*ProviderSessionModel)(nil)).
+		Set("status = ?", auth.ProviderSessionRevoked).
+		Set("revoked_at = COALESCE(revoked_at, ?)", now).
+		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", reasonCode).
+		Set("revocation_reason_fingerprint = CASE WHEN revocation_reason_fingerprint IS NULL OR revocation_reason_fingerprint = '' THEN ? ELSE revocation_reason_fingerprint END", reasonFingerprint).
+		Set("remote_revocation_status = ?", remoteStatus).
+		Set("remote_revocation_retryable = ?", remoteRetryable).
+		Set("remote_revocation_next_attempt_at = ?", nextAttemptAt).
+		Set("remote_revocation_work_expires_at = ?", workExpiresAt).
+		Set("remote_revocation_terminal_at = ?", terminalAt).
+		Set("refresh_lease_until = NULL").
+		Set("updated_at = ?", now).
+		Where("application_subject = ? AND status NOT IN (?, ?)",
+			transition.ApplicationSubject,
+			auth.ProviderSessionRevoked,
+			auth.ProviderSessionExpired,
+		)
+	if transition.TenantID != "" {
+		update = update.Where("tenant_id = ?", transition.TenantID)
+	}
+
+	var models []ProviderSessionModel
+	if dialectName == dialect.PG {
+		if err := update.Returning("*").Scan(ctx, &models); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, auth.ErrProviderSessionUnavailable
+		}
+	} else {
+		selectQuery := tx.NewSelect().
+			Model(&models).
+			Where("application_subject = ? AND status NOT IN (?, ?)",
+				transition.ApplicationSubject,
+				auth.ProviderSessionRevoked,
+				auth.ProviderSessionExpired,
+			).
+			Order("id ASC")
+		if transition.TenantID != "" {
+			selectQuery = selectQuery.Where("tenant_id = ?", transition.TenantID)
+		}
+		if err := selectQuery.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, auth.ErrProviderSessionUnavailable
+		}
+		if len(models) > 0 {
+			if _, err := update.Exec(ctx); err != nil {
+				return nil, auth.ErrProviderSessionUnavailable
+			}
+			for index := range models {
+				models[index].Status = string(auth.ProviderSessionRevoked)
+				models[index].RevokedAt = &now
+				models[index].RevocationReason = reasonCode
+				models[index].RevocationReasonFingerprint = reasonFingerprint
+				models[index].RemoteRevocationStatus = string(remoteStatus)
+				models[index].RemoteRevocationRetryable = remoteRetryable
+				if transition.QueueRemoteRevocation {
+					models[index].RemoteRevocationNextAttemptAt = &now
+					expiresAt := now.Add(auth.DefaultProviderTokenRetention)
+					models[index].RemoteRevocationWorkExpiresAt = &expiresAt
+				} else {
+					models[index].RemoteRevocationTerminalAt = &now
+				}
+			}
+		}
+	}
+	if !transition.QueueRemoteRevocation && len(models) > 0 {
+		ids := make([]string, 0, len(models))
+		for index := range models {
+			ids = append(ids, models[index].ID)
+		}
+		if _, err := tx.NewDelete().
+			Model((*ProviderSessionTokenModel)(nil)).
+			Where("session_id IN (?)", bun.In(ids)).
+			Exec(ctx); err != nil {
+			return nil, auth.ErrProviderSessionUnavailable
+		}
+	}
+	out := make([]auth.ProviderSession, 0, len(models))
+	for index := range models {
+		session, convertErr := sessionFromModel(&models[index])
+		if convertErr != nil {
+			return nil, convertErr
+		}
+		out = append(out, session)
+	}
+	return out, nil
+}
+
+func lifecycleFenceFromModel(model *ProviderSessionLifecycleFenceModel) auth.ProviderSessionLifecycleFence {
+	if model == nil {
+		return auth.ProviderSessionLifecycleFence{}
+	}
+	fence := auth.ProviderSessionLifecycleFence{
+		ApplicationSubject: model.ApplicationSubject,
+		TenantID:           model.TenantID,
+		BlockedState:       auth.ProviderSessionLifecycleState(model.BlockedState),
+		Generation:         model.Generation,
+	}
+	if model.CredentialsNotBefore != nil {
+		fence.CredentialsNotBefore = model.CredentialsNotBefore.UTC()
+	}
+	if model.EventObservedAt != nil {
+		fence.EventObservedAt = model.EventObservedAt.UTC()
+	}
+	return fence
 }
 
 func lockProviderSessionAuthorizationFence(

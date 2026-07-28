@@ -529,15 +529,43 @@ func (m *ProviderSessionManager) InvalidateProviderSessions(
 		return 0, false, err
 	}
 	for _, session := range sessions {
-		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, map[string]any{
-			"reason": boundedProviderSessionReason(reason), "remote_status": ProviderRemoteRevocationPending,
-			"local_only": true,
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+			Reason:       ProviderSessionReasonFromLegacy(reason),
+			RemoteStatus: ProviderRemoteRevocationPending,
+			LocalOnly:    true,
 		})
 	}
 	return len(sessions), more, nil
 }
 
+func (m *ProviderSessionManager) ApplyProviderSessionLifecycle(
+	ctx context.Context,
+	transition ProviderSessionLifecycleTransition,
+) (ProviderSessionLifecycleFence, []ProviderSession, error) {
+	if m == nil || m.repository == nil {
+		return ProviderSessionLifecycleFence{}, nil, ErrProviderSessionUnavailable
+	}
+	lifecycle, ok := m.repository.(ProviderSessionLifecycleRepository)
+	if !ok {
+		return ProviderSessionLifecycleFence{}, nil, ErrProviderSessionUnavailable
+	}
+	fence, sessions, err := lifecycle.AdvanceProviderSessionLifecycle(ctx, transition)
+	if err != nil {
+		return ProviderSessionLifecycleFence{}, nil, err
+	}
+	for _, session := range sessions {
+		m.emitProviderSessionEvent(ctx, ActivityEventProviderSessionRevoked, session, ProviderSessionActivityMetadata{
+			Reason:              ProviderSessionReasonFromLegacy(transition.Reason),
+			RemoteStatus:        ProviderRemoteRevocationPending,
+			LocalOnly:           true,
+			LifecycleGeneration: fence.Generation,
+		})
+	}
+	return fence, sessions, nil
+}
+
 var _ ProviderSessionScopeInvalidator = (*ProviderSessionManager)(nil)
+var _ ProviderSessionLifecycleInvalidator = (*ProviderSessionManager)(nil)
 
 //nolint:gocyclo // Token target, policy, refresh, and binding gates stay sequential and fail closed.
 func (m *ProviderSessionManager) AccessToken(ctx context.Context, request UserTokenRequest) (Secret, error) {
