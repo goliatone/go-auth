@@ -80,6 +80,84 @@ func TestInvitationAndRecoveryUseNarrowCredentialBoundaries(t *testing.T) {
 	require.NotContains(t, recoveryRequest.authorization, "management-secret")
 }
 
+func TestHardenedAdminMutationRequiresCoordinatorPermit(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"id": factorOwnerID, "banned_until": time.Now().UTC().Add(time.Hour),
+			"updated_at": time.Now().UTC(),
+		}))
+	}))
+	defer server.Close()
+	client, err := NewClient(testConfig(server.URL), nil, server.Client())
+	require.NoError(t, err)
+	admin, err := NewHardenedAdminClient(client)
+	require.NoError(t, err)
+	operation := authorizedOperation(auth.ProviderActionSuspend, factorOwnerID)
+	operation.Target.ApplicationSubject = "local-user-1"
+	request := auth.AccountLifecycleRequest{Operation: operation}
+
+	_, err = admin.Suspend(context.Background(), request)
+	require.ErrorIs(t, err, auth.ErrProviderOperationUnauthorized)
+	require.Zero(t, calls.Load())
+
+	coordinator, err := auth.NewLifecycleCoordinator(auth.LifecycleCoordinatorConfig{
+		LocalInvalidator: hardenedLifecycleInvalidator{},
+		Freshness: auth.LifecycleFreshnessInvalidatorFunc(func(context.Context, auth.LifecycleFreshnessRequest) error {
+			return nil
+		}),
+		OperationStore: &durableLifecycleOperationStore{
+			InMemoryLifecycleOperationStore: auth.NewInMemoryLifecycleOperationStore(nil),
+		},
+		RequireDurable: true,
+		RequirePermits: true,
+	})
+	require.NoError(t, err)
+	result, err := coordinator.Coordinate(context.Background(), auth.LifecycleCoordinationRequest{
+		Operation: operation,
+		Remote:    admin.SuspendExecutor(request),
+	})
+	require.NoError(t, err)
+	require.Equal(t, auth.ProviderOperationSucceeded, result.Remote.Status)
+	require.EqualValues(t, 1, calls.Load())
+
+	operation.OperationID = "non-durable-operation"
+	request.Operation = operation
+	nonDurable, err := auth.NewLifecycleCoordinator(auth.LifecycleCoordinatorConfig{
+		LocalInvalidator: hardenedLifecycleInvalidator{},
+		Freshness: auth.LifecycleFreshnessInvalidatorFunc(
+			func(context.Context, auth.LifecycleFreshnessRequest) error { return nil },
+		),
+		OperationStore: auth.NewInMemoryLifecycleOperationStore(nil),
+		RequirePermits: true,
+	})
+	require.NoError(t, err)
+	result, err = nonDurable.Coordinate(context.Background(), auth.LifecycleCoordinationRequest{
+		Operation: operation,
+		Remote:    admin.SuspendExecutor(request),
+	})
+	require.ErrorIs(t, err, auth.ErrProviderOperationUnauthorized)
+	require.Equal(t, auth.ProviderOperationFailed, result.Remote.Status)
+	require.EqualValues(t, 1, calls.Load())
+}
+
+type hardenedLifecycleInvalidator struct{}
+
+type durableLifecycleOperationStore struct {
+	*auth.InMemoryLifecycleOperationStore
+}
+
+func (*durableLifecycleOperationStore) Durable() bool { return true }
+
+func (hardenedLifecycleInvalidator) InvalidateProviderSession(context.Context, string, string) error {
+	return nil
+}
+
+func (hardenedLifecycleInvalidator) InvalidateUserProviderSessions(context.Context, string, string) error {
+	return nil
+}
+
 func TestDeliveryValidationFailsBeforeProviderAndMapsDuplicate(t *testing.T) {
 	var calls atomic.Int32
 	status := atomic.Int32{}

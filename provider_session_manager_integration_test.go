@@ -354,6 +354,72 @@ func TestProviderSessionManagerRevokesLocallyBeforeProviderFailure(t *testing.T)
 	}
 }
 
+func TestProviderSessionManagerRetriesRetainedRemoteWorkAfterRestart(t *testing.T) {
+	db, repo := openManagerIntegrationRepository(t)
+	key, err := auth.NewTokenEncryptionKey("key-1", make([]byte, 32), false)
+	require.NoError(t, err)
+	keys, err := auth.NewStaticTokenKeyProvider("key-1", key)
+	require.NoError(t, err)
+	tokenCipher, err := auth.NewAESGCMTokenCipher(keys)
+	require.NoError(t, err)
+	binding := auth.ProviderSessionBinding{
+		Host: "app.example.com", ApplicationID: "app", Environment: "test",
+		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
+	}
+	hook := &retryThenSucceedRevocationHook{}
+	firstManager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
+		Repository: repo, Cipher: tokenCipher, Binding: binding,
+		RevocationHook: hook, IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
+	})
+	require.NoError(t, err)
+	created, err := firstManager.CreateProviderSession(context.Background(), managerTestPrincipal(t), managerTestTokens(t))
+	require.NoError(t, err)
+	err = firstManager.RevokeProviderSession(context.Background(), created.Session.ID, "administrative revoke")
+	require.Error(t, err)
+	require.EqualValues(t, 1, hook.calls.Load())
+
+	var tokenRows int
+	require.NoError(t, db.QueryRow(
+		"SELECT COUNT(*) FROM provider_session_tokens WHERE session_id = ?",
+		created.Session.ID,
+	).Scan(&tokenRows))
+	require.Equal(t, 1, tokenRows)
+
+	restartedManager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
+		Repository: repo, Cipher: tokenCipher, Binding: binding,
+		RevocationHook: hook, IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
+	})
+	require.NoError(t, err)
+	retry, err := restartedManager.RetryRemoteRevocations(context.Background(), auth.ProviderRemoteRevocationClaimPolicy{
+		Now:         time.Now().UTC().Add(time.Second),
+		WorkerID:    "retry-worker",
+		Lease:       30 * time.Second,
+		BatchSize:   10,
+		MaxAttempts: 3,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, retry.Claimed)
+	require.Equal(t, 1, retry.Succeeded)
+	require.EqualValues(t, 2, hook.calls.Load())
+
+	resolved, err := repo.Load(context.Background(), created.Session.ID)
+	require.ErrorIs(t, err, auth.ErrProviderSessionUnavailable)
+	require.Empty(t, resolved.Tokens.Ciphertext)
+	var status string
+	var retryable bool
+	require.NoError(t, db.QueryRow(
+		"SELECT status, remote_revocation_retryable FROM provider_sessions WHERE id = ?",
+		created.Session.ID,
+	).Scan(&status, &retryable))
+	require.Equal(t, string(auth.ProviderSessionRevoked), status)
+	require.False(t, retryable)
+	require.NoError(t, db.QueryRow(
+		"SELECT COUNT(*) FROM provider_session_tokens WHERE session_id = ?",
+		created.Session.ID,
+	).Scan(&tokenRows))
+	require.Zero(t, tokenRows)
+}
+
 func TestProviderSessionManagerRevokesAllUserSessions(t *testing.T) {
 	_, repo := openManagerIntegrationRepository(t)
 	key, err := auth.NewTokenEncryptionKey("key-1", make([]byte, 32), false)
@@ -380,6 +446,93 @@ func TestProviderSessionManagerRevokesAllUserSessions(t *testing.T) {
 		_, _, resolveErr := manager.ResolveProviderSession(context.Background(), handle, binding)
 		require.ErrorIs(t, resolveErr, auth.ErrProviderSessionRevoked)
 	}
+}
+
+func TestSerializedLifecycleOrderingRevokesAndQueuesAcrossClockSkew(t *testing.T) {
+	_, repo := openManagerIntegrationRepository(t)
+	key, err := auth.NewTokenEncryptionKey("key-1", make([]byte, 32), false)
+	require.NoError(t, err)
+	keys, err := auth.NewStaticTokenKeyProvider("key-1", key)
+	require.NoError(t, err)
+	tokenCipher, err := auth.NewAESGCMTokenCipher(keys)
+	require.NoError(t, err)
+	binding := auth.ProviderSessionBinding{
+		Host: "app.example.com", ApplicationID: "app", Environment: "test",
+		Provider: "oidc", Issuer: "https://issuer.example.com", ClientID: "client-1",
+	}
+	manager, err := newTestProviderSessionManager(auth.ProviderSessionManagerConfig{
+		Repository: repo, Cipher: tokenCipher, Binding: binding,
+		IdleLifetime: time.Hour, MaxLifetime: 8 * time.Hour,
+	})
+	require.NoError(t, err)
+	future := time.Now().UTC().Add(24 * time.Hour)
+	_, _, err = manager.ApplyProviderSessionLifecycle(
+		context.Background(),
+		auth.ProviderSessionLifecycleTransition{
+			ApplicationSubject: "user-1",
+			BlockedState:       auth.ProviderSessionLifecycleActive,
+			EventObservedAt:    future,
+			Ordering:           auth.ProviderSessionLifecycleObservedOrder,
+			Reason:             "future-dated activation",
+		},
+	)
+	require.NoError(t, err)
+	created, err := manager.CreateProviderSession(
+		context.Background(),
+		managerTestPrincipal(t),
+		managerTestTokens(t),
+	)
+	require.NoError(t, err)
+
+	behind := future.Add(-48 * time.Hour)
+	coordinator, err := auth.NewLifecycleCoordinator(auth.LifecycleCoordinatorConfig{
+		LocalInvalidator:     manager,
+		LifecycleInvalidator: manager,
+		Freshness: auth.LifecycleFreshnessInvalidatorFunc(
+			func(context.Context, auth.LifecycleFreshnessRequest) error { return nil },
+		),
+		OperationStore: auth.NewInMemoryLifecycleOperationStore(func() time.Time {
+			return behind
+		}),
+		Clock: func() time.Time { return behind },
+	})
+	require.NoError(t, err)
+	operation := auth.AuthorizedOperationContext{
+		OperationID: "clock-skew-suspend",
+		Action:      auth.ProviderActionSuspend,
+		Permission:  "identity.manage",
+		Actor:       auth.ActorRef{ID: "admin-1", Type: "user"},
+		Target: auth.ProviderOperationTarget{
+			Provider: "oidc", ApplicationSubject: "user-1", Subject: "provider-user-1",
+		},
+		Reason: "security suspend", Environment: "test", RequestID: "request-1",
+		AuthorizedAt: time.Now().UTC(),
+	}
+	_, err = coordinator.Coordinate(context.Background(), auth.LifecycleCoordinationRequest{
+		Operation: operation,
+		Remote: auth.ProviderOperationExecutorFunc(
+			func(context.Context, auth.AuthorizedOperationContext) (auth.ProviderOperationOutcome, error) {
+				return auth.ProviderOperationOutcome{Status: auth.ProviderOperationSucceeded}, nil
+			},
+		),
+	})
+	require.NoError(t, err)
+	_, _, err = manager.ResolveProviderSession(context.Background(), created.Handle, binding)
+	require.ErrorIs(t, err, auth.ErrProviderSessionRevoked)
+
+	claims, err := repo.ClaimRemoteRevocations(
+		context.Background(),
+		auth.ProviderRemoteRevocationClaimPolicy{
+			Now: time.Now().UTC().Add(time.Minute), WorkerID: "lifecycle-revoker",
+			Lease: 30 * time.Second, BatchSize: 10, MaxAttempts: 3,
+		},
+	)
+	require.NoError(t, err)
+	require.Len(t, claims, 1)
+	require.Equal(t, created.Session.ID, claims[0].Session.ID)
+	require.Equal(t, auth.ProviderRemoteRevocationPending, claims[0].Session.RemoteRevocation.Status)
+	require.True(t, claims[0].Session.RemoteRevocation.Retryable)
+	require.False(t, claims[0].Session.RemoteWorkExpiresAt.IsZero())
 }
 
 func TestProviderSessionManagerAccessTokenRequiresCurrentSessionTargetAndPolicy(t *testing.T) {
@@ -515,6 +668,9 @@ func openManagerIntegrationRepository(t *testing.T) (*bun.DB, *authrepo.Provider
 	for _, name := range []string{
 		"20260726100000_provider_sessions.up.sql",
 		"20260726120000_provider_session_authorization_fences.up.sql",
+		"20260727130000_provider_session_lifecycle_fences.up.sql",
+		"20260727150000_provider_remote_revocation_queue.up.sql",
+		"20260727160000_provider_session_reason_fingerprints.up.sql",
 	} {
 		raw, err := fs.ReadFile(auth.GetAuthExtrasMigrationsFS(), "data/sql/migrations/sqlite/"+name)
 		require.NoError(t, err)
@@ -642,6 +798,22 @@ func (h *assertLocalFirstRevocationHook) RevokeProviderSession(_ context.Context
 
 type countingProviderRevocationHook struct {
 	calls atomic.Int32
+}
+
+type retryThenSucceedRevocationHook struct {
+	calls atomic.Int32
+}
+
+func (h *retryThenSucceedRevocationHook) RevokeProviderSession(
+	context.Context,
+	auth.ProviderRevocationRequest,
+) (auth.ProviderRemoteRevocationOutcome, error) {
+	if h.calls.Add(1) == 1 {
+		return auth.ProviderRemoteRevocationOutcome{
+			Status: auth.ProviderRemoteRevocationPending, Retryable: true,
+		}, errors.New("temporary provider outage")
+	}
+	return auth.ProviderRemoteRevocationOutcome{Status: auth.ProviderRemoteRevocationSucceeded}, nil
 }
 
 func (h *countingProviderRevocationHook) RevokeProviderSession(context.Context, auth.ProviderRevocationRequest) (auth.ProviderRemoteRevocationOutcome, error) {

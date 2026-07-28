@@ -44,13 +44,42 @@ func (a *AdminClient) ListFactors(ctx context.Context, request auth.FactorListRe
 	}, nil
 }
 
+// RemoveFactor is the low-level compatibility mutation.
+//
+// Deprecated: use RemoveFactorCoordinated through LifecycleCoordinator with a
+// coordinator-issued permit.
+//
 //nolint:gocyclo // Factor target, state, and last-factor safety checks remain explicit.
 func (a *AdminClient) RemoveFactor(ctx context.Context, request auth.FactorRemoveRequest) (result auth.ProviderOperationOutcome, err error) {
+	return a.removeFactor(ctx, request, auth.LifecycleExecutionPermit{})
+}
+
+func (a *AdminClient) RemoveFactorCoordinated(
+	ctx context.Context,
+	request auth.FactorRemoveRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.ProviderOperationOutcome, err error) {
+	return a.removeFactor(ctx, request, permit)
+}
+
+func (a *AdminClient) removeFactor(
+	ctx context.Context,
+	request auth.FactorRemoveRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.ProviderOperationOutcome, err error) {
 	defer func() {
 		a.recordLifecycleActivity(ctx, request.Operation, result, err)
 	}()
 	if validationErr := a.validateFactorOperation(request.Operation, auth.ProviderActionRemoveFactor); validationErr != nil {
 		return auth.ProviderOperationOutcome{}, validationErr
+	}
+	if a.requirePermits {
+		if err := permit.Validate(request.Operation); err != nil {
+			return auth.ProviderOperationOutcome{}, fmt.Errorf(
+				"%w: coordinated lifecycle permit is required",
+				auth.ErrProviderOperationUnauthorized,
+			)
+		}
 	}
 	factorUUID, err := uuid.Parse(strings.TrimSpace(request.FactorID))
 	if err != nil {
@@ -76,6 +105,9 @@ func (a *AdminClient) RemoveFactor(ctx context.Context, request auth.FactorRemov
 		return auth.ProviderOperationOutcome{
 			Status: auth.ProviderOperationConflict,
 		}, auth.ErrProviderOperationConflict
+	}
+	if err := a.validateMutationPermit(ctx, request.Operation, permit); err != nil {
+		return auth.ProviderOperationOutcome{}, err
 	}
 	effect := auth.ProviderSessionEffectNone
 	if factor.State == auth.ProviderFactorVerified {

@@ -15,8 +15,9 @@ import (
 )
 
 type AdminClient struct {
-	client *Client
-	clock  func() time.Time
+	client         *Client
+	clock          func() time.Time
+	requirePermits bool
 }
 
 func NewAdminClient(client *Client) (*AdminClient, error) {
@@ -24,6 +25,18 @@ func NewAdminClient(client *Client) (*AdminClient, error) {
 		return nil, ErrInvalidConfig
 	}
 	return &AdminClient{client: client, clock: func() time.Time { return time.Now().UTC() }}, nil
+}
+
+// NewHardenedAdminClient requires coordinator-issued execution permits for
+// provider mutations. New production compositions should use this constructor;
+// NewAdminClient remains the explicitly low-level compatibility boundary.
+func NewHardenedAdminClient(client *Client) (*AdminClient, error) {
+	admin, err := NewAdminClient(client)
+	if err != nil {
+		return nil, err
+	}
+	admin.requirePermits = true
+	return admin, nil
 }
 
 func (a *AdminClient) Invite(ctx context.Context, request auth.InviteRequest) (result auth.ProviderDeliveryOutcome, err error) {
@@ -65,21 +78,67 @@ func (a *AdminClient) StartRecovery(ctx context.Context, request auth.RecoveryRe
 	return deliveryOutcome(envelope, request.Operation.RequestID, err)
 }
 
+// Suspend is the low-level compatibility mutation.
+//
+// Deprecated: use SuspendCoordinated through LifecycleCoordinator with a
+// coordinator-issued permit.
 func (a *AdminClient) Suspend(ctx context.Context, request auth.AccountLifecycleRequest) (result auth.AccountStateResult, err error) {
+	return a.suspend(ctx, request, auth.LifecycleExecutionPermit{})
+}
+
+func (a *AdminClient) SuspendCoordinated(
+	ctx context.Context,
+	request auth.AccountLifecycleRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.AccountStateResult, err error) {
+	return a.suspend(ctx, request, permit)
+}
+
+func (a *AdminClient) suspend(
+	ctx context.Context,
+	request auth.AccountLifecycleRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.AccountStateResult, err error) {
 	defer func() {
 		a.recordLifecycleActivity(ctx, request.Operation, result.ProviderOperationOutcome, err)
 	}()
 	if err := a.validateAccountOperation(request.Operation, auth.ProviderActionSuspend); err != nil {
 		return auth.AccountStateResult{}, err
 	}
+	if err := a.validateMutationPermit(ctx, request.Operation, permit); err != nil {
+		return auth.AccountStateResult{}, err
+	}
 	return a.updateAccount(ctx, request.Operation, map[string]any{"ban_duration": "876000h"}, auth.ProviderAccountStateSuspended)
 }
 
+// Activate is the low-level compatibility mutation.
+//
+// Deprecated: use ActivateCoordinated through LifecycleCoordinator with a
+// coordinator-issued permit.
 func (a *AdminClient) Activate(ctx context.Context, request auth.AccountLifecycleRequest) (result auth.AccountStateResult, err error) {
+	return a.activate(ctx, request, auth.LifecycleExecutionPermit{})
+}
+
+func (a *AdminClient) ActivateCoordinated(
+	ctx context.Context,
+	request auth.AccountLifecycleRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.AccountStateResult, err error) {
+	return a.activate(ctx, request, permit)
+}
+
+func (a *AdminClient) activate(
+	ctx context.Context,
+	request auth.AccountLifecycleRequest,
+	permit auth.LifecycleExecutionPermit,
+) (result auth.AccountStateResult, err error) {
 	defer func() {
 		a.recordLifecycleActivity(ctx, request.Operation, result.ProviderOperationOutcome, err)
 	}()
 	if err := a.validateAccountOperation(request.Operation, auth.ProviderActionActivate); err != nil {
+		return auth.AccountStateResult{}, err
+	}
+	if err := a.validateMutationPermit(ctx, request.Operation, permit); err != nil {
 		return auth.AccountStateResult{}, err
 	}
 	return a.updateAccount(ctx, request.Operation, map[string]any{"ban_duration": "none"}, auth.ProviderAccountStateActive)
@@ -195,6 +254,23 @@ func (a *AdminClient) validateAccountOperation(operation auth.AuthorizedOperatio
 		return fmt.Errorf("%w: account target must be a UUID", auth.ErrProviderOperationInvalid)
 	}
 	return nil
+}
+
+func (a *AdminClient) validateMutationPermit(
+	ctx context.Context,
+	operation auth.AuthorizedOperationContext,
+	permit auth.LifecycleExecutionPermit,
+) error {
+	if a != nil && !a.requirePermits {
+		if permit.IdempotencyKey() == "" {
+			return nil
+		}
+		return permit.Consume(ctx, operation)
+	}
+	if err := permit.ConsumeForHardenedMutation(ctx, operation); err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: coordinated lifecycle permit is required", auth.ErrProviderOperationUnauthorized)
 }
 
 func validEmail(raw string) (string, error) {

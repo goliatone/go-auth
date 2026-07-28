@@ -49,6 +49,15 @@ func TestProviderSessionRepositoryCreateResolveTouchRotateAndRevoke(t *testing.T
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.Equal(t, auth.ProviderSessionRevoked, revoked.Status)
+	require.Equal(t, auth.ProviderSessionReasonLogout, revoked.RevocationReasonCode)
+	require.Equal(t, auth.FingerprintProviderAuditValue("logout"), revoked.RevocationReasonFingerprint)
+	var persistedReason, persistedFingerprint string
+	require.NoError(t, db.QueryRow(
+		"SELECT revocation_reason, revocation_reason_fingerprint FROM provider_sessions WHERE id = ?",
+		input.Session.ID,
+	).Scan(&persistedReason, &persistedFingerprint))
+	require.Equal(t, string(auth.ProviderSessionReasonLogout), persistedReason)
+	require.Equal(t, string(auth.FingerprintProviderAuditValue("logout")), persistedFingerprint)
 	_, changed, err = repo.Revoke(context.Background(), input.Session.ID, "logout again")
 	require.NoError(t, err)
 	require.False(t, changed)
@@ -79,6 +88,55 @@ func TestProviderSessionRepositoryAtomicCreateRollsBackTokenFailure(t *testing.T
 	var sessionRows int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM provider_sessions WHERE id = ?", input.Session.ID).Scan(&sessionRows))
 	require.Zero(t, sessionRows)
+}
+
+func TestProviderSessionRepositoryFingerprintsLegacyRevocationReasonImmediately(t *testing.T) {
+	repo, db := openProviderSessionTestRepository(t)
+	input := providerSessionCreateFixture(t, time.Now().UTC(), "reason-handle", "reason-user")
+	require.NoError(t, createProviderSession(t, repo, input))
+	const rawReason = "customer alice@example.test bearer persistence-canary"
+
+	revoked, changed, err := repo.Revoke(context.Background(), input.Session.ID, rawReason)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, auth.ProviderSessionReasonLegacyExternal, revoked.RevocationReasonCode)
+	require.Equal(t, auth.FingerprintProviderAuditValue(rawReason), revoked.RevocationReasonFingerprint)
+
+	var reasonCode, reasonFingerprint string
+	require.NoError(t, db.QueryRow(
+		"SELECT revocation_reason, revocation_reason_fingerprint FROM provider_sessions WHERE id = ?",
+		input.Session.ID,
+	).Scan(&reasonCode, &reasonFingerprint))
+	require.Equal(t, string(auth.ProviderSessionReasonLegacyExternal), reasonCode)
+	require.Equal(t, string(auth.FingerprintProviderAuditValue(rawReason)), reasonFingerprint)
+	require.NotContains(t, reasonCode+" "+reasonFingerprint, rawReason)
+}
+
+func TestProviderSessionRepositoryNormalizesMalformedEncodedReason(t *testing.T) {
+	repo, db := openProviderSessionTestRepository(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	input := providerSessionCreateFixture(t, now, "malformed-reason", "user-malformed")
+	require.NoError(t, createProviderSession(t, repo, input))
+	const rawSuffix = "raw-persistence-secret@example.test"
+	_, changed, err := repo.Revoke(
+		context.Background(),
+		input.Session.ID,
+		"logout|sha256:"+rawSuffix,
+	)
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	var reasonFingerprint string
+	require.NoError(t, db.QueryRow(
+		"SELECT revocation_reason_fingerprint FROM provider_sessions WHERE id = ?",
+		input.Session.ID,
+	).Scan(&reasonFingerprint))
+	require.Equal(
+		t,
+		string(auth.FingerprintProviderAuditValue("sha256:"+rawSuffix)),
+		reasonFingerprint,
+	)
+	require.NotContains(t, reasonFingerprint, rawSuffix)
 }
 
 func TestProviderSessionRepositoryRevokeUserAndExpiry(t *testing.T) {
@@ -279,6 +337,88 @@ func TestProviderSessionRepositoryAbandonedRefreshLeaseBecomesUncertain(t *testi
 	require.ErrorIs(t, err, auth.ErrProviderSessionUncertain)
 }
 
+func TestProviderSessionRepositoryLifecycleFenceRevokesExactlyAndControlsAdmission(t *testing.T) {
+	repo, _ := openProviderSessionTestRepository(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	first := providerSessionCreateFixture(t, now, "lifecycle-first", "lifecycle-user")
+	second := providerSessionCreateFixture(t, now, "lifecycle-second", "lifecycle-user")
+	other := providerSessionCreateFixture(t, now, "lifecycle-other", "other-user")
+	require.NoError(t, createProviderSession(t, repo, first))
+	require.NoError(t, createProviderSession(t, repo, second))
+	require.NoError(t, createProviderSession(t, repo, other))
+
+	fence, revoked, err := repo.AdvanceProviderSessionLifecycle(context.Background(), auth.ProviderSessionLifecycleTransition{
+		ApplicationSubject: "lifecycle-user",
+		BlockedState:       auth.ProviderSessionLifecycleSuspended,
+		EventObservedAt:    now,
+		Reason:             "account suspended",
+	})
+	require.NoError(t, err)
+	require.Equal(t, auth.ProviderSessionLifecycleSuspended, fence.BlockedState)
+	require.EqualValues(t, 1, fence.Generation)
+	require.Len(t, revoked, 2)
+	require.ElementsMatch(t, []string{first.Session.ID, second.Session.ID}, []string{revoked[0].ID, revoked[1].ID})
+
+	blocked := providerSessionCreateFixture(t, now.Add(time.Minute), "lifecycle-blocked", "lifecycle-user")
+	_, err = repo.Create(context.Background(), blocked)
+	require.ErrorIs(t, err, auth.ErrProviderSessionConflict)
+
+	staleFence, staleRevoked, err := repo.AdvanceProviderSessionLifecycle(context.Background(), auth.ProviderSessionLifecycleTransition{
+		ApplicationSubject: "lifecycle-user",
+		BlockedState:       auth.ProviderSessionLifecycleActive,
+		EventObservedAt:    now.Add(-time.Minute),
+		Reason:             "stale activation",
+	})
+	require.NoError(t, err)
+	require.Equal(t, auth.ProviderSessionLifecycleSuspended, staleFence.BlockedState)
+	require.Empty(t, staleRevoked)
+
+	activeFence, _, err := repo.AdvanceProviderSessionLifecycle(context.Background(), auth.ProviderSessionLifecycleTransition{
+		ApplicationSubject: "lifecycle-user",
+		BlockedState:       auth.ProviderSessionLifecycleActive,
+		EventObservedAt:    now.Add(time.Minute),
+		Reason:             "authoritative activation",
+	})
+	require.NoError(t, err)
+	require.Equal(t, auth.ProviderSessionLifecycleActive, activeFence.BlockedState)
+	require.EqualValues(t, 2, activeFence.Generation)
+
+	admitted := providerSessionCreateFixture(t, now.Add(2*time.Minute), "lifecycle-admitted", "lifecycle-user")
+	_, err = repo.Create(context.Background(), admitted)
+	require.NoError(t, err)
+}
+
+func TestProviderSessionRepositoryCredentialFenceRejectsStaleAuthentication(t *testing.T) {
+	repo, _ := openProviderSessionTestRepository(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	current := providerSessionCreateFixture(t, now, "credential-current", "credential-user")
+	require.NoError(t, createProviderSession(t, repo, current))
+
+	fenceAt := now.Add(time.Minute)
+	fence, revoked, err := repo.AdvanceProviderSessionLifecycle(context.Background(), auth.ProviderSessionLifecycleTransition{
+		ApplicationSubject:   "credential-user",
+		TenantID:             "tenant-1",
+		CredentialsNotBefore: fenceAt,
+		EventObservedAt:      fenceAt,
+		Reason:               "verified factor removed",
+	})
+	require.NoError(t, err)
+	require.Equal(t, fenceAt, fence.CredentialsNotBefore)
+	require.Len(t, revoked, 1)
+
+	stale := providerSessionCreateFixture(t, now.Add(2*time.Minute), "credential-stale", "credential-user")
+	stale.Session.Principal.AuthenticationAt = fenceAt
+	stale.Session.Principal.IssuedAt = fenceAt
+	_, err = repo.Create(context.Background(), stale)
+	require.ErrorIs(t, err, auth.ErrProviderSessionConflict)
+
+	fresh := providerSessionCreateFixture(t, now.Add(3*time.Minute), "credential-fresh", "credential-user")
+	fresh.Session.Principal.AuthenticationAt = fenceAt.Add(time.Second)
+	fresh.Session.Principal.IssuedAt = fenceAt.Add(time.Second)
+	_, err = repo.Create(context.Background(), fresh)
+	require.NoError(t, err)
+}
+
 func TestProviderSessionRepositoryCleanupHonorsRetentionAndRetryableRemoteWork(t *testing.T) {
 	repo, db := openProviderSessionTestRepository(t)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -357,6 +497,10 @@ func openProviderSessionTestRepository(t *testing.T) (*ProviderSessionRepository
 		"20260726100000_provider_sessions.up.sql",
 		"20260726110000_freshness_invalidation_indexes.up.sql",
 		"20260726120000_provider_session_authorization_fences.up.sql",
+		"20260727130000_provider_session_lifecycle_fences.up.sql",
+		"20260727140000_lifecycle_operation_ledger.up.sql",
+		"20260727150000_provider_remote_revocation_queue.up.sql",
+		"20260727160000_provider_session_reason_fingerprints.up.sql",
 	} {
 		raw, readErr := fs.ReadFile(auth.GetAuthExtrasMigrationsFS(), "data/sql/migrations/sqlite/"+name)
 		require.NoError(t, readErr)

@@ -2,10 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -25,6 +26,20 @@ func (f ProviderOperationExecutorFunc) ExecuteProviderOperation(
 		return ProviderOperationOutcome{}, ErrProviderOperationUnsupported
 	}
 	return f(ctx, operation)
+}
+
+// ProviderOperationFingerprintField binds an action-specific executor input to
+// the durable operation fingerprint without storing the raw input.
+type ProviderOperationFingerprintField struct {
+	Name  string
+	Value string
+}
+
+// ProviderOperationFingerprintContributor is implemented by concrete
+// executors whose request contains action inputs outside
+// AuthorizedOperationContext.
+type ProviderOperationFingerprintContributor interface {
+	ProviderOperationFingerprintFields() []ProviderOperationFingerprintField
 }
 
 type LifecycleFreshnessRequest struct {
@@ -49,10 +64,12 @@ func (f LifecycleFreshnessInvalidatorFunc) InvalidateLifecycleFreshness(
 }
 
 type LifecycleCoordinationRequest struct {
-	Operation           AuthorizedOperationContext
+	Operation AuthorizedOperationContext
+	// Deprecated: hardened coordination derives this from the action policy.
 	SecurityRestricting bool
-	LocalSessionEffect  ProviderSessionEffect
-	Remote              ProviderOperationExecutor
+	// Deprecated: hardened coordination derives this from the action policy.
+	LocalSessionEffect ProviderSessionEffect
+	Remote             ProviderOperationExecutor
 }
 
 type LifecycleCoordinationResult struct {
@@ -62,260 +79,522 @@ type LifecycleCoordinationResult struct {
 	Freshness   ProviderOperationOutcome
 }
 
+// LifecycleOperationReconciliation completes a pending remote phase from an
+// authoritative provider observation. Claim must be a live record returned by
+// LifecycleOperationStore.ClaimPending.
+type LifecycleOperationReconciliation struct {
+	Request LifecycleCoordinationRequest
+	Claim   LifecycleOperationRecord
+	Remote  ProviderOperationOutcome
+}
+
 type LifecycleCoordinatorConfig struct {
-	LocalInvalidator ProviderSessionLocalInvalidator
-	Freshness        LifecycleFreshnessInvalidator
-	ResultTTL        time.Duration
-	MaxResults       int
-	Clock            func() time.Time
+	LocalInvalidator     ProviderSessionLocalInvalidator
+	LifecycleInvalidator ProviderSessionLifecycleInvalidator
+	Freshness            LifecycleFreshnessInvalidator
+	OperationStore       LifecycleOperationStore
+	RequireDurable       bool
+	RequirePermits       bool
+	RemoteLease          time.Duration
+	// Deprecated: retained for source compatibility with the previous
+	// process-local result cache. Durable stores own retention.
+	ResultTTL time.Duration
+	// Deprecated: retained for source compatibility.
+	MaxResults int
+	Clock      func() time.Time
 }
 
 type LifecycleCoordinator struct {
-	localInvalidator ProviderSessionLocalInvalidator
-	freshness        LifecycleFreshnessInvalidator
-	resultTTL        time.Duration
-	maxResults       int
-	clock            func() time.Time
-
-	group singleflight.Group
-	mu    sync.Mutex
-	cache map[string]lifecycleCachedResult
-}
-
-type lifecycleCachedResult struct {
-	fingerprint  string
-	result       LifecycleCoordinationResult
-	localErr     error
-	remoteErr    error
-	freshnessErr error
-	expiresAt    time.Time
+	localInvalidator     ProviderSessionLocalInvalidator
+	lifecycleInvalidator ProviderSessionLifecycleInvalidator
+	freshness            LifecycleFreshnessInvalidator
+	store                LifecycleOperationStore
+	requirePermits       bool
+	remoteLease          time.Duration
+	clock                func() time.Time
+	group                singleflight.Group
 }
 
 func NewLifecycleCoordinator(config LifecycleCoordinatorConfig) (*LifecycleCoordinator, error) {
 	if config.Freshness == nil {
 		return nil, ErrProviderOperationInvalid
 	}
-	if config.ResultTTL == 0 {
-		config.ResultTTL = 24 * time.Hour
-	}
-	if config.MaxResults == 0 {
-		config.MaxResults = 10_000
-	}
-	if config.ResultTTL <= 0 || config.ResultTTL > 7*24*time.Hour ||
-		config.MaxResults <= 0 || config.MaxResults > 100_000 {
-		return nil, ErrProviderOperationInvalid
-	}
 	if config.Clock == nil {
 		config.Clock = func() time.Time { return time.Now().UTC() }
 	}
+	if config.OperationStore == nil {
+		return nil, fmt.Errorf("%w: explicit operation store is required", ErrProviderOperationInvalid)
+	}
+	if config.RequireDurable && !config.OperationStore.Durable() {
+		return nil, fmt.Errorf("%w: durable operation store is required", ErrProviderOperationInvalid)
+	}
+	if config.RemoteLease == 0 {
+		config.RemoteLease = 30 * time.Second
+	}
+	if config.RemoteLease < 5*time.Second || config.RemoteLease > 5*time.Minute {
+		return nil, fmt.Errorf("%w: remote lease must be between 5 seconds and 5 minutes", ErrProviderOperationInvalid)
+	}
 	return &LifecycleCoordinator{
-		localInvalidator: config.LocalInvalidator,
-		freshness:        config.Freshness,
-		resultTTL:        config.ResultTTL,
-		maxResults:       config.MaxResults,
-		clock:            config.Clock,
-		cache:            make(map[string]lifecycleCachedResult),
+		localInvalidator:     config.LocalInvalidator,
+		lifecycleInvalidator: config.LifecycleInvalidator,
+		freshness:            config.Freshness,
+		store:                config.OperationStore,
+		requirePermits:       config.RequirePermits,
+		remoteLease:          config.RemoteLease,
+		clock:                config.Clock,
 	}, nil
 }
 
-//nolint:gocyclo // Idempotency, local-first revocation, and partial provider outcomes remain explicit.
+// Coordinate advances one durable operation state machine. Completed phases
+// are loaded from the store and are never replayed.
 func (c *LifecycleCoordinator) Coordinate(
 	ctx context.Context,
 	request LifecycleCoordinationRequest,
 ) (LifecycleCoordinationResult, error) {
-	if c == nil || request.Remote == nil {
+	if c == nil || c.store == nil || request.Remote == nil {
 		return LifecycleCoordinationResult{}, ErrProviderOperationInvalid
 	}
-	operation := request.Operation
-	if err := operation.Validate(operation.Action, operation.Environment, operation.Target.Provider); err != nil {
-		return LifecycleCoordinationResult{}, err
-	}
-	if request.SecurityRestricting {
-		switch request.LocalSessionEffect {
-		case ProviderSessionEffectCurrent, ProviderSessionEffectNamed:
-			if strings.TrimSpace(operation.ProviderSessionID) == "" {
-				return LifecycleCoordinationResult{}, fmt.Errorf("%w: provider session ID is required", ErrProviderOperationInvalid)
-			}
-		case ProviderSessionEffectAllForUser:
-			if strings.TrimSpace(operation.Target.ApplicationSubject) == "" {
-				return LifecycleCoordinationResult{}, fmt.Errorf("%w: application subject is required", ErrProviderOperationInvalid)
-			}
-		default:
-			return LifecycleCoordinationResult{}, fmt.Errorf("%w: local session effect is required", ErrProviderOperationInvalid)
-		}
-		if c.localInvalidator == nil {
-			return LifecycleCoordinationResult{}, fmt.Errorf("%w: local invalidator is required", ErrProviderOperationInvalid)
-		}
-	}
-	fingerprint := lifecycleFingerprint(request)
-	if cached, ok, err := c.load(operation.OperationID, fingerprint); ok || err != nil {
-		if err != nil {
-			return LifecycleCoordinationResult{}, err
-		}
-		if cached.result.Local.Status != ProviderOperationFailed &&
-			cached.result.Freshness.Status != ProviderOperationFailed {
-			return cached.result, cached.err()
-		}
-	}
-
-	_, groupErr, _ := c.group.Do(operation.OperationID, func() (any, error) {
-		if cached, ok, err := c.load(operation.OperationID, fingerprint); ok || err != nil {
-			if err != nil {
-				return nil, err
-			}
-			switch {
-			case cached.result.Local.Status == ProviderOperationFailed:
-				attempt := c.execute(ctx, request)
-				c.store(operation.OperationID, fingerprint, attempt)
-			case cached.result.Freshness.Status == ProviderOperationFailed:
-				freshnessErr := c.freshness.InvalidateLifecycleFreshness(ctx, LifecycleFreshnessRequest{
-					Operation: request.Operation,
-					Remote:    cached.result.Remote,
-				})
-				cached.freshnessErr = freshnessErr
-				if freshnessErr == nil {
-					cached.result.Freshness.Status = ProviderOperationSucceeded
-				}
-				c.store(operation.OperationID, fingerprint, lifecycleAttempt{
-					result: cached.result, localErr: cached.localErr,
-					remoteErr: cached.remoteErr, freshnessErr: cached.freshnessErr,
-				})
-			}
-			return nil, nil
-		}
-		attempt := c.execute(ctx, request)
-		c.store(operation.OperationID, fingerprint, attempt)
-		return nil, nil
-	})
-	if groupErr != nil {
-		return LifecycleCoordinationResult{}, groupErr
-	}
-	cached, ok, err := c.load(operation.OperationID, fingerprint)
+	policy, err := LifecyclePolicyForAction(request.Operation.Action)
 	if err != nil {
 		return LifecycleCoordinationResult{}, err
 	}
+	request.SecurityRestricting = policy.SecurityRestricting
+	request.LocalSessionEffect = policy.LocalSessionEffect
+	if err := validateLifecycleCoordinationRequest(c, request); err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	fingerprint, err := lifecycleFingerprint(request)
+	if err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	value, err, _ := c.group.Do(request.Operation.OperationID, func() (any, error) {
+		return c.coordinateOnce(ctx, request, fingerprint)
+	})
+	if value == nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	result, ok := value.(LifecycleCoordinationResult)
 	if !ok {
 		return LifecycleCoordinationResult{}, ErrProviderOperationInvalid
 	}
-	return cached.result, cached.err()
+	return result, err
 }
 
-func (c *LifecycleCoordinator) execute(
+// ReconcileLifecycleOperation persists an authoritative outcome for one
+// leased pending operation, then resumes freshness and completion. It never
+// dispatches the provider mutation.
+func (c *LifecycleCoordinator) ReconcileLifecycleOperation(
+	ctx context.Context,
+	reconciliation LifecycleOperationReconciliation,
+) (LifecycleCoordinationResult, error) {
+	if c == nil || c.store == nil || reconciliation.Request.Remote == nil {
+		return LifecycleCoordinationResult{}, ErrProviderOperationInvalid
+	}
+	if err := reconciliation.Remote.Validate(); err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	request := reconciliation.Request
+	policy, err := LifecyclePolicyForAction(request.Operation.Action)
+	if err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	request.SecurityRestricting = policy.SecurityRestricting
+	request.LocalSessionEffect = policy.LocalSessionEffect
+	if err := validateLifecycleCoordinationRequest(c, request); err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	fingerprint, err := lifecycleFingerprint(request)
+	if err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	value, reconcileErr, _ := c.group.Do(request.Operation.OperationID, func() (any, error) {
+		record, loadErr := c.store.Load(ctx, request.Operation.OperationID)
+		if loadErr != nil {
+			return LifecycleCoordinationResult{}, loadErr
+		}
+		claim := reconciliation.Claim
+		now := c.clock().UTC()
+		if record.Fingerprint != fingerprint ||
+			claim.OperationID != record.OperationID ||
+			claim.Fingerprint != record.Fingerprint ||
+			claim.Revision != record.Revision ||
+			claim.RemoteAttempt != record.RemoteAttempt ||
+			claim.RemoteLeaseOwner == "" ||
+			claim.RemoteLeaseOwner != record.RemoteLeaseOwner ||
+			claim.RemoteLeaseUntil.IsZero() ||
+			!claim.RemoteLeaseUntil.Equal(record.RemoteLeaseUntil) ||
+			!now.Before(record.RemoteLeaseUntil) ||
+			record.RemotePhase != LifecyclePhasePendingReconcile {
+			return lifecycleResultFromRecord(record), ErrLifecycleOperationConflict
+		}
+		record.Remote = reconciliation.Remote
+		record.RemoteLeaseOwner = ""
+		record.RemoteLeaseUntil = time.Time{}
+		record.RemotePhase = lifecycleRemoteTerminalPhase(reconciliation.Remote)
+		stored, advanceErr := c.store.Advance(ctx, record.Revision, record)
+		if advanceErr != nil {
+			return lifecycleResultFromRecord(record), advanceErr
+		}
+		record = stored
+		record, freshnessErr := c.runFreshnessPhase(ctx, request, record)
+		record, completionErr := c.completeOperation(ctx, record)
+		return lifecycleResultFromRecord(record), errors.Join(freshnessErr, completionErr)
+	})
+	if value == nil {
+		return LifecycleCoordinationResult{}, reconcileErr
+	}
+	result, ok := value.(LifecycleCoordinationResult)
+	if !ok {
+		return LifecycleCoordinationResult{}, ErrProviderOperationInvalid
+	}
+	return result, reconcileErr
+}
+
+func validateLifecycleCoordinationRequest(
+	c *LifecycleCoordinator,
+	request LifecycleCoordinationRequest,
+) error {
+	operation := request.Operation
+	if err := operation.Validate(operation.Action, operation.Environment, operation.Target.Provider); err != nil {
+		return err
+	}
+	if !request.SecurityRestricting {
+		return nil
+	}
+	switch request.LocalSessionEffect {
+	case ProviderSessionEffectCurrent, ProviderSessionEffectNamed:
+		if strings.TrimSpace(operation.ProviderSessionID) == "" {
+			return fmt.Errorf("%w: provider session ID is required", ErrProviderOperationInvalid)
+		}
+	case ProviderSessionEffectAllForUser:
+		if strings.TrimSpace(operation.Target.ApplicationSubject) == "" {
+			return fmt.Errorf("%w: application subject is required", ErrProviderOperationInvalid)
+		}
+	default:
+		return fmt.Errorf("%w: local session effect is required", ErrProviderOperationInvalid)
+	}
+	if c.localInvalidator == nil && c.lifecycleInvalidator == nil {
+		return fmt.Errorf("%w: local invalidator is required", ErrProviderOperationInvalid)
+	}
+	return nil
+}
+
+func (c *LifecycleCoordinator) coordinateOnce(
 	ctx context.Context,
 	request LifecycleCoordinationRequest,
-) lifecycleAttempt {
-	result := LifecycleCoordinationResult{OperationID: request.Operation.OperationID}
-	if request.SecurityRestricting {
-		var err error
+	fingerprint string,
+) (LifecycleCoordinationResult, error) {
+	record, _, err := c.store.Claim(ctx, LifecycleOperationClaim{
+		OperationID: request.Operation.OperationID,
+		Fingerprint: fingerprint,
+		Action:      request.Operation.Action,
+	})
+	if err != nil {
+		return LifecycleCoordinationResult{}, err
+	}
+	if record.Completed {
+		return lifecycleResultFromRecord(record), nil
+	}
+
+	record, localErr := c.runLocalPhase(ctx, request, record)
+	if localErr != nil {
+		return lifecycleResultFromRecord(record), localErr
+	}
+	record, remoteErr := c.runRemotePhase(ctx, request, record)
+	record, freshnessErr := c.runFreshnessPhase(ctx, request, record)
+	record, completionErr := c.completeOperation(ctx, record)
+	return lifecycleResultFromRecord(record), errors.Join(remoteErr, freshnessErr, completionErr)
+}
+
+func (c *LifecycleCoordinator) runLocalPhase(
+	ctx context.Context,
+	request LifecycleCoordinationRequest,
+	record LifecycleOperationRecord,
+) (LifecycleOperationRecord, error) {
+	if record.LocalPhase == LifecyclePhaseSucceeded || record.LocalPhase == LifecyclePhaseSkipped {
+		return record, nil
+	}
+	if record.LocalPhase == LifecyclePhaseInFlight {
+		return record, ErrProviderOperationPending
+	}
+	claimed := record
+	claimed.LocalPhase = LifecyclePhaseInFlight
+	next, err := c.store.Advance(ctx, record.Revision, claimed)
+	if err != nil {
+		return c.reloadAfterConflict(ctx, record.OperationID, err)
+	}
+	record = next
+
+	if !request.SecurityRestricting {
+		record.LocalPhase = LifecyclePhaseSkipped
+		record.Local = ProviderOperationOutcome{
+			Status:                ProviderOperationAlreadyComplete,
+			ProviderSessionEffect: ProviderSessionEffectNone,
+		}
+		return c.store.Advance(ctx, record.Revision, record)
+	}
+	if c.lifecycleInvalidator != nil {
+		policy, policyErr := LifecyclePolicyForAction(request.Operation.Action)
+		if policyErr != nil {
+			return record, policyErr
+		}
+		transition := ProviderSessionLifecycleTransition{
+			ApplicationSubject:    request.Operation.Target.ApplicationSubject,
+			TenantID:              "",
+			BlockedState:          policy.LifecycleState,
+			Ordering:              ProviderSessionLifecycleRepositoryOrder,
+			Reason:                request.Operation.Reason,
+			QueueRemoteRevocation: policy.QueueSessionRevocation,
+		}
+		if policy.CredentialsInvalidating {
+			transition.AdvanceCredentials = true
+		}
+		_, _, err = c.lifecycleInvalidator.ApplyProviderSessionLifecycle(ctx, transition)
+	} else {
 		switch request.LocalSessionEffect {
 		case ProviderSessionEffectCurrent, ProviderSessionEffectNamed:
 			err = c.localInvalidator.InvalidateProviderSession(
-				ctx, request.Operation.ProviderSessionID, request.Operation.Reason,
+				ctx,
+				request.Operation.ProviderSessionID,
+				request.Operation.Reason,
 			)
 		case ProviderSessionEffectAllForUser:
 			err = c.localInvalidator.InvalidateUserProviderSessions(
-				ctx, request.Operation.Target.ApplicationSubject, request.Operation.Reason,
+				ctx,
+				request.Operation.Target.ApplicationSubject,
+				request.Operation.Reason,
 			)
 		}
-		if err != nil {
-			result.Local = ProviderOperationOutcome{
-				Status: ProviderOperationFailed, ProviderSessionEffect: request.LocalSessionEffect,
+	}
+	if err != nil {
+		record.LocalPhase = LifecyclePhaseFailed
+		record.Local = ProviderOperationOutcome{
+			Status: ProviderOperationFailed, ProviderSessionEffect: request.LocalSessionEffect,
+		}
+		stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+		return stored, errors.Join(err, storeErr)
+	}
+	record.LocalPhase = LifecyclePhaseSucceeded
+	record.Local = ProviderOperationOutcome{
+		Status: ProviderOperationSucceeded, ProviderSessionEffect: request.LocalSessionEffect,
+	}
+	return c.store.Advance(ctx, record.Revision, record)
+}
+
+func (c *LifecycleCoordinator) runRemotePhase(
+	ctx context.Context,
+	request LifecycleCoordinationRequest,
+	record LifecycleOperationRecord,
+) (LifecycleOperationRecord, error) {
+	switch record.RemotePhase {
+	case LifecyclePhaseSucceeded, LifecyclePhaseFailed, LifecyclePhaseSkipped:
+		return record, nil
+	case LifecyclePhaseInFlight:
+		if record.RemoteLeaseUntil.IsZero() || c.clock().UTC().Before(record.RemoteLeaseUntil) {
+			return record, ErrProviderOperationPending
+		}
+		record.RemotePhase = LifecyclePhasePendingReconcile
+		next, err := c.store.Advance(ctx, record.Revision, record)
+		return next, errors.Join(ErrProviderOperationPending, err)
+	case LifecyclePhasePendingReconcile:
+		return record, ErrProviderOperationPending
+	}
+	leaseOwner, err := randomProviderSessionValue(18)
+	if err != nil {
+		return record, err
+	}
+	record.RemotePhase = LifecyclePhaseInFlight
+	record.RemoteAttempt++
+	record.RemoteLeaseOwner = leaseOwner
+	record.RemoteLeaseUntil = c.clock().UTC().Add(c.remoteLease)
+	next, err := c.store.Advance(ctx, record.Revision, record)
+	if err != nil {
+		return c.reloadAfterConflict(ctx, record.OperationID, err)
+	}
+	record = next
+
+	permitNonce, permitErr := randomProviderSessionValue(18)
+	if permitErr != nil {
+		return record, permitErr
+	}
+	permit := newLifecycleExecutionPermit(
+		c.store,
+		c.clock,
+		request.Operation,
+		request,
+		record,
+		permitNonce,
+	)
+	var outcome ProviderOperationOutcome
+	var remoteErr error
+	if coordinated, ok := request.Remote.(CoordinatedProviderOperationExecutor); ok {
+		outcome, remoteErr = coordinated.ExecuteCoordinatedProviderOperation(ctx, request.Operation, permit)
+		if c.requirePermits && !permit.consumed() {
+			outcome = ProviderOperationOutcome{Status: ProviderOperationFailed}
+			remoteErr = errors.Join(
+				remoteErr,
+				fmt.Errorf("%w: lifecycle execution permit was not consumed", ErrProviderOperationUnauthorized),
+			)
+		}
+		if permit.consumed() {
+			current, claimErr := permit.currentClaim(ctx)
+			if claimErr != nil {
+				latest, loadErr := c.store.Load(ctx, record.OperationID)
+				return latest, errors.Join(
+					remoteErr,
+					ErrProviderOperationPending,
+					claimErr,
+					loadErr,
+				)
 			}
-			return lifecycleAttempt{result: result, localErr: err}
+			record = current
 		}
-		result.Local = ProviderOperationOutcome{
-			Status: ProviderOperationSucceeded, ProviderSessionEffect: request.LocalSessionEffect,
-		}
+		permit.invalidate()
+	} else if c.requirePermits {
+		outcome = ProviderOperationOutcome{Status: ProviderOperationFailed}
+		remoteErr = fmt.Errorf("%w: coordinated executor is required", ErrProviderOperationUnauthorized)
 	} else {
-		result.Local = ProviderOperationOutcome{
-			Status: ProviderOperationAlreadyComplete, ProviderSessionEffect: ProviderSessionEffectNone,
+		outcome, remoteErr = request.Remote.ExecuteProviderOperation(ctx, request.Operation)
+	}
+	if outcomeErr := outcome.Validate(); outcomeErr != nil {
+		remoteErr = errors.Join(remoteErr, outcomeErr)
+		outcome.Status = ProviderOperationFailed
+		outcome.Retryable = false
+	}
+	record.Remote = outcome
+	record.RemoteLeaseOwner = ""
+	record.RemoteLeaseUntil = time.Time{}
+	record.RemotePhase = lifecycleRemoteTerminalPhase(outcome)
+	if remoteErr != nil && outcome.Retryable {
+		record.RemotePhase = LifecyclePhasePendingReconcile
+	}
+	stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+	if storeErr != nil {
+		current, conflictErr := c.reloadAfterConflict(ctx, record.OperationID, storeErr)
+		return current, errors.Join(remoteErr, conflictErr)
+	}
+	return stored, errors.Join(remoteErr, storeErr)
+}
+
+func (c *LifecycleCoordinator) runFreshnessPhase(
+	ctx context.Context,
+	request LifecycleCoordinationRequest,
+	record LifecycleOperationRecord,
+) (LifecycleOperationRecord, error) {
+	if record.FreshnessPhase == LifecyclePhaseSucceeded || record.FreshnessPhase == LifecyclePhaseSkipped {
+		return record, nil
+	}
+	if record.FreshnessPhase == LifecyclePhaseInFlight {
+		return record, ErrProviderOperationPending
+	}
+	record.FreshnessPhase = LifecyclePhaseInFlight
+	next, err := c.store.Advance(ctx, record.Revision, record)
+	if err != nil {
+		return c.reloadAfterConflict(ctx, record.OperationID, err)
+	}
+	record = next
+	policy, policyErr := LifecyclePolicyForAction(request.Operation.Action)
+	if policyErr != nil {
+		return record, policyErr
+	}
+	if policy.LifecycleState == ProviderSessionLifecycleActive &&
+		(record.Remote.Status == ProviderOperationSucceeded ||
+			record.Remote.Status == ProviderOperationAlreadyComplete) {
+		if c.lifecycleInvalidator == nil {
+			return record, fmt.Errorf("%w: lifecycle invalidator is required for activation", ErrProviderOperationInvalid)
+		}
+		_, _, lifecycleErr := c.lifecycleInvalidator.ApplyProviderSessionLifecycle(
+			ctx,
+			ProviderSessionLifecycleTransition{
+				ApplicationSubject: request.Operation.Target.ApplicationSubject,
+				BlockedState:       ProviderSessionLifecycleActive,
+				Ordering:           ProviderSessionLifecycleRepositoryOrder,
+				Reason:             request.Operation.Reason,
+			},
+		)
+		if lifecycleErr != nil {
+			record.FreshnessPhase = LifecyclePhaseFailed
+			record.Freshness = ProviderOperationOutcome{Status: ProviderOperationFailed}
+			stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+			return stored, errors.Join(lifecycleErr, storeErr)
 		}
 	}
-
-	remote, remoteErr := request.Remote.ExecuteProviderOperation(ctx, request.Operation)
-	if outcomeErr := remote.Validate(); outcomeErr != nil {
-		remoteErr = errors.Join(remoteErr, outcomeErr)
-		remote.Status = ProviderOperationFailed
-		remote.Retryable = false
+	if !policy.FreshnessRequired {
+		record.FreshnessPhase = LifecyclePhaseSkipped
+		record.Freshness = ProviderOperationOutcome{Status: ProviderOperationAlreadyComplete}
+		return c.store.Advance(ctx, record.Revision, record)
 	}
-	result.Remote = remote
-
 	freshnessErr := c.freshness.InvalidateLifecycleFreshness(ctx, LifecycleFreshnessRequest{
 		Operation: request.Operation,
-		Remote:    remote,
+		Remote:    record.Remote,
 	})
 	if freshnessErr != nil {
-		result.Freshness = ProviderOperationOutcome{Status: ProviderOperationFailed}
+		record.FreshnessPhase = LifecyclePhaseFailed
+		record.Freshness = ProviderOperationOutcome{Status: ProviderOperationFailed}
 	} else {
-		result.Freshness = ProviderOperationOutcome{Status: ProviderOperationSucceeded}
+		record.FreshnessPhase = LifecyclePhaseSucceeded
+		record.Freshness = ProviderOperationOutcome{Status: ProviderOperationSucceeded}
 	}
-	return lifecycleAttempt{result: result, remoteErr: remoteErr, freshnessErr: freshnessErr}
+	stored, storeErr := c.store.Advance(ctx, record.Revision, record)
+	return stored, errors.Join(freshnessErr, storeErr)
 }
 
-type lifecycleAttempt struct {
-	result       LifecycleCoordinationResult
-	localErr     error
-	remoteErr    error
-	freshnessErr error
+func (c *LifecycleCoordinator) completeOperation(
+	ctx context.Context,
+	record LifecycleOperationRecord,
+) (LifecycleOperationRecord, error) {
+	if record.Completed {
+		return record, nil
+	}
+	localDone := record.LocalPhase == LifecyclePhaseSucceeded || record.LocalPhase == LifecyclePhaseSkipped
+	remoteDone := record.RemotePhase == LifecyclePhaseSucceeded ||
+		record.RemotePhase == LifecyclePhaseFailed ||
+		record.RemotePhase == LifecyclePhaseSkipped
+	freshnessDone := record.FreshnessPhase == LifecyclePhaseSucceeded ||
+		record.FreshnessPhase == LifecyclePhaseSkipped
+	if !localDone || !remoteDone || !freshnessDone {
+		return record, nil
+	}
+	record.Completed = true
+	return c.store.Advance(ctx, record.Revision, record)
 }
 
-func (c *LifecycleCoordinator) load(
-	operationID, fingerprint string,
-) (lifecycleCachedResult, bool, error) {
-	now := c.clock()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.pruneLocked(now)
-	cached, ok := c.cache[operationID]
-	if !ok {
-		return lifecycleCachedResult{}, false, nil
+func (c *LifecycleCoordinator) reloadAfterConflict(
+	ctx context.Context,
+	operationID string,
+	err error,
+) (LifecycleOperationRecord, error) {
+	if !errors.Is(err, ErrLifecycleOperationConflict) {
+		return LifecycleOperationRecord{}, err
 	}
-	if cached.fingerprint != fingerprint {
-		return lifecycleCachedResult{}, false, fmt.Errorf("%w: operation ID reuse mismatch", ErrProviderOperationConflict)
-	}
-	return cached, true, nil
+	current, loadErr := c.store.Load(ctx, operationID)
+	return current, errors.Join(ErrProviderOperationPending, loadErr)
 }
 
-func (c *LifecycleCoordinator) store(
-	operationID, fingerprint string,
-	attempt lifecycleAttempt,
-) {
-	now := c.clock()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.pruneLocked(now)
-	if len(c.cache) >= c.maxResults {
-		var oldestID string
-		var oldest time.Time
-		for id, value := range c.cache {
-			if oldestID == "" || value.expiresAt.Before(oldest) {
-				oldestID, oldest = id, value.expiresAt
-			}
-		}
-		delete(c.cache, oldestID)
-	}
-	c.cache[operationID] = lifecycleCachedResult{
-		fingerprint: fingerprint, result: attempt.result,
-		localErr: attempt.localErr, remoteErr: attempt.remoteErr,
-		freshnessErr: attempt.freshnessErr, expiresAt: now.Add(c.resultTTL),
+func lifecycleResultFromRecord(record LifecycleOperationRecord) LifecycleCoordinationResult {
+	return LifecycleCoordinationResult{
+		OperationID: record.OperationID,
+		Local:       record.Local,
+		Remote:      record.Remote,
+		Freshness:   record.Freshness,
 	}
 }
 
-func (r lifecycleCachedResult) err() error {
-	return errors.Join(r.localErr, r.remoteErr, r.freshnessErr)
-}
-
-func (c *LifecycleCoordinator) pruneLocked(now time.Time) {
-	for operationID, result := range c.cache {
-		if !now.Before(result.expiresAt) {
-			delete(c.cache, operationID)
-		}
+func lifecycleRemoteTerminalPhase(outcome ProviderOperationOutcome) LifecycleOperationPhase {
+	switch outcome.Status {
+	case ProviderOperationPending:
+		return LifecyclePhasePendingReconcile
+	case ProviderOperationFailed, ProviderOperationConflict:
+		return LifecyclePhaseFailed
+	default:
+		return LifecyclePhaseSucceeded
 	}
 }
 
-func lifecycleFingerprint(request LifecycleCoordinationRequest) string {
+func lifecycleOperationBindingFingerprint(request LifecycleCoordinationRequest) string {
 	operation := request.Operation
-	return strings.Join([]string{
+	canonical := strings.Join([]string{
+		"lifecycle-operation-binding-v3",
 		string(operation.Action),
 		strings.TrimSpace(operation.Target.Provider),
 		strings.TrimSpace(operation.Target.ApplicationSubject),
@@ -325,10 +604,56 @@ func lifecycleFingerprint(request LifecycleCoordinationRequest) string {
 		strings.TrimSpace(operation.Permission),
 		strings.TrimSpace(operation.Actor.ID),
 		strings.TrimSpace(operation.Actor.Type),
-		strings.TrimSpace(operation.Reason),
+		string(FingerprintProviderAuditValue(operation.Reason)),
 		strings.TrimSpace(operation.Environment),
+		string(FingerprintProviderAuditValue(operation.RequestID)),
 		operation.AuthorizedAt.UTC().Format(time.RFC3339Nano),
 		string(request.LocalSessionEffect),
 		fmt.Sprintf("%t", request.SecurityRestricting),
 	}, "\x00")
+	sum := sha256.Sum256([]byte(canonical))
+	return fmt.Sprintf("sha256:%x", sum)
+}
+
+func lifecycleFingerprint(request LifecycleCoordinationRequest) (string, error) {
+	fields := []string{
+		"lifecycle-operation-v3",
+		lifecycleOperationBindingFingerprint(request),
+	}
+	if contributor, ok := request.Remote.(ProviderOperationFingerprintContributor); ok {
+		actionFields := slices.Clone(contributor.ProviderOperationFingerprintFields())
+		slices.SortFunc(actionFields, func(left, right ProviderOperationFingerprintField) int {
+			if byName := strings.Compare(left.Name, right.Name); byName != 0 {
+				return byName
+			}
+			return strings.Compare(left.Value, right.Value)
+		})
+		seen := make(map[string]struct{}, len(actionFields))
+		for _, field := range actionFields {
+			name := strings.TrimSpace(field.Name)
+			if !validLifecycleFingerprintFieldName(name) || len(field.Value) > 4096 {
+				return "", fmt.Errorf("%w: invalid action fingerprint field", ErrProviderOperationInvalid)
+			}
+			if _, duplicate := seen[name]; duplicate {
+				return "", fmt.Errorf("%w: duplicate action fingerprint field", ErrProviderOperationInvalid)
+			}
+			seen[name] = struct{}{}
+			fields = append(fields, name, string(FingerprintProviderAuditValue(field.Value)))
+		}
+	}
+	sum := sha256.Sum256([]byte(strings.Join(fields, "\x00")))
+	return fmt.Sprintf("sha256:%x", sum), nil
+}
+
+func validLifecycleFingerprintFieldName(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') &&
+			char != '_' && char != '-' && char != '.' {
+			return false
+		}
+	}
+	return true
 }

@@ -74,7 +74,7 @@ func Build(
 	if err != nil {
 		return Services{}, err
 	}
-	admin, err := supabase.NewAdminClient(client)
+	admin, err := supabase.NewHardenedAdminClient(client)
 	if err != nil {
 		return Services{}, err
 	}
@@ -108,17 +108,24 @@ func WireProviderSessions(
 	return base
 }
 
-// NewLifecycleCoordinator wires local-only session invalidation and freshness
-// delivery. Security-restricting operations use this coordinator instead of
-// calling Admin directly.
+// NewLifecycleCoordinator wires local-only session invalidation, durable
+// operation authority, and freshness delivery. The supplied store must be
+// Postgres-backed. Security-restricting operations use this coordinator instead
+// of calling Admin directly.
 func NewLifecycleCoordinator(
 	local auth.ProviderSessionLocalInvalidator,
 	freshness auth.LifecycleFreshnessInvalidator,
+	store auth.LifecycleOperationStore,
 ) (*auth.LifecycleCoordinator, error) {
+	lifecycle, _ := local.(auth.ProviderSessionLifecycleInvalidator)
 	return auth.NewLifecycleCoordinator(auth.LifecycleCoordinatorConfig{
-		LocalInvalidator: local,
-		Freshness:        freshness,
-		ResultTTL:        24 * time.Hour,
+		LocalInvalidator:     local,
+		LifecycleInvalidator: lifecycle,
+		Freshness:            freshness,
+		OperationStore:       store,
+		RequireDurable:       true,
+		RequirePermits:       true,
+		ResultTTL:            24 * time.Hour,
 	})
 }
 
@@ -129,13 +136,8 @@ func Suspend(
 	request auth.AccountLifecycleRequest,
 ) (auth.LifecycleCoordinationResult, error) {
 	return coordinator.Coordinate(ctx, auth.LifecycleCoordinationRequest{
-		Operation:           request.Operation,
-		SecurityRestricting: true,
-		LocalSessionEffect:  auth.ProviderSessionEffectAllForUser,
-		Remote: auth.ProviderOperationExecutorFunc(func(ctx context.Context, _ auth.AuthorizedOperationContext) (auth.ProviderOperationOutcome, error) {
-			result, err := admin.Suspend(ctx, request)
-			return result.ProviderOperationOutcome, err
-		}),
+		Operation: request.Operation,
+		Remote:    admin.SuspendExecutor(request),
 	})
 }
 
@@ -149,10 +151,7 @@ func RemoveFactor(
 	// conservatively before that read so a stale caller hint can never bypass
 	// local-first ordering if the target factor is verified.
 	return coordinator.Coordinate(ctx, auth.LifecycleCoordinationRequest{
-		Operation: request.Operation, SecurityRestricting: true,
-		LocalSessionEffect: auth.ProviderSessionEffectAllForUser,
-		Remote: auth.ProviderOperationExecutorFunc(func(ctx context.Context, _ auth.AuthorizedOperationContext) (auth.ProviderOperationOutcome, error) {
-			return admin.RemoveFactor(ctx, request)
-		}),
+		Operation: request.Operation,
+		Remote:    admin.RemoveFactorExecutor(request),
 	})
 }
