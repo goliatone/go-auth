@@ -26,23 +26,26 @@ const (
 var ErrInvalidConfig = errors.New("supabase: invalid configuration")
 
 type Config struct {
-	ProjectURL                string
-	Issuer                    string
-	DiscoveryURL              string
-	ClientID                  string
-	ClientSecret              auth.Secret
-	TokenEndpointAuthMethod   oidc.TokenEndpointAuthMethod
-	CallbackURL               string
-	Scopes                    []string
-	IDTokenAudience           []string
-	AccessTokenAudience       []string
-	AllowedAlgorithms         []string
-	AuthorizationUIURL        string
-	AllowedReturnURLs         []string
-	AdminCredential           auth.Secret
-	PublishableKey            auth.Secret
-	ManagementCredential      auth.Secret
-	Environment               string
+	ProjectURL              string
+	Issuer                  string
+	DiscoveryURL            string
+	ClientID                string
+	ClientSecret            auth.Secret
+	TokenEndpointAuthMethod oidc.TokenEndpointAuthMethod
+	CallbackURL             string
+	Scopes                  []string
+	IDTokenAudience         []string
+	AccessTokenAudience     []string
+	AllowedAlgorithms       []string
+	AuthorizationUIURL      string
+	AllowedReturnURLs       []string
+	AdminCredential         auth.Secret
+	PublishableKey          auth.Secret
+	ManagementCredential    auth.Secret
+	Environment             string
+	// ProviderSessionDeployment is consulted only when explicitly preparing a
+	// ProviderSessionManagerConfig. Local-token OIDC and API clients do not
+	// require provider-session operations policy.
 	ProviderSessionDeployment auth.ProviderSessionDeployment
 	AuthAPIVersion            string
 	OAuthAPIVersion           string
@@ -107,12 +110,6 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Environment) == "" {
 		return configError("environment", "is required")
 	}
-	if c.ProviderSessionDeployment == "" {
-		return configError("provider_session_deployment", "is required")
-	}
-	if err := c.ProviderSessionDeployment.Validate(); err != nil {
-		return configError("provider_session_deployment", "is invalid")
-	}
 	if c.AdminCredential.IsZero() || c.PublishableKey.IsZero() {
 		return configError("credentials", "admin and publishable credentials are required")
 	}
@@ -147,6 +144,35 @@ func (c Config) Validate() error {
 		return configError("response_body_bytes", "must be between zero and eight MiB")
 	}
 	return nil
+}
+
+// ProviderSessionManagerConfig binds an explicitly selected Supabase
+// deployment class to a matching provider-session manager configuration.
+// Shared OIDC and API-client validation deliberately does not call this method.
+func (c Config) ProviderSessionManagerConfig(
+	base auth.ProviderSessionManagerConfig,
+) (auth.ProviderSessionManagerConfig, error) {
+	c = c.WithDefaults()
+	if err := c.Validate(); err != nil {
+		return auth.ProviderSessionManagerConfig{}, err
+	}
+	if err := c.ProviderSessionDeployment.Validate(); err != nil {
+		return auth.ProviderSessionManagerConfig{},
+			configError("provider_session_deployment", "is required and must be valid")
+	}
+	if err := base.Binding.Validate(); err != nil {
+		return auth.ProviderSessionManagerConfig{},
+			configError("provider_session_binding", err.Error())
+	}
+	if strings.TrimSpace(base.Binding.Provider) != ProviderKey ||
+		strings.TrimRight(strings.TrimSpace(base.Binding.Issuer), "/") != c.Issuer ||
+		strings.TrimSpace(base.Binding.ClientID) != strings.TrimSpace(c.ClientID) ||
+		strings.TrimSpace(base.Binding.Environment) != strings.TrimSpace(c.Environment) {
+		return auth.ProviderSessionManagerConfig{},
+			configError("provider_session_binding", "must match provider, issuer, client, and environment")
+	}
+	base.Deployment = c.ProviderSessionDeployment
+	return base, nil
 }
 
 func (c Config) WithDefaults() Config {

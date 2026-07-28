@@ -41,6 +41,42 @@ func TestConfigProducesHardenedOIDCPreset(t *testing.T) {
 	require.Equal(t, oidc.TokenEndpointAuthClientSecretBasic, provider.TokenEndpointAuthMethod)
 }
 
+func TestLocalTokenConfigDoesNotRequireProviderSessionDeployment(t *testing.T) {
+	cfg := validConfig()
+	cfg.ProviderSessionDeployment = ""
+
+	require.NoError(t, cfg.Validate())
+	_, err := cfg.OIDCConfig()
+	require.NoError(t, err)
+	_, err = cfg.PrincipalMapper()
+	require.NoError(t, err)
+	_, err = NewClient(cfg, nil, nil)
+	require.NoError(t, err)
+}
+
+func TestProviderSessionManagerConfigRequiresExplicitMatchingDeployment(t *testing.T) {
+	cfg := validConfig()
+	base := auth.ProviderSessionManagerConfig{
+		Binding: auth.ProviderSessionBinding{
+			Host: "backoffice.example", ApplicationID: "backoffice",
+			Environment: cfg.Environment, Provider: ProviderKey,
+			Issuer: cfg.Issuer, ClientID: cfg.ClientID,
+		},
+	}
+	cfg.ProviderSessionDeployment = ""
+	_, err := cfg.ProviderSessionManagerConfig(base)
+	require.ErrorIs(t, err, ErrInvalidConfig)
+
+	cfg.ProviderSessionDeployment = auth.ProviderSessionDeploymentTest
+	configured, err := cfg.ProviderSessionManagerConfig(base)
+	require.NoError(t, err)
+	require.Equal(t, auth.ProviderSessionDeploymentTest, configured.Deployment)
+
+	base.Binding.Environment = "different-environment"
+	_, err = cfg.ProviderSessionManagerConfig(base)
+	require.ErrorIs(t, err, ErrInvalidConfig)
+}
+
 func TestConfigRejectsCredentialMixingAndUnsafeURLs(t *testing.T) {
 	tests := map[string]func(*Config){
 		"project HTTP": func(c *Config) { c.ProjectURL = "http://project.supabase.co" },
