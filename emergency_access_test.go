@@ -169,6 +169,86 @@ func TestEmergencyAccessPolicyAuthorizesResolvedGrantAndVersionedCredentialProof
 	}
 }
 
+func TestEmergencyAccessPolicyRejectsLogicalIDRevocationForAuthoritativeGrant(t *testing.T) {
+	now := time.Now().UTC()
+	issued := validIssuedEmergencyGrant(now)
+	var revokeCalls int
+	var events []ActivityEvent
+	policy := authoritativeEmergencyPolicy(
+		t,
+		now,
+		issued,
+		nil,
+		nil,
+		ActivitySinkFunc(func(_ context.Context, event ActivityEvent) error {
+			events = append(events, event)
+			return nil
+		}),
+	)
+	policy.revoker = EmergencyAccessRevokerFunc(
+		func(context.Context, string, string) error {
+			revokeCalls++
+			return nil
+		},
+	)
+
+	err := policy.Revoke(
+		context.Background(),
+		issued.ID,
+		"security-owner@example.com",
+		"incident closed",
+	)
+	if !errors.Is(err, ErrEmergencyAccessDenied) || revokeCalls != 0 ||
+		len(events) != 1 ||
+		events[0].Metadata["reason"] != EmergencyAccessReasonInvalidGrant {
+		t.Fatalf("logical-ID revoke calls=%d events=%+v err=%v", revokeCalls, events, err)
+	}
+}
+
+func TestEmergencyAccessPolicyRevokesAuthoritativeGrantVersionUsedByAuthorization(t *testing.T) {
+	now := time.Now().UTC()
+	issued := validIssuedEmergencyGrant(now)
+	revoked := map[string]bool{}
+	policy := authoritativeEmergencyPolicy(
+		t,
+		now,
+		issued,
+		nil,
+		EmergencyAccessRevocationResolverFunc(func(_ context.Context, key string) (bool, error) {
+			return revoked[key], nil
+		}),
+		nil,
+	)
+	policy.revoker = EmergencyAccessRevokerFunc(
+		func(_ context.Context, key, _ string) error {
+			revoked[key] = true
+			return nil
+		},
+	)
+
+	err := policy.RevokeIssuedGrant(
+		context.Background(),
+		issued.ID,
+		issued.Version,
+		"security-owner@example.com",
+		"incident closed",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := policy.AuthorizeGrant(
+		context.Background(),
+		issued.ID,
+		"provider.account.activate",
+		NewSecret("valid-proof"),
+	)
+	if !revoked["grant-1@grant-v7"] ||
+		result.Reason != EmergencyAccessReasonRevoked ||
+		!errors.Is(err, ErrEmergencyAccessDenied) {
+		t.Fatalf("versioned revoke state=%+v result=%+v err=%v", revoked, result, err)
+	}
+}
+
 func TestEmergencyAccessPolicyRejectsCallerConstructedGrantUnlessLegacyExplicit(t *testing.T) {
 	now := time.Now().UTC()
 	issued := validIssuedEmergencyGrant(now)

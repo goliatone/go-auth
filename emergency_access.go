@@ -243,10 +243,30 @@ func NewEmergencyAccessPolicy(cfg EmergencyAccessPolicyConfig) (*EmergencyAccess
 	}, nil
 }
 
+// Revoke revokes a caller-constructed compatibility grant by logical ID.
+//
+// Deprecated: authoritative policies require RevokeIssuedGrant so revocation
+// is bound to the same immutable grant version checked by AuthorizeGrant.
 func (p *EmergencyAccessPolicy) Revoke(
 	ctx context.Context,
 	grantID, actorID, reason string,
 ) error {
+	if p == nil {
+		return ErrEmergencyAccessDenied
+	}
+	if !p.allowLegacyAuthorize {
+		result := EmergencyAccessResult{
+			Decision:  EmergencyAccessDenied,
+			Reason:    EmergencyAccessReasonInvalidGrant,
+			GrantID:   strings.TrimSpace(grantID),
+			ActorID:   strings.TrimSpace(actorID),
+			Operation: "emergency_access.revoke",
+		}
+		if auditErr := p.audit(ctx, result); auditErr != nil {
+			return errors.Join(ErrEmergencyAccessUnavailable, ErrEmergencyAccessDenied, auditErr)
+		}
+		return ErrEmergencyAccessDenied
+	}
 	return p.revoke(ctx, strings.TrimSpace(grantID), actorID, reason)
 }
 
