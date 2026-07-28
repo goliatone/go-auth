@@ -55,11 +55,11 @@ function _install:lgr {
 }
 
 function _install:changelog {
-    if git-cliff lgr 2>/dev/null; then
+    if command -v git-cliff >/dev/null 2>&1; then
         lgr OK "git-cliff already installed..."
     else
-        echo "Installing lgr"
-        brew install brew install orhun/git-cliff/git-cliff
+        echo "Installing git-cliff"
+        brew install orhun/git-cliff/git-cliff
         lgr OK "git-cliff installed..."
     fi
 }
@@ -969,7 +969,7 @@ function adapters:featuregate:sync {
         return 0
     fi
 
-    (cd adapters/featuregate && go mod edit -require=github.com/goliatone/go-auth@v${tag})
+    (cd adapters/featuregate && go mod edit "-require=github.com/goliatone/go-auth@v${tag}")
 
     local run_tidy=0
     while [[ "$#" -gt 0 ]]; do
@@ -984,6 +984,116 @@ function adapters:featuregate:sync {
     if [ "$run_tidy" -eq 1 ]; then
         (cd adapters/featuregate && go mod tidy)
     fi
+}
+
+##
+## -----
+##
+## changelog:unreleased
+##
+## Print the manually curated body under the first Unreleased heading.
+##
+## Arguments:
+## @arg 1 {string} [file=CHANGELOG.md]
+function changelog:unreleased {
+    local changelog_file=${1:-"CHANGELOG.md"}
+
+    if [ ! -f "${changelog_file}" ]; then
+        return 0
+    fi
+
+    awk '
+        tolower($0) == "# [unreleased]" {
+            found = 1
+            next
+        }
+        found && /^# \[[^]]+\]/ {
+            exit
+        }
+        found {
+            lines[++count] = $0
+        }
+        END {
+            first = 1
+            while (first <= count && lines[first] ~ /^[[:space:]]*$/) {
+                first++
+            }
+
+            last = count
+            while (last >= first && lines[last] ~ /^[[:space:]]*$/) {
+                last--
+            }
+
+            for (i = first; i <= last; i++) {
+                print lines[i]
+            }
+        }
+    ' "${changelog_file}"
+}
+
+function _changelog:tag_message {
+    local fallback_message=${1}
+    local manual_notes=${2}
+
+    if [[ -n "${manual_notes//[[:space:]]/}" ]]; then
+        printf '%s\n%s' '<!-- git-cliff:manual -->' "${manual_notes}"
+        return 0
+    fi
+
+    printf '%s' "${fallback_message}"
+}
+
+function _changelog:render {
+    local tag=${1}
+    local tag_message=${2}
+    local changelog_file=${3:-"CHANGELOG.md"}
+    local changelog_dir
+    local changelog_name
+    local generated_file
+
+    if [ -z "${tag}" ]; then
+        echo "A release tag is required." >&2
+        return 1
+    fi
+
+    changelog_dir=$(dirname "${changelog_file}")
+    changelog_name=$(basename "${changelog_file}")
+    generated_file=$(mktemp "${changelog_dir}/.${changelog_name}.XXXXXX") || return 1
+
+    if ! git cliff \
+        --tag "v${tag#v}" \
+        --with-tag-message "${tag_message}" \
+        --output "${generated_file}"; then
+        rm -f "${generated_file}"
+        return 1
+    fi
+
+    chmod 0644 "${generated_file}" || return 1
+    mv "${generated_file}" "${changelog_file}" || return 1
+}
+
+##
+## -----
+##
+## changelog:generate
+##
+## Promote optional manual Unreleased notes into a release and add the
+## git-cliff commit digest. Existing release history is regenerated from tags.
+##
+## Arguments:
+## @arg 1 {string} tag
+## @arg 2 {string} [message=Release]
+## @arg 3 {string} [file=CHANGELOG.md]
+function changelog:generate {
+    local tag=${1}
+    local fallback_message=${2:-"Release v${tag#v}"}
+    local changelog_file=${3:-"CHANGELOG.md"}
+    local manual_notes
+    local tag_message
+
+    manual_notes=$(changelog:unreleased "${changelog_file}")
+    tag_message=$(_changelog:tag_message "${fallback_message}" "${manual_notes}")
+    _changelog:render "${tag}" "${tag_message}" "${changelog_file}"
 }
 
 
@@ -1002,6 +1112,8 @@ function release {
     local tag
     local level
     local message
+    local manual_notes
+    local tag_message
     local current_branch
 
     current_branch=$(git rev-parse --abbrev-ref HEAD)
@@ -1011,9 +1123,9 @@ function release {
     fi
 
     # Fetch all changes from origin
-    git fetch --all
+    git fetch --all || return 1
     # Make sure we have the latest version file
-    git checkout origin/main -- ".version"
+    git checkout origin/main -- ".version" || return 1
 
     # Pull tags to make sure we have
     if ! git pull --tags -f; then
@@ -1025,41 +1137,40 @@ function release {
     level=${1:-"patch"}
 
     # Bump our version
-    tag=$(version:bump "${level}")
+    tag=$(version:bump "${level}") || return 1
 
     # Set message: default to New major|minor|patch release: vx.x.x
     message=${2:-"New ${level} release: v${tag}"}
 
     # Update version file
-    version:set "${tag}"
+    version:set "${tag}" || return 1
 
     # Sync adapter module to the new tag
-    adapters:featuregate:sync "${tag}"
+    adapters:featuregate:sync "${tag}" || return 1
 
-    # Add updated version file to git
-    git add "${VERSION_FILE}"
+    # Promote optional manual release notes and generate the commit digest.
+    manual_notes=$(changelog:unreleased CHANGELOG.md) || return 1
+    tag_message=$(_changelog:tag_message "${message}" "${manual_notes}") || return 1
+    _changelog:render "${tag}" "${tag_message}" CHANGELOG.md || return 1
+
+    # Commit the exact version, dependency, and changelog state being tagged.
+    git add "${VERSION_FILE}" || return 1
+    git add CHANGELOG.md || return 1
     if [ -f "adapters/featuregate/go.mod" ]; then
-        git add adapters/featuregate/go.mod
+        git add adapters/featuregate/go.mod || return 1
         if [ -f "adapters/featuregate/go.sum" ]; then
-            git add adapters/featuregate/go.sum
+            git add adapters/featuregate/go.sum || return 1
         fi
     fi
-    git commit -m "Bump version: v${tag}"
+    git commit -m "release: v${tag}" || return 1
 
-    # Create a new tag
-    git tag -a "v${tag}" -m "${message}"
-    git tag -a "adapters/featuregate/v${tag}" -m "Featuregate adapter release: v${tag}"
+    # Both tags now point at the commit containing the generated changelog.
+    git tag -a "v${tag}" --cleanup=verbatim -m "${tag_message}" || return 1
+    git tag -a "adapters/featuregate/v${tag}" -m "Featuregate adapter release: v${tag}" || return 1
 
-    # Push tags and trigger release 🚀 🥳
-    git push --tags
-    git push
-
-    # Generate changelog
-    git cliff --output CHANGELOG.md
-    git add CHANGELOG.md
-    git commit -m "docs: update changelog for v${tag}"
-
-    git push
+    # Publish the commit before its tags so release consumers see exact sources.
+    git push || return 1
+    git push origin "v${tag}" "adapters/featuregate/v${tag}" || return 1
 }
 
 ##########################################

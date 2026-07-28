@@ -2,23 +2,29 @@
 header = """
 # Changelog
 
+# [Unreleased]
+
 """
 body = """
+{% set has_manual_notes = message and '<!-- git-cliff:manual -->' in message %}\
 {% if version %}\
 	# [{{ version | trim_start_matches(pat="v") }}]\
-	{% if previous %}\
+		{% if previous %}\
 		{% if previous.version %}\
 			(https://github.com/goliatone/go-auth/compare/{{ previous.version }}...{{ version }})\
 		{% else %}\
 			(https://github.com/goliatone/go-auth/tree/{{ version }})\
 		{% endif %}\
-	{% endif %} \
-	- ({{ timestamp | date(format="%Y-%m-%d") }})
-{% else %}\
-	# [unreleased]
+		{% endif %} \
+		- ({{ timestamp | date(format="%Y-%m-%d") }})
+{% endif %}\
+{% if has_manual_notes %}
+	{{ message | replace(from="<!-- git-cliff:manual -->\n", to="") }}
+
+	## Commit Details
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
-	## {{ group | upper_first }}
+	{% if has_manual_notes %}### {% else %}## {% endif %}{{ group | upper_first }}
 	{% for commit in commits | unique(attribute="message") %}
 		- {% if commit.scope %}\
 			**{{commit.scope}}:** \
@@ -62,6 +68,7 @@ commit_parsers = [
     { message = "(?i)^upgrade", group = "<!-- 9 -->⬆️ Upgrades"},
     { message = "(?i)^downgrade", group = "<!-- 10 -->⬇️ Downgrades"},
     { message = "(?i)^revert", group = "<!-- 11 -->⏪ Reverts"},
+    { message = "(?i)^release: v[0-9]", skip = true },
     { message = "(?i)^release", group = "<!-- 12 -->🔖 Releases"},
     { message = "(?i)^bump", group = "<!-- 13 -->📦 Bumps"},
     { message = "(?i)^initial", group = "<!-- 14 -->🎉 Initial Commit"},
