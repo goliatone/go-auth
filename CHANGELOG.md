@@ -14,6 +14,12 @@
   authentication.
 - ES256/P-256 JWKS validation, strict ID/access/UserInfo binding, bounded
   provider responses, and request deadlines.
+- Transactional provider-session lifecycle fences, a durable lifecycle
+  operation ledger, and a leased remote-revocation retry queue.
+- Closed lifecycle action policies with coordinator-issued execution permits,
+  typed provider-session audit reasons, and authoritative versioned emergency
+  grant/credential verification.
+- Explicit identifier-binding and provider-session deployment classes.
 
 ## Changed
 
@@ -31,6 +37,27 @@
   work are bounded, and custom principal mapper authority is revalidated.
 - Provider-subject `IdentifierStore.Upsert` is now immutable: same-user retries
   are idempotent and cross-user reassignment returns `ErrIdentifierConflict`.
+- Provider-session OIDC construction now requires an immutable-capable linker;
+  hardened signup requires transactional create-and-bind. Mutable `Upsert`
+  fallback remains only in `IdentifierBindingLegacyCompatible`.
+- Hardened Supabase lifecycle mutations require coordinator-issued permits and
+  Postgres-backed operation state. Permits are single-use and validated against
+  the live claimed revision, attempt, and lease before transport. Direct
+  mutation methods and explicitly selected in-memory operation storage are
+  compatibility-only.
+- Ambiguous lifecycle mutations can be completed through leased authoritative
+  reconciliation without blind provider replay. Canonical fingerprints include
+  action-specific executor inputs.
+- Provider-session callback JSON now contains only provider key, validated
+  redirect target, and typed safe audit context.
+- Provider-session revocation reasons now persist typed codes and one-way
+  fingerprints. Remote failures are recovered through bounded durable claims
+  without restoring local access, including sessions transactionally revoked by
+  security lifecycle transitions.
+- Production/hardened provider-session operations are selected explicitly and
+  require complete operations configuration regardless of environment alias.
+- Provider-session deployment class and lifecycle operation store selection are
+  now mandatory; neither constructor silently infers a compatibility default.
 - Legacy `MaxLoginAttempts` and `CoolDownPeriod` variable symbols remain
   available for source compatibility. Login policy is now instance-scoped,
   and atomic reservation is exposed without expanding the existing `Users`
@@ -44,6 +71,15 @@
 - Replace package-level login-policy overrides with
   `UserProvider.WithLoginAttemptPolicy`; custom password-login trackers must
   implement `AtomicLoginAttemptTracker`.
+- Apply provider-session migrations through `20260727160000` before deploying
+  hardened binaries. Roll back binaries and stop workers before down
+  migrations; do not remove ledger or revocation tables with pending work.
+- Set `LinkerConfig.BindingMode`,
+  `ProviderSessionManagerConfig.Deployment`, and
+  `supabase.Config.ProviderSessionDeployment` explicitly.
+- Replace caller-constructed emergency grants with `AuthorizeGrant` plus an
+  authoritative resolver and credential verifier. Legacy authorization
+  requires `AllowLegacyAuthorize`.
 
 # [0.44.2](https://github.com/goliatone/go-auth/compare/v0.44.1...v0.44.2) - (2026-07-23)
 

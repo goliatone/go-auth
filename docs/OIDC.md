@@ -33,11 +33,22 @@ issuer receives only the resulting normalized claim map rather than the raw
 principal or provider resource roles.
 
 `oidc.ProviderSessionMode` requires `ProviderSessionHandoff` and forbids a local
-token issuer. The handoff receives `auth.AuthenticatedPrincipal` plus an opaque
+token issuer. It also requires an identity linker advertising
+`IdentifierBindingImmutableRequired` or stronger. Configure the built-in
+linker with that binding mode; signup additionally requires the transactional
+create-and-bind capability. `IdentifierBindingLegacyCompatible` is only for
+existing local-token integrations whose custom stores still depend on mutable
+`Upsert`.
+
+The handoff receives `auth.AuthenticatedPrincipal` plus an opaque
 `auth.ProviderTokenSet` after identity linking. It must atomically persist or
 discard the session and return `ProviderSessionHandoffResult`, containing an
 opaque host-session secret plus the non-secret local session ID. The callback
-binds that ID to the final principal before returning.
+binds that ID to the final principal before returning. JSON serialization in
+this mode is a strict safe view containing only provider key, validated
+redirect target, and typed allowlisted audit context; identity, claims,
+principal data, roles, metadata, tokens, and the host-session secret are
+omitted.
 
 HTTP adapters should use `AuthorizationResponse.HTTPRedirectURL()` and
 `BrowserSessionResult.SessionSecret()`. The exported `State`, `Nonce`, and
@@ -107,11 +118,29 @@ Unverified-email auto-linking is rejected by default. Social OAuth mappings in
 `social_accounts` are separate and should only participate through an explicit
 host migration or lookup bridge.
 
-Provider-subject bindings are immutable. Repeating a bind to the same local
+Provider-subject bindings are immutable in hardened modes. Repeating a bind to the same local
 user is idempotent; binding the same `(provider, subject)` to another user
 returns `auth.ErrIdentifierConflict`. Repository-backed OIDC signup creates the
-user and binding in one transaction. Custom stores are compensated by deleting
-the just-created user if binding fails.
+user and binding in one transaction. A custom store selected for hardened
+signup must implement `TransactionalIdentifierStore`; the compensating
+create/delete path remains available only in legacy-compatible mode.
+
+## Provider-session database migration
+
+Apply the additive provider-session migrations through `20260727160000` before
+starting hardened instances. They add lifecycle fences, the durable lifecycle
+operation ledger, the remote-revocation queue, and typed reason fingerprints.
+Deploy database changes before binaries that require them. Roll back binaries
+first; down migrations remove durable state and must not run while lifecycle or
+revocation workers are active. Existing local-token-only deployments do not
+need these tables.
+
+Provider-session manager construction requires an explicit `development`,
+`test`, `production`, or `hardened` deployment class. Lifecycle coordinator
+construction likewise requires an explicitly supplied operation store.
+Hardened Supabase mutations accept permits only from a Postgres-backed store;
+in-memory or SQLite operation stores remain explicit local compatibility
+choices.
 
 ## Troubleshooting
 

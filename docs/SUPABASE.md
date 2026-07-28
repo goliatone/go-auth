@@ -32,12 +32,19 @@ Load these values through host configuration and secret management:
 | Authorization proof key | Shared 32–128 byte HMAC key for details/decision continuity | Backoffice secret owner |
 | Optional management credential | Deployment/control-plane checks only | Platform owner |
 | Exact return URLs and OAuth client policies | Recovery and client redirect policy | Application registry owner |
-| Environment and API versions | Deployment isolation and provider contract | Release owner |
+| Environment, explicit provider-session deployment class, and API versions | Deployment isolation, operations gate, and provider contract | Release owner |
 
 Admin, publishable, OAuth client, and management values must be distinct.
 Construction fails on insecure production URLs, duplicate values, mixed
 credentials, weak algorithms, unknown scopes, or open return policies. HTTP is
 available only for explicit loopback development.
+
+`Config.ProviderSessionDeployment` is required. Use `development` or `test`
+only for those deployment classes; use `production` or `hardened` for any live
+service regardless of free-form environment aliases such as `live`, `prd`, or
+`production-us`. Production/hardened `ProviderSessionManager` construction
+requires a complete `ProviderSessionOperationsConfig` whose environment and
+session lifetimes exactly match the runtime binding.
 
 ## Sign-in and provider sessions
 
@@ -66,23 +73,37 @@ Every call requires `AuthorizedOperationContext` containing a stable operation
 ID, exact action, host permission, actor, target, reason, environment, and
 request correlation. Invalid or mismatched proof fails before transport.
 
-Use `LifecycleCoordinator` for suspension and factor removal. Its
-`ProviderSessionLocalInvalidator` makes local sessions unusable without
-invoking a remote hook. Only then does the coordinator call Supabase once and
-deliver freshness invalidation. Results retain separate local, remote, and
-freshness outcomes. Remote or consumer failure never restores local access.
+Use a durable `LifecycleCoordinator` and `NewHardenedAdminClient` for
+suspension, activation, and factor removal. The closed action policy derives
+the lifecycle fence and local session effect; callers cannot weaken those
+effects with request booleans. Local invalidation advances the lifecycle fence
+and makes sessions unusable before the coordinator mints a bound execution
+permit and invokes Supabase. Permits are single-use, checked against the live
+ledger revision/attempt/lease immediately before mutation transport, and
+invalidated when dispatch returns. Missing, replayed, forged, stale,
+non-durable, or cross-operation permits fail before transport.
 
-The built-in result cache coalesces and replays attempts within one process.
-Multi-replica hosts must durably persist operation/results and reconcile
-pending outcomes using the same operation ID. `ActivitySink` remains
-best-effort audit telemetry and is not a consistency mechanism.
+The Bun `LifecycleOperationStore` is authoritative across replicas and
+restarts. It persists phase progress, compare-and-swap revisions, bounded
+leases, fingerprints, and ambiguous remote delivery. In-memory operation
+storage must be selected explicitly and is compatibility-only; a nil store is
+a construction error, and hardened Supabase coordination requires a Postgres
+store. Configure a reconciliation worker to call `ClaimPending`, establish the
+provider outcome without replaying the mutation, and pass the live claim plus
+the original typed request to `ReconcileLifecycleOperation`. The coordinator
+checks the claim lease and canonical fingerprint, persists the authoritative
+outcome, and resumes freshness/completion. `ActivitySink` remains best-effort
+audit telemetry and is not a consistency mechanism.
 
 Factor removal requires `Operation.Target.ObjectID` to match `FactorID`.
 Supabase re-reads the authoritative factor list immediately before deletion;
 caller state/count fields are optional concurrency expectations, never security
 inputs. Local invalidation is conservative for every factor-removal attempt so
 a stale hint cannot bypass verified-factor ordering. Last-verified-factor
-removal is denied unless the host explicitly authorizes it.
+removal is denied unless the host explicitly authorizes it. Factor ID, known
+state, remaining-factor expectation, and last-factor authorization are included
+in the canonical operation fingerprint, so changing one while reusing an
+operation ID conflicts.
 
 ## Authorization UI
 
@@ -120,6 +141,29 @@ free-form value is one-way fingerprinted before the event is constructed;
 tokens, authorization codes, cookies, credentials, and opaque secrets never
 enter event or normalized audit data.
 
+Provider-session revocation is local-first. Configure a bounded scheduler to
+call `RetryRemoteRevocations`; repository claims use leases, attempt limits,
+and exponential backoff. The default policy caps remote work at 10 attempts,
+24-hour backoff, and the configured encrypted-token retention window.
+Terminal completion or retention expiry deletes ciphertext while preserving
+the session tombstone. Security lifecycle transitions enqueue every changed
+session in this queue within the same transaction as local revocation. Session
+reasons are typed codes plus validated one-way detail fingerprints—legacy or
+malformed encoded strings are normalized immediately at parsing, persistence,
+load, and activity boundaries.
+
+Apply and verify migrations through `20260727160000` in both the aggregate and
+`auth_extras` tracks. Stop lifecycle/revocation workers before rollback, roll
+back application binaries first, and do not remove ledger/queue tables while
+pending work exists. Cleanup and retry schedules require named owners; the
+library does not start background workers.
+
+Emergency operations must authorize through
+`EmergencyAccessPolicy.AuthorizeGrant`, an authoritative versioned grant
+resolver, and an isolated credential verifier. Caller-constructed grants are
+accepted only when `AllowLegacyAuthorize` is explicitly enabled and must not be
+used by hardened deployments.
+
 ## Deployment gates
 
 Before production enablement, run live conformance for exact endpoints, client
@@ -127,3 +171,5 @@ authentication, API versions, public-signup policy, OAuth server maturity,
 refresh/logout behavior, factor side effects, and key rotation. Separately
 prove the selected cross-project trust/RLS branch. A failed RLS trust branch
 does not enable service-role fallback or change the provider adapter boundary.
+The live Supabase/RLS stream remains blocked on named environment owners and
+actual external evidence; deterministic library tests do not claim that proof.
