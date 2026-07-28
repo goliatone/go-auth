@@ -32,19 +32,24 @@ Load these values through host configuration and secret management:
 | Authorization proof key | Shared 32–128 byte HMAC key for details/decision continuity | Backoffice secret owner |
 | Optional management credential | Deployment/control-plane checks only | Platform owner |
 | Exact return URLs and OAuth client policies | Recovery and client redirect policy | Application registry owner |
-| Environment, explicit provider-session deployment class, and API versions | Deployment isolation, operations gate, and provider contract | Release owner |
+| Environment and API versions | Deployment isolation and provider contract | Release owner |
+| Explicit provider-session deployment class | Provider-session operations gate only | Release owner |
 
 Admin, publishable, OAuth client, and management values must be distinct.
 Construction fails on insecure production URLs, duplicate values, mixed
 credentials, weak algorithms, unknown scopes, or open return policies. HTTP is
 available only for explicit loopback development.
 
-`Config.ProviderSessionDeployment` is required. Use `development` or `test`
-only for those deployment classes; use `production` or `hardened` for any live
-service regardless of free-form environment aliases such as `live`, `prd`, or
-`production-us`. Production/hardened `ProviderSessionManager` construction
-requires a complete `ProviderSessionOperationsConfig` whose environment and
-session lifetimes exactly match the runtime binding.
+Local-token OIDC, principal mapping, and ordinary Supabase API clients do not
+require provider-session deployment policy. When provider sessions are
+enabled, set `Config.ProviderSessionDeployment` and call
+`Config.ProviderSessionManagerConfig` while constructing the manager, or set
+`ProviderSessionManagerConfig.Deployment` directly. Use `development` or
+`test` only for those deployment classes; use `production` or `hardened` for
+any live service regardless of free-form environment aliases such as `live`,
+`prd`, or `production-us`. Production/hardened manager construction requires a
+complete `ProviderSessionOperationsConfig` whose environment and session
+lifetimes exactly match the runtime binding.
 
 ## Sign-in and provider sessions
 
@@ -145,6 +150,10 @@ Provider-session revocation is local-first. Configure a bounded scheduler to
 call `RetryRemoteRevocations`; repository claims use leases, attempt limits,
 and exponential backoff. The default policy caps remote work at 10 attempts,
 24-hour backoff, and the configured encrypted-token retention window.
+The repository clock owns claim eligibility, lease expiry, retention, and
+backoff scheduling. Each provider attempt receives a context bounded by the
+claimed lease, and completion must present the exact live lease owner and
+deadline.
 Terminal completion or retention expiry deletes ciphertext while preserving
 the session tombstone. Security lifecycle transitions enqueue every changed
 session in this queue within the same transaction as local revocation. Session
@@ -152,7 +161,7 @@ reasons are typed codes plus validated one-way detail fingerprints—legacy or
 malformed encoded strings are normalized immediately at parsing, persistence,
 load, and activity boundaries.
 
-Apply and verify migrations through `20260727160000` in both the aggregate and
+Apply and verify migrations through `20260727170000` in both the aggregate and
 `auth_extras` tracks. Stop lifecycle/revocation workers before rollback, roll
 back application binaries first, and do not remove ledger/queue tables while
 pending work exists. Cleanup and retry schedules require named owners; the
@@ -162,7 +171,10 @@ Emergency operations must authorize through
 `EmergencyAccessPolicy.AuthorizeGrant`, an authoritative versioned grant
 resolver, and an isolated credential verifier. Caller-constructed grants are
 accepted only when `AllowLegacyAuthorize` is explicitly enabled and must not be
-used by hardened deployments.
+used by hardened deployments. Revoke authoritative grants with
+`RevokeIssuedGrant(grantID, grantVersion, ...)`; the deprecated logical-ID
+`Revoke` method is compatibility-only and fails closed for authoritative
+policies.
 
 ## Deployment gates
 

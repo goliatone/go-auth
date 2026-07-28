@@ -63,6 +63,20 @@
   and atomic reservation is exposed without expanding the existing `Users`
   interface.
 
+## Fixed
+
+- Persist expiring leases for lifecycle local-invalidation and freshness
+  phases so another coordinator can safely resume work abandoned by a crash.
+- Require exact immutable grant ID/version revocation for authoritative
+  emergency access; logical-ID revocation now fails closed in that mode.
+- Fence remote provider revocation from claim through completion with the exact
+  lease owner and deadline. Database time now owns lease expiry, retention, and
+  retry scheduling, and provider calls cannot outlive the claimed lease.
+- Re-hash caller-supplied typed provider audit fingerprints at the final
+  activity boundary instead of trusting the exported string type.
+- Keep Supabase local-token client, OIDC, and principal-mapper construction
+  independent from provider-session deployment configuration.
+
 ## Migration
 
 - Release the root module before updating nested adapter module requirements.
@@ -71,12 +85,14 @@
 - Replace package-level login-policy overrides with
   `UserProvider.WithLoginAttemptPolicy`; custom password-login trackers must
   implement `AtomicLoginAttemptTracker`.
-- Apply provider-session migrations through `20260727160000` before deploying
+- Apply provider-session migrations through `20260727170000` before deploying
   hardened binaries. Roll back binaries and stop workers before down
   migrations; do not remove ledger or revocation tables with pending work.
 - Set `LinkerConfig.BindingMode`,
-  `ProviderSessionManagerConfig.Deployment`, and
-  `supabase.Config.ProviderSessionDeployment` explicitly.
+  `ProviderSessionManagerConfig.Deployment`, and—when using the Supabase
+  provider-session configuration helper—
+  `supabase.Config.ProviderSessionDeployment` explicitly. Local-token-only
+  Supabase configuration does not require a provider-session deployment class.
 - Replace caller-constructed emergency grants with `AuthorizeGrant` plus an
   authoritative resolver and credential verifier. Legacy authorization
   requires `AllowLegacyAuthorize`.
