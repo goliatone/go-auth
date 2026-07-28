@@ -48,8 +48,6 @@ func (a *AdminClient) ListFactors(ctx context.Context, request auth.FactorListRe
 //
 // Deprecated: use RemoveFactorCoordinated through LifecycleCoordinator with a
 // coordinator-issued permit.
-//
-//nolint:gocyclo // Factor target, state, and last-factor safety checks remain explicit.
 func (a *AdminClient) RemoveFactor(ctx context.Context, request auth.FactorRemoveRequest) (result auth.ProviderOperationOutcome, err error) {
 	return a.removeFactor(ctx, request, auth.LifecycleExecutionPermit{})
 }
@@ -62,6 +60,7 @@ func (a *AdminClient) RemoveFactorCoordinated(
 	return a.removeFactor(ctx, request, permit)
 }
 
+//nolint:gocyclo // Factor target, state, and last-factor safety checks remain explicit.
 func (a *AdminClient) removeFactor(
 	ctx context.Context,
 	request auth.FactorRemoveRequest,
@@ -74,7 +73,7 @@ func (a *AdminClient) removeFactor(
 		return auth.ProviderOperationOutcome{}, validationErr
 	}
 	if a.requirePermits {
-		if err := permit.Validate(request.Operation); err != nil {
+		if permitErr := permit.Validate(request.Operation); permitErr != nil {
 			return auth.ProviderOperationOutcome{}, fmt.Errorf(
 				"%w: coordinated lifecycle permit is required",
 				auth.ErrProviderOperationUnauthorized,
@@ -106,8 +105,8 @@ func (a *AdminClient) removeFactor(
 			Status: auth.ProviderOperationConflict,
 		}, auth.ErrProviderOperationConflict
 	}
-	if err := a.validateMutationPermit(ctx, request.Operation, permit); err != nil {
-		return auth.ProviderOperationOutcome{}, err
+	if permitErr := a.validateMutationPermit(ctx, request.Operation, permit); permitErr != nil {
+		return auth.ProviderOperationOutcome{}, permitErr
 	}
 	effect := auth.ProviderSessionEffectNone
 	if factor.State == auth.ProviderFactorVerified {

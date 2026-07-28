@@ -594,7 +594,7 @@ func (r *ProviderSessionRepository) RevokeUser(ctx context.Context, applicationS
 	return out, nil
 }
 
-//nolint:gocyclo // Bounded scope filtering and transactional revocation remain explicit.
+//nolint:funlen,gocyclo // Bounded scope filtering and transactional revocation remain explicit.
 func (r *ProviderSessionRepository) RevokeScope(
 	ctx context.Context,
 	scope auth.ProviderSessionInvalidationScope,
@@ -621,7 +621,7 @@ func (r *ProviderSessionRepository) RevokeScope(
 	}
 	defer func() { _ = tx.Rollback() }()
 	if scope.PermissionVersion != "" {
-		if err := advanceProviderSessionAuthorizationFence(
+		if fenceErr := advanceProviderSessionAuthorizationFence(
 			ctx,
 			tx,
 			scope.ApplicationSubject,
@@ -629,8 +629,8 @@ func (r *ProviderSessionRepository) RevokeScope(
 			scope.PermissionVersion,
 			scope.PermissionVersionObservedAt,
 			r.db.Dialect().Name(),
-		); err != nil {
-			return nil, false, err
+		); fenceErr != nil {
+			return nil, false, fenceErr
 		}
 	}
 	var models []ProviderSessionModel
@@ -650,7 +650,7 @@ func (r *ProviderSessionRepository) RevokeScope(
 	if scope.SessionID != "" {
 		query = query.Where("id = ?", scope.SessionID)
 	}
-	if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if scanErr := query.Scan(ctx); scanErr != nil && !errors.Is(scanErr, sql.ErrNoRows) {
 		return nil, false, auth.ErrProviderSessionUnavailable
 	}
 	more := len(models) > limit
@@ -658,7 +658,7 @@ func (r *ProviderSessionRepository) RevokeScope(
 		models = models[:limit]
 	}
 	if len(models) == 0 {
-		if err := tx.Commit(); err != nil {
+		if commitErr := tx.Commit(); commitErr != nil {
 			return nil, false, auth.ErrProviderSessionUnavailable
 		}
 		return []auth.ProviderSession{}, false, nil
@@ -672,7 +672,7 @@ func (r *ProviderSessionRepository) RevokeScope(
 		return nil, false, auth.ErrProviderSessionUnavailable
 	}
 	reasonCode, reasonFingerprint := providerSessionReasonStorage(reason)
-	if _, err := tx.NewUpdate().Model((*ProviderSessionModel)(nil)).
+	if _, updateErr := tx.NewUpdate().Model((*ProviderSessionModel)(nil)).
 		Set("status = ?", auth.ProviderSessionRevoked).
 		Set("revoked_at = COALESCE(revoked_at, ?)", now).
 		Set("revocation_reason = CASE WHEN revocation_reason = '' THEN ? ELSE revocation_reason END", reasonCode).
@@ -680,10 +680,10 @@ func (r *ProviderSessionRepository) RevokeScope(
 		Set("refresh_lease_until = NULL").
 		Set("updated_at = ?", now).
 		Where("id IN (?) AND status NOT IN (?, ?)", bun.In(ids), auth.ProviderSessionRevoked, auth.ProviderSessionExpired).
-		Exec(ctx); err != nil {
+		Exec(ctx); updateErr != nil {
 		return nil, false, auth.ErrProviderSessionUnavailable
 	}
-	if err := tx.Commit(); err != nil {
+	if commitErr := tx.Commit(); commitErr != nil {
 		return nil, false, auth.ErrProviderSessionUnavailable
 	}
 	out := make([]auth.ProviderSession, 0, len(models))
@@ -703,6 +703,8 @@ func (r *ProviderSessionRepository) RevokeScope(
 
 // AdvanceProviderSessionLifecycle serializes session admission and
 // security-restricting lifecycle transitions through the same subject fence.
+//
+//nolint:funlen,gocyclo // Fence ordering, credential advancement, and revocation remain one transaction.
 func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 	ctx context.Context,
 	transition auth.ProviderSessionLifecycleTransition,
@@ -733,10 +735,10 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 		TenantID:           transition.TenantID,
 		BlockedState:       string(auth.ProviderSessionLifecycleActive),
 	}
-	if _, err := tx.NewInsert().
+	if _, insertErr := tx.NewInsert().
 		Model(candidate).
 		On("CONFLICT (application_subject, tenant_id) DO NOTHING").
-		Exec(ctx); err != nil {
+		Exec(ctx); insertErr != nil {
 		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
 	}
 	current := &ProviderSessionLifecycleFenceModel{}
@@ -747,7 +749,7 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 	if r.db.Dialect().Name() == dialect.PG {
 		query = query.For("UPDATE")
 	}
-	if err := query.Scan(ctx); err != nil {
+	if scanErr := query.Scan(ctx); scanErr != nil {
 		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
 	}
 	repositoryOrdered := transition.Ordering == auth.ProviderSessionLifecycleRepositoryOrder
@@ -767,7 +769,7 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 	}
 	if !repositoryOrdered && current.EventObservedAt != nil &&
 		!transition.EventObservedAt.After(current.EventObservedAt.UTC()) {
-		if err := tx.Commit(); err != nil {
+		if commitErr := tx.Commit(); commitErr != nil {
 			return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
 		}
 		return lifecycleFenceFromModel(current), []auth.ProviderSession{}, nil
@@ -788,7 +790,7 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 		nextCredentialsNotBefore = &value
 	}
 	nextGeneration := current.Generation + 1
-	if _, err := tx.NewUpdate().
+	if _, updateErr := tx.NewUpdate().
 		Model((*ProviderSessionLifecycleFenceModel)(nil)).
 		Set("blocked_state = ?", nextState).
 		Set("credentials_not_before = ?", nextCredentialsNotBefore).
@@ -796,7 +798,7 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 		Set("generation = ?", nextGeneration).
 		Set("updated_at = CURRENT_TIMESTAMP").
 		Where("application_subject = ? AND tenant_id = ?", transition.ApplicationSubject, transition.TenantID).
-		Exec(ctx); err != nil {
+		Exec(ctx); updateErr != nil {
 		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
 	}
 
@@ -812,7 +814,7 @@ func (r *ProviderSessionRepository) AdvanceProviderSessionLifecycle(
 	if err != nil {
 		return auth.ProviderSessionLifecycleFence{}, nil, err
 	}
-	if err := tx.Commit(); err != nil {
+	if commitErr := tx.Commit(); commitErr != nil {
 		return auth.ProviderSessionLifecycleFence{}, nil, auth.ErrProviderSessionUnavailable
 	}
 	current.BlockedState = string(nextState)
@@ -879,6 +881,7 @@ func (r *ProviderSessionRepository) UpdateRemoteRevocation(ctx context.Context, 
 	return nil
 }
 
+//nolint:funlen,gocyclo // Claiming retained remote work keeps lease and ciphertext outcomes transactional.
 func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 	ctx context.Context,
 	policy auth.ProviderRemoteRevocationClaimPolicy,
@@ -982,6 +985,7 @@ func (r *ProviderSessionRepository) ClaimRemoteRevocations(
 	return claims, nil
 }
 
+//nolint:gocyclo // Completion keeps retry, terminal, ciphertext, and lease transitions atomic.
 func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 	ctx context.Context,
 	completion auth.ProviderRemoteRevocationCompletion,
@@ -1036,14 +1040,14 @@ func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 		return auth.ErrProviderSessionConflict
 	}
 	if !retryable {
-		if _, err := tx.NewDelete().
+		if _, deleteErr := tx.NewDelete().
 			Model((*ProviderSessionTokenModel)(nil)).
 			Where("session_id = ?", completion.SessionID).
-			Exec(ctx); err != nil {
+			Exec(ctx); deleteErr != nil {
 			return auth.ErrProviderSessionUnavailable
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if commitErr := tx.Commit(); commitErr != nil {
 		return auth.ErrProviderSessionUnavailable
 	}
 	return nil
@@ -1051,7 +1055,7 @@ func (r *ProviderSessionRepository) CompleteRemoteRevocation(
 
 var _ auth.ProviderRemoteRevocationRepository = (*ProviderSessionRepository)(nil)
 
-//nolint:gocyclo // Retention, retry, and refresh-lease cleanup rules remain explicit.
+//nolint:funlen,gocyclo // Retention, retry, and refresh-lease cleanup rules remain explicit.
 func (r *ProviderSessionRepository) Cleanup(ctx context.Context, policy auth.ProviderSessionCleanupPolicy) (auth.ProviderSessionCleanupResult, error) {
 	if r == nil || r.db == nil {
 		return auth.ProviderSessionCleanupResult{}, auth.ErrProviderSessionUnavailable
@@ -1230,6 +1234,7 @@ func providerSessionCreateModels(input auth.ProviderSessionCreate) (*ProviderSes
 	return session, token, nil
 }
 
+//nolint:gocyclo // Admission checks both global and tenant lifecycle fences in one transaction.
 func lockProviderSessionLifecycleFences(
 	ctx context.Context,
 	tx bun.Tx,
@@ -1296,6 +1301,7 @@ func lockProviderSessionLifecycleFences(
 	return nil
 }
 
+//nolint:funlen,gocyclo,nestif // Dialect-specific revocation preserves one atomic lifecycle transition.
 func revokeSessionsForLifecycleTransition(
 	ctx context.Context,
 	tx bun.Tx,
@@ -1494,6 +1500,7 @@ func lockProviderSessionAuthorizationFence(
 	return nil
 }
 
+//nolint:gocyclo // Fence selection explicitly rejects ambiguous and conflicting observed versions.
 func newestRequiredPermissionVersion(
 	fences []ProviderSessionAuthorizationFenceModel,
 ) (string, error) {

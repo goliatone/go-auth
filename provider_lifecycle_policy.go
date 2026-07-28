@@ -138,6 +138,7 @@ func (p LifecycleExecutionPermit) ConsumeForHardenedMutation(
 	return p.consume(ctx, operation, true)
 }
 
+//nolint:gocyclo // Permit consumption validates every live durable-claim binding explicitly.
 func (p LifecycleExecutionPermit) consume(
 	ctx context.Context,
 	operation AuthorizedOperationContext,

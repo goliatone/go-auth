@@ -48,6 +48,7 @@ type ProviderSessionManager struct {
 	refreshGroup   singleflight.Group
 }
 
+//nolint:gocyclo // Construction validates each deployment and operations invariant explicitly.
 func NewProviderSessionManager(cfg ProviderSessionManagerConfig) (*ProviderSessionManager, error) {
 	if cfg.Repository == nil || cfg.Cipher == nil {
 		return nil, fmt.Errorf("%w: repository and cipher are required", ErrProviderSessionInvalid)
@@ -727,6 +728,8 @@ func (m *ProviderSessionManager) invokeProviderRevocation(ctx context.Context, r
 
 // RetryRemoteRevocations executes already-locally-revoked remote work claimed
 // through a bounded durable lease. It never changes local session usability.
+//
+//nolint:gocyclo // Retry processing keeps terminal, retained-work, and safe-error outcomes explicit.
 func (m *ProviderSessionManager) RetryRemoteRevocations(
 	ctx context.Context,
 	policy ProviderRemoteRevocationClaimPolicy,

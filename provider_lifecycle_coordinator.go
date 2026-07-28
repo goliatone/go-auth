@@ -160,8 +160,8 @@ func (c *LifecycleCoordinator) Coordinate(
 	}
 	request.SecurityRestricting = policy.SecurityRestricting
 	request.LocalSessionEffect = policy.LocalSessionEffect
-	if err := validateLifecycleCoordinationRequest(c, request); err != nil {
-		return LifecycleCoordinationResult{}, err
+	if validationErr := validateLifecycleCoordinationRequest(c, request); validationErr != nil {
+		return LifecycleCoordinationResult{}, validationErr
 	}
 	fingerprint, err := lifecycleFingerprint(request)
 	if err != nil {
@@ -183,6 +183,8 @@ func (c *LifecycleCoordinator) Coordinate(
 // ReconcileLifecycleOperation persists an authoritative outcome for one
 // leased pending operation, then resumes freshness and completion. It never
 // dispatches the provider mutation.
+//
+//nolint:gocyclo // Reconciliation validates every durable lease and phase invariant explicitly.
 func (c *LifecycleCoordinator) ReconcileLifecycleOperation(
 	ctx context.Context,
 	reconciliation LifecycleOperationReconciliation,
@@ -200,8 +202,8 @@ func (c *LifecycleCoordinator) ReconcileLifecycleOperation(
 	}
 	request.SecurityRestricting = policy.SecurityRestricting
 	request.LocalSessionEffect = policy.LocalSessionEffect
-	if err := validateLifecycleCoordinationRequest(c, request); err != nil {
-		return LifecycleCoordinationResult{}, err
+	if validationErr := validateLifecycleCoordinationRequest(c, request); validationErr != nil {
+		return LifecycleCoordinationResult{}, validationErr
 	}
 	fingerprint, err := lifecycleFingerprint(request)
 	if err != nil {
@@ -381,6 +383,7 @@ func (c *LifecycleCoordinator) runLocalPhase(
 	return c.store.Advance(ctx, record.Revision, record)
 }
 
+//nolint:funlen,gocyclo,nestif // Durable remote dispatch keeps permit, lease, and reconciliation branches explicit.
 func (c *LifecycleCoordinator) runRemotePhase(
 	ctx context.Context,
 	request LifecycleCoordinationRequest,

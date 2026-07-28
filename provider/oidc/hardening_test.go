@@ -670,10 +670,10 @@ func TestOIDCResultFormattingAndJSONRedactSecrets(t *testing.T) {
 	if strings.Contains(string(encoded), canary) || strings.Contains(fmt.Sprint(session), canary) {
 		t.Fatal("browser session result leaked")
 	}
-	if _, err := json.Marshal(BrowserSessionResult{
+	if _, marshalErr := json.Marshal(BrowserSessionResult{
 		LocalToken: canary, HostSession: auth.NewSecret(canary),
 		ProviderKey: "test", RedirectTarget: "/admin",
-	}); err == nil {
+	}); marshalErr == nil {
 		t.Fatal("ambiguous browser session result should fail closed")
 	}
 	handoff, err := NewProviderSessionHandoffResult(auth.NewSecret(canary), "local-session")

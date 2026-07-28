@@ -168,6 +168,7 @@ func (r *LifecycleOperationRepository) Advance(
 	return next, nil
 }
 
+//nolint:gocyclo // Durable claim selection and lease advancement remain explicit and transactional.
 func (r *LifecycleOperationRepository) ClaimPending(
 	ctx context.Context,
 	policy auth.LifecycleOperationPendingPolicy,

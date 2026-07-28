@@ -672,10 +672,10 @@ func openManagerIntegrationRepository(t *testing.T) (*bun.DB, *authrepo.Provider
 		"20260727150000_provider_remote_revocation_queue.up.sql",
 		"20260727160000_provider_session_reason_fingerprints.up.sql",
 	} {
-		raw, err := fs.ReadFile(auth.GetAuthExtrasMigrationsFS(), "data/sql/migrations/sqlite/"+name)
-		require.NoError(t, err)
-		_, err = db.Exec(string(raw))
-		require.NoError(t, err)
+		raw, readErr := fs.ReadFile(auth.GetAuthExtrasMigrationsFS(), "data/sql/migrations/sqlite/"+name)
+		require.NoError(t, readErr)
+		_, execErr := db.Exec(string(raw))
+		require.NoError(t, execErr)
 	}
 	repo, err := authrepo.NewProviderSessionRepository(db)
 	require.NoError(t, err)

@@ -215,6 +215,7 @@ var providerSessionMetadataKeys = map[string]struct{}{
 	"local_only": {}, "target": {}, "lifecycle_generation": {},
 }
 
+//nolint:gocyclo // The audit allowlist validates each supported field type explicitly.
 func providerSessionMetadata(input map[string]any) map[string]any {
 	if len(input) == 0 {
 		return nil

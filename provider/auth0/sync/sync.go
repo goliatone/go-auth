@@ -56,7 +56,7 @@ func NewService(cfg Config) *Service {
 
 // SyncUser upserts the Auth0 user into the local user store.
 //
-//nolint:gocyclo // Provider sync conflict and compatibility branches are intentionally explicit.
+//nolint:gocyclo,nestif // Provider sync conflict and compatibility branches are intentionally explicit.
 func (s *Service) SyncUser(ctx context.Context, user *management.User) (*auth.User, error) {
 	if s == nil || s.users == nil {
 		return nil, fmt.Errorf("auth0 sync: users repository is required")

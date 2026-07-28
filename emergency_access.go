@@ -377,6 +377,7 @@ func (p *EmergencyAccessPolicy) AuthorizeGrant(
 	return p.authorizeIssued(ctx, issued, result.Operation, verified, true)
 }
 
+//nolint:gocyclo // Emergency-access authorization keeps each fail-closed denial check explicit.
 func (p *EmergencyAccessPolicy) authorizeIssued(
 	ctx context.Context,
 	issued IssuedEmergencyAccessGrant,

@@ -466,6 +466,7 @@ func (r *CachedPermissionsResolver) lookup(ctx context.Context, key string) ([]s
 	return normalizePermissionValues(cached), true, nil
 }
 
+//nolint:nestif // Scoped cache publication keeps atomicity and fail-open/fail-closed handling together.
 func (r *CachedPermissionsResolver) storePermissions(ctx context.Context, key string, permissions []string) error {
 	if r == nil || r.ttl <= 0 || r.store == nil {
 		return nil
