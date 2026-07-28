@@ -48,6 +48,50 @@ func TestIdentityLinkerCreatesNewUserWhenSignupAllowed(t *testing.T) {
 	}
 }
 
+func TestIdentityLinkerBindingModesRejectLegacyMutableStores(t *testing.T) {
+	users := &fakeUsers{}
+	legacy := &fakeIdentifierStore{}
+	if _, err := NewIdentityLinker(LinkerConfig{
+		Users: users, Identifiers: legacy,
+		BindingMode: IdentifierBindingImmutableRequired,
+	}); err == nil {
+		t.Fatal("expected immutable binding requirement to reject legacy mutable store")
+	}
+	if _, err := NewIdentityLinker(LinkerConfig{
+		Users: users, Identifiers: legacy,
+		BindingMode: IdentifierBindingTransactionalRequired,
+	}); err == nil {
+		t.Fatal("expected transactional binding requirement to reject legacy mutable store")
+	}
+}
+
+func TestIdentityLinkerImmutableModeUsesBindAndAdvertisesCapability(t *testing.T) {
+	users := &fakeUsers{}
+	store := &fakeImmutableIdentifierStore{fakeIdentifierStore: fakeIdentifierStore{}}
+	linker, err := NewIdentityLinker(LinkerConfig{
+		Users: users, Identifiers: store,
+		BindingMode: IdentifierBindingImmutableRequired,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linker.IdentifierBindingMode() != IdentifierBindingImmutableRequired {
+		t.Fatalf("unexpected linker capability %d", linker.IdentifierBindingMode())
+	}
+}
+
+func TestIdentityLinkerImmutableSignupRequiresTransactionalStore(t *testing.T) {
+	_, err := NewIdentityLinker(LinkerConfig{
+		Users:       &fakeUsers{},
+		Identifiers: &fakeImmutableIdentifierStore{},
+		BindingMode: IdentifierBindingImmutableRequired,
+		AllowSignup: true,
+	})
+	if err == nil {
+		t.Fatal("expected hardened signup to require transactional create-and-bind")
+	}
+}
+
 func TestIdentityLinkerUsesConfiguredSubjectIDStrategy(t *testing.T) {
 	subject := uuid.New()
 	ids := &fakeIdentifierStore{}
@@ -324,6 +368,19 @@ type fakeIdentifierStore struct {
 	upserts   []string
 	deletes   []string
 	upsertErr error
+}
+
+type fakeImmutableIdentifierStore struct {
+	fakeIdentifierStore
+	binds []string
+}
+
+func (s *fakeImmutableIdentifierStore) Bind(
+	_ context.Context,
+	userID, provider, identifier string,
+) error {
+	s.binds = append(s.binds, userID+"|"+provider+"|"+identifier)
+	return s.upsertErr
 }
 
 func (s *fakeIdentifierStore) FindUserID(_ context.Context, provider, identifier string) (string, error) {

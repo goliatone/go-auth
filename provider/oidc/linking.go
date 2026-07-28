@@ -20,9 +20,31 @@ const (
 	LinkActionRejected      = "rejected"
 )
 
+type IdentifierBindingMode uint8
+
+const (
+	// IdentifierBindingLegacyCompatible permits mutable Upsert fallback.
+	// Deprecated: hardened and provider-session flows must use an immutable or
+	// transactional mode.
+	IdentifierBindingLegacyCompatible IdentifierBindingMode = iota
+	IdentifierBindingImmutableRequired
+	IdentifierBindingTransactionalRequired
+)
+
+func (m IdentifierBindingMode) valid() bool {
+	return m >= IdentifierBindingLegacyCompatible && m <= IdentifierBindingTransactionalRequired
+}
+
+// IdentityLinkerSecurityCapability lets hardened browser composition verify
+// that an injected linker cannot reassign an external subject.
+type IdentityLinkerSecurityCapability interface {
+	IdentifierBindingMode() IdentifierBindingMode
+}
+
 type LinkerConfig struct {
 	Users         auth.Users
 	Identifiers   auth.IdentifierStore
+	BindingMode   IdentifierBindingMode
 	AllowSignup   bool
 	EmailFallback EmailFallbackPolicy
 	DefaultRole   auth.UserRole
@@ -98,6 +120,7 @@ type DefaultIdentityLinker struct {
 	idStrategy    IdentityIDStrategy
 	userFactory   UserFactory
 	activitySink  auth.ActivitySink
+	bindingMode   IdentifierBindingMode
 }
 
 func NewIdentityLinker(cfg LinkerConfig) (*DefaultIdentityLinker, error) {
@@ -106,6 +129,30 @@ func NewIdentityLinker(cfg LinkerConfig) (*DefaultIdentityLinker, error) {
 	}
 	if cfg.Identifiers == nil {
 		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identifiers"})
+	}
+	if !cfg.BindingMode.valid() {
+		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identifier_binding_mode"})
+	}
+	switch cfg.BindingMode {
+	case IdentifierBindingImmutableRequired:
+		if _, ok := cfg.Identifiers.(auth.ImmutableIdentifierStore); !ok {
+			return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{
+				"field": "identifiers", "cause": "immutable identifier binding is required",
+			})
+		}
+		if cfg.AllowSignup {
+			if _, ok := cfg.Identifiers.(auth.TransactionalIdentifierStore); !ok {
+				return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{
+					"field": "identifiers", "cause": "transactional create-and-bind is required for signup",
+				})
+			}
+		}
+	case IdentifierBindingTransactionalRequired:
+		if _, ok := cfg.Identifiers.(auth.TransactionalIdentifierStore); !ok {
+			return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{
+				"field": "identifiers", "cause": "transactional identifier binding is required",
+			})
+		}
 	}
 	if cfg.IDStrategy != nil && cfg.UserFactory != nil {
 		return nil, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "identity_creation", "cause": "ID strategy and user factory are mutually exclusive"})
@@ -127,7 +174,15 @@ func NewIdentityLinker(cfg LinkerConfig) (*DefaultIdentityLinker, error) {
 		idStrategy:    idStrategy,
 		userFactory:   cfg.UserFactory,
 		activitySink:  cfg.ActivitySink,
+		bindingMode:   cfg.BindingMode,
 	}, nil
+}
+
+func (l *DefaultIdentityLinker) IdentifierBindingMode() IdentifierBindingMode {
+	if l == nil {
+		return IdentifierBindingLegacyCompatible
+	}
+	return l.bindingMode
 }
 
 func (l *DefaultIdentityLinker) Resolve(ctx context.Context, identity ExternalIdentity) (auth.Identity, LinkingDecision, error) {
@@ -213,7 +268,7 @@ func (l *DefaultIdentityLinker) tryEmailFallback(ctx context.Context, identity E
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, err)
 		return nil, decision, false, err
 	}
-	bindErr := bindIdentifier(ctx, l.identifiers, user.ID.String(), identity.Provider, identity.Subject)
+	bindErr := l.bindIdentifier(ctx, user.ID.String(), identity.Provider, identity.Subject)
 	if bindErr != nil {
 		decision := LinkingDecision{Action: LinkActionRejected, UserID: user.ID.String()}
 		l.emit(ctx, auth.ActivityEventSSOLinkRejected, user.ID.String(), identity, LinkActionRejected, bindErr)
@@ -262,7 +317,7 @@ func (l *DefaultIdentityLinker) persistLinkedUser(
 	if err != nil {
 		return nil, err
 	}
-	if bindErr := bindIdentifier(ctx, l.identifiers, created.ID.String(), provider, subject); bindErr != nil {
+	if bindErr := l.bindIdentifier(ctx, created.ID.String(), provider, subject); bindErr != nil {
 		if cleanupErr := l.users.Delete(ctx, created); cleanupErr != nil {
 			return nil, fmt.Errorf("%w; cleanup failed: %v", bindErr, cleanupErr)
 		}
@@ -271,11 +326,19 @@ func (l *DefaultIdentityLinker) persistLinkedUser(
 	return created, nil
 }
 
-func bindIdentifier(ctx context.Context, store auth.IdentifierStore, userID, provider, identifier string) error {
-	if immutable, ok := store.(auth.ImmutableIdentifierStore); ok {
+func (l *DefaultIdentityLinker) bindIdentifier(
+	ctx context.Context,
+	userID, provider, identifier string,
+) error {
+	if immutable, ok := l.identifiers.(auth.ImmutableIdentifierStore); ok {
 		return immutable.Bind(ctx, userID, provider, identifier)
 	}
-	return store.Upsert(ctx, userID, provider, identifier)
+	if l.bindingMode != IdentifierBindingLegacyCompatible {
+		return cloneWithProvider(ErrLinkingRejected, provider, map[string]any{
+			"cause": "immutable identifier binding is unavailable",
+		})
+	}
+	return l.identifiers.Upsert(ctx, userID, provider, identifier)
 }
 
 func (l *DefaultIdentityLinker) RecordManualLink(ctx context.Context, userID string, identity ExternalIdentity, metadata map[string]any) {

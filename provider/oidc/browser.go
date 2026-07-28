@@ -129,6 +129,12 @@ func browserAuthenticatorDependenciesFromConfig(cfg BrowserAuthenticatorConfig) 
 		if cfg.SessionHandoff == nil {
 			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "session_handoff"})
 		}
+		capability, ok := cfg.IdentityLinker.(IdentityLinkerSecurityCapability)
+		if !ok || capability.IdentifierBindingMode() < IdentifierBindingImmutableRequired {
+			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{
+				"field": "identity_linker", "cause": "provider session mode requires immutable identifier binding",
+			})
+		}
 		if cfg.TokenIssuer != nil || cfg.PrincipalTokenIssuer != nil {
 			return browserAuthenticatorDependencies{}, cloneWithProvider(ErrInvalidConfig, "", map[string]any{"field": "session_mode", "cause": "local issuer is incompatible with provider session mode"})
 		}
