@@ -154,19 +154,35 @@ if err != nil {
     log.Fatal(err)
 }
 
-// Register authentication routes (login, register, password reset)
-auth.RegisterAuthRoutes(router.Group("/auth"),
+// Register browser authentication routes (login, register, password reset)
+// with one stable package-managed CSRF contract.
+err = auth.RegisterSecureAuthRoutes(
+    router.Group("/auth"),
+    auth.AuthRouteSecurityConfig{
+        CSRF: csrf.Config{
+            SecureKey: auth.DeriveBrowserCSRFSecureKey(config),
+        },
+    },
     auth.WithControllerLogger(logger),
     func(ac *auth.AuthController) *auth.AuthController {
         ac.Auther = httpAuth
         ac.Repo = repoManager
         return ac
-    })
+    },
+)
+if err != nil {
+    log.Fatal(err)
+}
 
 // Protect routes with middleware
-protected := httpAuth.ProtectedRoute(config, errorHandler)
+protected := httpAuth.ProtectedBrowserRoute(config, errorHandler)
 router.Get("/profile", profileHandler, protected)
 ```
+
+`RegisterAuthRoutes` remains available for compatibility and now shares one
+process-local stateless CSRF key across its route set. Prefer
+`RegisterSecureAuthRoutes` with an explicit stable key for deployed browser
+applications, especially when requests can reach multiple instances.
 
 **Success handler contract (jwt middleware)**
 The JWT middleware now invokes a `SuccessHandler` with the signature `func(ctx router.Context, next router.HandlerFunc) error`. The default simply calls `next(ctx)`. If you override it, you are responsible for deciding whether to call `next` (run the protected handler) or short-circuit (e.g., redirect). Example:
@@ -323,6 +339,11 @@ func profileHandler(c router.Context) error {
 ### CSRF Protection
 
 `go-auth` ships with a CSRF middleware that plugs into `go-router` and the template helper stack.
+
+Construct a middleware instance once and reuse it for every route that
+participates in the same form flow. The generated stateless signing key belongs
+to that middleware instance; calling `csrf.New()` separately for the GET and
+POST sides intentionally creates separate protection domains.
 
 **Stateless (default)**
 
@@ -1181,3 +1202,17 @@ err := initReset.Execute(ctx, auth.InitializePasswordResetMessage{
 See [`docs/GUIDE_DEVELOPMENT_CICD.md`](docs/GUIDE_DEVELOPMENT_CICD.md) for the
 multi-module formatting, test, lint, security, CI, and release-validation
 workflow.
+
+### Example application
+
+Run the complete local browser example from its module:
+
+```sh
+cd examples
+./taskfile dev:run
+```
+
+The task regenerates Go configuration, installs the pinned frontend build
+dependencies when needed, rebuilds `public/css/main.css` from every template
+under `views/`, builds the Go binary, and starts it on
+`http://127.0.0.1:8572`.

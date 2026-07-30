@@ -82,6 +82,14 @@
 - Report example startup failures with stage-coded, secret-safe operational
   diagnostics instead of a generic panic, and stop printing the raw loaded
   configuration and signing key during startup.
+- Resolve stateless CSRF configuration once per middleware instance so tokens
+  rendered by auth GET routes validate on their POST counterparts. Secure auth
+  routes now emit the token response header, and the example uses the shared
+  package-managed browser protection contract.
+- Restore the example's styled post-login home shell and add a reproducible
+  Tailwind build that scans every server-rendered view. `dev:run` now rebuilds
+  the committed CSS bundle so profile and protected-page utilities cannot
+  silently fall out of the stylesheet.
 
 ## Migration
 
