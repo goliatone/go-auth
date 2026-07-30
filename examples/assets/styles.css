@@ -1,0 +1,23 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap");
+@import "tailwindcss" source(none);
+@source "../views";
+@plugin "@tailwindcss/forms";
+
+@theme {
+  --font-montserrat: "Montserrat", sans-serif;
+  --color-light: #f3f4f6;
+}
+
+/*
+ * Preserve Tailwind v3's neutral default border color for the example's
+ * existing utility markup while building with Tailwind v4.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}

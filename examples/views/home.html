@@ -1,0 +1,40 @@
+{% extends "layouts/auth.html" %}
+
+{% block content %}
+<main data-example-home class="mt-20 w-full max-w-screen-lg mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+  <section class="bg-white shadow rounded-lg p-6 border border-gray-100">
+    <p class="text-sm uppercase tracking-wide text-indigo-600 font-semibold">Go Auth Example</p>
+    <h1 class="mt-2 text-2xl font-bold text-gray-900">{{ title }}</h1>
+    <p class="mt-3 text-gray-600 leading-relaxed">
+      Authentication is active. Continue to your profile or open the protected
+      sandbox to inspect the authenticated actor context.
+    </p>
+    <div class="mt-4 flex flex-wrap gap-3">
+      <a href="/me" class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-500 transition-colors">
+        View Profile
+      </a>
+      <a href="/protected-page" class="inline-flex items-center px-4 py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+        Protected Demo
+      </a>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <article class="bg-blue-50 border border-blue-100 rounded-lg p-5">
+      <h2 class="text-lg font-semibold text-blue-900">Package-managed security</h2>
+      <p class="mt-2 text-sm text-blue-800">
+        Login, CSRF validation, session cookies, and protected routes are wired
+        through the same go-auth browser contract used by the example forms.
+      </p>
+    </article>
+
+    <article class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+      <h2 class="text-lg font-semibold text-gray-900">Explore the example</h2>
+      <p class="mt-2 text-sm text-gray-700">
+        Use the profile to exercise authenticated form handling, then visit the
+        protected page to inspect actor and authorization context.
+      </p>
+    </article>
+  </section>
+</main>
+{% endblock %}

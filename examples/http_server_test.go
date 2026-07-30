@@ -67,7 +67,7 @@ func TestWithHTTPServerServesNamespacedAssets(t *testing.T) {
 
 	status, _, body := performExampleRequest(t, app, http.MethodGet, "/login")
 	require.Equal(t, http.StatusOK, status)
-	assert.Contains(t, body, `href="/assets/css/main-CoC3SGxJ.css"`)
+	assert.Contains(t, body, `href="/assets/css/main.css"`)
 	assert.Contains(t, body, `src="/assets/js/main-Dop5R4UJ.js"`)
 	assert.Contains(t, body, `href="/assets/icon_dark.svg"`)
 	assert.Contains(t, body, `src="/assets/logo_dark.svg"`)
@@ -78,7 +78,7 @@ func TestWithHTTPServerServesNamespacedAssets(t *testing.T) {
 		target      string
 		contentType string
 	}{
-		{target: "/assets/css/main-CoC3SGxJ.css", contentType: "text/css"},
+		{target: "/assets/css/main.css", contentType: "text/css"},
 		{target: "/assets/js/main-Dop5R4UJ.js", contentType: "text/javascript"},
 		{target: "/assets/logo_dark.svg", contentType: "image/svg+xml"},
 		{target: "/assets/icon_dark.svg", contentType: "image/svg+xml"},
@@ -98,16 +98,35 @@ func TestWithHTTPServerServesNamespacedAssets(t *testing.T) {
 	status, _, body = performExampleRequest(t, app, http.MethodGet, "/")
 	assert.Equal(t, http.StatusOK, status)
 	assert.Contains(t, body, "Home Renderer")
+	assert.Contains(t, body, `data-example-home`)
+	assert.Contains(t, body, `href="/assets/css/main.css"`)
+	assert.Contains(t, body, `src="/assets/js/main-Dop5R4UJ.js"`)
+	assert.Contains(t, body, `href="/assets/icon_dark.svg"`)
 
-	status, _, _ = performExampleRequest(t, app, http.MethodGet, "/css/main-CoC3SGxJ.css")
+	status, _, _ = performExampleRequest(t, app, http.MethodGet, "/css/main.css")
 	assert.Equal(t, http.StatusNotFound, status)
+}
+
+func TestCommittedStylesCoverApplicationLayouts(t *testing.T) {
+	styles, err := fs.ReadFile(embeddedFS, "public/css/main.css")
+	require.NoError(t, err)
+
+	for _, selector := range []string{
+		`.max-w-screen-lg`,
+		`.p-6`,
+		`.gap-6`,
+		`.bg-blue-50`,
+		`.lg\:grid-cols-2`,
+	} {
+		assert.Contains(t, string(styles), selector)
+	}
 }
 
 func TestNewAssetFileSystemPrefersDiskAndRetainsEmbeddedFallbacks(t *testing.T) {
 	diskDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(diskDir, "css"), 0o755))
 	require.NoError(t, os.WriteFile(
-		filepath.Join(diskDir, "css", "main-CoC3SGxJ.css"),
+		filepath.Join(diskDir, "css", "main.css"),
 		[]byte("disk override"),
 		0o644,
 	))
@@ -119,7 +138,7 @@ func TestNewAssetFileSystemPrefersDiskAndRetainsEmbeddedFallbacks(t *testing.T) 
 
 	assets := newAssetFileSystem(embeddedFS, "public", diskDir)
 
-	body, err := fs.ReadFile(assets, "css/main-CoC3SGxJ.css")
+	body, err := fs.ReadFile(assets, "css/main.css")
 	require.NoError(t, err)
 	assert.Equal(t, "disk override", string(body))
 
@@ -132,7 +151,7 @@ func TestNewAssetFileSystemPrefersDiskAndRetainsEmbeddedFallbacks(t *testing.T) 
 	for _, entry := range entries {
 		names = append(names, entry.Name())
 	}
-	assert.Contains(t, names, "main-CoC3SGxJ.css")
+	assert.Contains(t, names, "main.css")
 	assert.Contains(t, names, "development-only.css")
 }
 

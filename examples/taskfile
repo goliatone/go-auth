@@ -77,13 +77,13 @@ function _install:envset {
 ##########################################
 
 function dev:install {
-    cd "$(pwd)/src" || exit "$?"
-
     _install:lgr
     _install:brew
 
     _install:envset
     _install:changelog
+
+    npm ci || exit 1
 
     lgr ok "dependencies intalled..."
 }
@@ -97,8 +97,19 @@ function gen:go {
     lgr exec -- go generate ./config/
 }
 
+function assets:build {
+    if [ ! -x node_modules/.bin/tailwindcss ]; then
+        lgr I "Installing frontend build dependencies..."
+        npm ci || exit 1
+    fi
+
+    lgr I "Building example styles..."
+    lgr exec -- npm run build:css
+}
+
 function dev:run {
     gen:go
+    assets:build
     lgr exec -- go build -o example || exit 1
     ./example
 }

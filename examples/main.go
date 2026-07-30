@@ -20,6 +20,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
+	csfmw "github.com/goliatone/go-auth/middleware/csrf"
 	"github.com/goliatone/go-auth/middleware/jwtware"
 	repo "github.com/goliatone/go-auth/repository"
 	cfs "github.com/goliatone/go-composite-fs"
@@ -367,9 +368,8 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	})
 
 	srv.Router().Get("/", func(ctx router.Context) error {
-		return renderWithGlobals(ctx, "test", router.ViewContext{
-			"title":   "Home Renderer",
-			"message": `<p>This is your Home Page</p><a href="/me">Profile</a> | <a href="/protected-page">Protected Demo</a>`,
+		return renderWithGlobals(ctx, "home", router.ViewContext{
+			"title": "Home Renderer",
 		})
 	})
 
@@ -579,14 +579,27 @@ func WithHTTPAuth(ctx context.Context, app *App) error {
 
 	app.SetHTTPAuth(httpAuth)
 
-	auth.RegisterAuthRoutes(app.srv.Router().Group("/"),
+	err = auth.RegisterSecureAuthRoutes(
+		app.srv.Router().Group("/"),
+		auth.AuthRouteSecurityConfig{
+			CSRF: csfmw.Config{
+				SecureKey: auth.DeriveBrowserCSRFSecureKey(cfg),
+				ErrorHandler: func(ctx router.Context, err error) error {
+					return ctx.Status(http.StatusForbidden).SendString(err.Error())
+				},
+			},
+		},
 		func(ac *auth.AuthController) *auth.AuthController {
 			ac.Debug = true
 			ac.Auther = httpAuth
 			ac.Repo = repo
 			ac.WithLogger(app.GetLogger("auth:ctrl"))
 			return ac
-		})
+		},
+	)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
