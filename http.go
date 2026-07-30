@@ -441,7 +441,7 @@ func browserProtectionConfigDefault(config []BrowserProtectionConfig, authCfg Co
 		cfg.CSRF.SessionKeyResolver = browserCSRFSessionKeyResolver
 	}
 	if cfg.CSRF.Storage == nil && len(cfg.CSRF.SecureKey) == 0 {
-		cfg.CSRF.SecureKey = deriveBrowserCSRFSecureKey(authCfg)
+		cfg.CSRF.SecureKey = DeriveBrowserCSRFSecureKey(authCfg)
 	}
 	if cfg.Origin.ErrorHandler == nil {
 		cfg.Origin.ErrorHandler = func(c router.Context, err error) error {
@@ -451,7 +451,11 @@ func browserProtectionConfigDefault(config []BrowserProtectionConfig, authCfg Co
 	return cfg
 }
 
-func deriveBrowserCSRFSecureKey(authCfg Config) []byte {
+// DeriveBrowserCSRFSecureKey derives a stable, domain-separated CSRF key from
+// the host's authentication configuration. It keeps browser CSRF signatures
+// aligned across package-managed auth routes and application instances without
+// reusing the raw authentication signing key.
+func DeriveBrowserCSRFSecureKey(authCfg Config) []byte {
 	sum := sha256.Sum256([]byte("go-auth-browser-csrf:" + authCfg.GetSigningKey() + ":" + authCfg.GetContextKey()))
 	return sum[:]
 }

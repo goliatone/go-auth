@@ -65,7 +65,7 @@ func GetRouterSession(c router.Context, key string) (*SessionObject, error) {
 func RegisterAuthRoutes[T any](app router.Router[T], opts ...AuthControllerOption) {
 	middleware := []router.MiddlewareFunc{
 		router.OriginProtection(),
-		csfmw.New(),
+		authRouteCSRFMiddleware(csfmw.Config{}),
 	}
 	registerAuthRoutes(app, true, middleware, opts...)
 }
@@ -85,10 +85,30 @@ func RegisterSecureAuthRoutes[T any](app router.Router[T], cfg AuthRouteSecurity
 	}
 	middleware := []router.MiddlewareFunc{
 		router.OriginProtection(cfg.Origin),
-		csfmw.New(cfg.CSRF),
+		authRouteCSRFMiddleware(cfg.CSRF),
 	}
 	registerAuthRoutes(app, true, middleware, opts...)
 	return nil
+}
+
+func authRouteCSRFMiddleware(cfg csfmw.Config) router.MiddlewareFunc {
+	if cfg.ContextKey == "" {
+		cfg.ContextKey = csfmw.DefaultContextKey
+	}
+	if cfg.HeaderName == "" {
+		cfg.HeaderName = csfmw.DefaultHeaderName
+	}
+	next := cfg.SuccessHandler
+	cfg.SuccessHandler = func(ctx router.Context) error {
+		if token, ok := ctx.Locals(cfg.ContextKey).(string); ok && token != "" {
+			ctx.SetHeader(cfg.HeaderName, token)
+		}
+		if next != nil {
+			return next(ctx)
+		}
+		return ctx.Next()
+	}
+	return csfmw.New(cfg)
 }
 
 func registerAuthRoutes[T any](app router.Router[T], postLogout bool, middleware []router.MiddlewareFunc, opts ...AuthControllerOption) {
