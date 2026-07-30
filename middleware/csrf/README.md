@@ -33,6 +33,12 @@ func main() {
 }
 ```
 
+Create `csrf.New(...)` once for a protection domain and reuse the returned
+middleware when wrapping related handlers. Configuration, including an
+automatically generated stateless secure key, is resolved at construction
+time. This lets a token rendered by a GET handler validate at its POST handler
+without sharing mutable global state.
+
 ### 2. With Custom Configuration
 
 ```go

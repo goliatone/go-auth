@@ -130,9 +130,9 @@ type SessionKeyResolver func(router.Context) (string, bool)
 
 // New creates a new CSRF middleware
 func New(config ...Config) router.MiddlewareFunc {
-	return func(hf router.HandlerFunc) router.HandlerFunc {
-		cfg := configDefault(config...)
+	cfg := configDefault(config...)
 
+	return func(hf router.HandlerFunc) router.HandlerFunc {
 		return func(ctx router.Context) error {
 			if cfg.Skip != nil && cfg.Skip(ctx) {
 				return ctx.Next()

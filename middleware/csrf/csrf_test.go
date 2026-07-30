@@ -75,6 +75,26 @@ func TestStatelessTokenValidationMismatch(t *testing.T) {
 	require.ErrorIs(t, captured, ErrTokenMismatch)
 }
 
+func TestMiddlewareSharesGeneratedSecureKeyAcrossHandlers(t *testing.T) {
+	middleware := New(Config{
+		ErrorHandler: func(_ router.Context, err error) error {
+			return err
+		},
+	})
+	getHandler := middleware(func(ctx router.Context) error { return nil })
+	postHandler := middleware(func(ctx router.Context) error { return nil })
+
+	getCtx := newMockContextWithBase("GET")
+	require.NoError(t, getHandler(getCtx))
+	token := getCtx.LocalsMock[DefaultContextKey].(string)
+	require.NotEmpty(t, token)
+
+	postCtx := newMockContextWithBase("POST")
+	postCtx.On("FormValue", DefaultFormFieldName).Return(token)
+	require.NoError(t, postHandler(postCtx))
+	require.True(t, postCtx.NextCalled)
+}
+
 func TestStatelessTokenExpiration(t *testing.T) {
 	key := newTestSecureKey()
 	cfg := Config{
