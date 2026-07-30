@@ -14,6 +14,9 @@ func TestModuleRouteContractDeclaresBrowserSSOUIRoutes(t *testing.T) {
 		t.Fatalf("slug = %q, want %q", contract.Slug, ModuleID)
 	}
 	for _, key := range []string{RouteProviderList, RouteBeginLogin, RouteCallback, RouteLink, RouteUnlink, RouteLogout} {
+		if !routing.OwnsRouteKey(ModuleID, key) {
+			t.Fatalf("route key %q is not owned by module %q", key, ModuleID)
+		}
 		if contract.UIRoutes[key] == "" {
 			t.Fatalf("expected UI route %q in contract", key)
 		}

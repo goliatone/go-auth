@@ -12,12 +12,12 @@ import (
 const (
 	ModuleID = "go_auth_sso"
 
-	RouteProviderList = "sso.providers"
-	RouteBeginLogin   = "sso.begin"
-	RouteCallback     = "sso.callback"
-	RouteLink         = "sso.link"
-	RouteUnlink       = "sso.unlink"
-	RouteLogout       = "sso.logout"
+	RouteProviderList = ModuleID + ".providers"
+	RouteBeginLogin   = ModuleID + ".begin"
+	RouteCallback     = ModuleID + ".callback"
+	RouteLink         = ModuleID + ".link"
+	RouteUnlink       = ModuleID + ".unlink"
+	RouteLogout       = ModuleID + ".logout"
 )
 
 // Module wires go-auth browser SSO into the go-admin UI route surface.

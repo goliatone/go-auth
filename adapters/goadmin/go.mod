@@ -3,11 +3,17 @@ module github.com/goliatone/go-auth/adapters/goadmin
 go 1.26.5
 
 require (
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/goliatone/go-admin v0.124.1
 	github.com/goliatone/go-admin/quickstart v0.124.1
 	github.com/goliatone/go-auth v0.44.2
+	github.com/goliatone/go-persistence-bun v0.16.1
 	github.com/goliatone/go-router v0.61.2
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
+	github.com/uptrace/bun v1.2.18
+	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18
+	github.com/uptrace/bun/driver/sqliteshim v1.2.18
 )
 
 replace github.com/goliatone/go-auth => ../..
@@ -82,7 +88,6 @@ require (
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/goliatone/go-auth/adapters/featuregate v0.44.2 // indirect
 	github.com/goliatone/go-cms v0.60.2 // indirect
 	github.com/goliatone/go-command v0.24.1 // indirect
@@ -102,7 +107,6 @@ require (
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-notifications v0.14.0 // indirect
 	github.com/goliatone/go-options v0.7.2 // indirect
-	github.com/goliatone/go-persistence-bun v0.16.1 // indirect
 	github.com/goliatone/go-print v0.4.1 // indirect
 	github.com/goliatone/go-repository-bun v0.16.1 // indirect
 	github.com/goliatone/go-repository-cache v0.7.1 // indirect
@@ -118,7 +122,6 @@ require (
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/pprof v0.0.0-20251208000136-3d256cb9ff16 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -169,11 +172,8 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/traefik/yaegi v0.16.1 // indirect
-	github.com/uptrace/bun v1.2.18 // indirect
 	github.com/uptrace/bun/dbfixture v1.2.18 // indirect
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18 // indirect
-	github.com/uptrace/bun/dialect/sqlitedialect v1.2.18 // indirect
-	github.com/uptrace/bun/driver/sqliteshim v1.2.18 // indirect
 	github.com/uptrace/bun/extra/bundebug v1.2.18 // indirect
 	github.com/uptrace/bun/extra/bunotel v1.2.18 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect

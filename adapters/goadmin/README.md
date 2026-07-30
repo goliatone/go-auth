@@ -37,6 +37,10 @@ Minimum inputs:
 SSO module, and optionally adds `quickstart.WithAuthUIViewContextBuilder` to
 auth UI route registration.
 
+For a complete browser-first application using Supabase, go-router, SQLite, and
+the go-admin SSR dashboard, see
+[`cmd/supabase-dashboard`](cmd/supabase-dashboard/README.md).
+
 ## Troubleshooting
 
 No SSO controls on login:
