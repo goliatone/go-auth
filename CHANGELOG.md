@@ -2,6 +2,8 @@
 
 # [Unreleased]
 
+# [0.45.0](https://github.com/goliatone/go-auth/compare/v0.44.2...v0.45.0) - (2026-07-31)
+
 ## Added
 
 - Provider-neutral `Secret`, `ProviderTokenSet`, validated token context, and
@@ -110,6 +112,81 @@
 - Replace caller-constructed emergency grants with `AuthorizeGrant` plus an
   authoritative resolver and credential verifier. Legacy authorization
   requires `AllowLegacyAuthorize`.
+
+## Commit Details
+
+### <!-- 0 -->🚀 Features
+
+- **goadmin:** Wire identity services and routes ([1810389](https://github.com/goliatone/go-auth/commit/18103899f38c4f5fb4154756906346e0a4726045))  - (goliatone)
+- **http:** Register protected identity routes ([3928eea](https://github.com/goliatone/go-auth/commit/3928eea6600c4239e99f774f22e63ac71de00e4b))  - (goliatone)
+- **auth:** Enforce password recovery lifecycle policy ([6f777de](https://github.com/goliatone/go-auth/commit/6f777deed335dfccdccbc9b261bae862b3fdee03))  - (goliatone)
+- **social:** Harden provider transport ([bc81f27](https://github.com/goliatone/go-auth/commit/bc81f27635d240baab776f94dc7c8a505338ea0a))  - (goliatone)
+- **auth:** Reserve login attempts atomically ([b599d1f](https://github.com/goliatone/go-auth/commit/b599d1f4a0f387ea41f9ce89165f0d548dd28b68))  - (goliatone)
+- **authz:** Enforce audited emergency access policy ([0e3ffea](https://github.com/goliatone/go-auth/commit/0e3ffea0e4c38485b85aba8f4e3a9dc1f292f346))  - (goliatone)
+- **authz:** Propagate scoped freshness invalidation ([5f15124](https://github.com/goliatone/go-auth/commit/5f15124f13a7e98a7fa25df4fb60f8192f145d21))  - (goliatone)
+- **authz:** Enforce assurance and authorization freshness ([16e0324](https://github.com/goliatone/go-auth/commit/16e0324f2351d3a887c72587a9fd2cd3dfe1d1ac))  - (goliatone)
+- **supabase:** Add identity provider integration ([51d1feb](https://github.com/goliatone/go-auth/commit/51d1feb46bb1a18d580ed06fb739b20c6efa3bc2))  - (goliatone)
+- **audit:** Normalize provider activity records ([df94308](https://github.com/goliatone/go-auth/commit/df94308b177ffebd78be80d22e0fd26853a5337b))  - (goliatone)
+- **identity:** Coordinate provider lifecycle operations ([f4fcd38](https://github.com/goliatone/go-auth/commit/f4fcd3856b8e621171dcbb9fb4167a5ab991ebc6))  - (goliatone)
+- **session:** Coordinate encrypted refresh and revocation ([0e5fc1c](https://github.com/goliatone/go-auth/commit/0e5fc1c45b6e85336c2fd39df59199e8f62608ed))  - (goliatone)
+- **audit:** Add identity lifecycle activity events ([f7018e0](https://github.com/goliatone/go-auth/commit/f7018e04bb1193dfa92d355667abc3e5c673e969))  - (goliatone)
+- **storage:** Persist and fence provider sessions ([c8d7597](https://github.com/goliatone/go-auth/commit/c8d7597460461aeb90501cde7137f01d29caad2a))  - (goliatone)
+- **oidc:** Harden browser sessions and token validation ([b7922cc](https://github.com/goliatone/go-auth/commit/b7922cceb8c2c9c854347e5dac3c4f4127a82053))  - (goliatone)
+- **session:** Add provider session contracts ([d035fd3](https://github.com/goliatone/go-auth/commit/d035fd3be2b225816d0c5b5c6590febb5d349b02))  - (goliatone)
+- **identity:** Add lifecycle and immutable binding contracts ([91d8f68](https://github.com/goliatone/go-auth/commit/91d8f689597ef70ff80a0aad448c916538185afb))  - (goliatone)
+- **identity:** Add secret-safe provider token contracts ([ce5bf8a](https://github.com/goliatone/go-auth/commit/ce5bf8a3266cfd91c187cbbbfb6c1119327b769f))  - (goliatone)
+
+### <!-- 1 -->🐛 Bug Fixes
+
+- Dashboard app config update ([41893c2](https://github.com/goliatone/go-auth/commit/41893c239792d7dfb0bdcb3b4dee27791bb3977b))  - (goliatone)
+- Csrf setup ([f9bf980](https://github.com/goliatone/go-auth/commit/f9bf98042319d40d36e9255888969871592e84c3))  - (goliatone)
+- Middleware defaults ([8bcdac2](https://github.com/goliatone/go-auth/commit/8bcdac2e0f0ee69c788ad23958e52ece200acbd0))  - (goliatone)
+- **examples:** Harden startup and asset delivery ([bed9835](https://github.com/goliatone/go-auth/commit/bed983526a67d0c767519f1bf86b836dbc704a3d))  - (goliatone)
+- **identity:** Allow optional external identifiers ([45933b0](https://github.com/goliatone/go-auth/commit/45933b0283cdd84c031a6f57eb0b316586d46c4c))  - (goliatone)
+- **supabase:** Preserve local token configuration ([054022d](https://github.com/goliatone/go-auth/commit/054022d4cd0a7cf021bb6ddf10493db2dcca1161))  - (goliatone)
+- **audit:** Normalize typed provider fingerprints ([be36993](https://github.com/goliatone/go-auth/commit/be36993d569b9d34075ae5e1fdc8c160e686c81e))  - (goliatone)
+- **session:** Fence remote revocation leases ([8f2f2c0](https://github.com/goliatone/go-auth/commit/8f2f2c05438a8b702a6b57d42c96921a3539f171))  - (goliatone)
+- **authz:** Require versioned emergency revocation ([a060626](https://github.com/goliatone/go-auth/commit/a060626ea7e4b8952f9fb0172fa6a827c9b4c50c))  - (goliatone)
+- **identity:** Recover abandoned lifecycle phases ([513ce73](https://github.com/goliatone/go-auth/commit/513ce73d7a43ca5df6a262ef7ec19135c716bab7))  - (goliatone)
+- **oidc:** Minimize provider session disclosure ([5b51d5c](https://github.com/goliatone/go-auth/commit/5b51d5c743a60fa477000da67baacb676412f80f))  - (goliatone)
+- **oidc:** Require immutable identifier bindings ([3849bd1](https://github.com/goliatone/go-auth/commit/3849bd16a67031ea5d9bd6540d38afce9556e45d))  - (goliatone)
+- **authz:** Verify authoritative emergency grants ([52f5003](https://github.com/goliatone/go-auth/commit/52f5003ad656bf6df416625482ab2d277e58cf86))  - (goliatone)
+- **identity:** Enforce coordinated lifecycle mutations ([12c0e0c](https://github.com/goliatone/go-auth/commit/12c0e0cfccdc72dd2fca470b42387358570b44f6))  - (goliatone)
+- **identity:** Persist lifecycle operation state ([8d50186](https://github.com/goliatone/go-auth/commit/8d5018621f323a30e23aec89c228e5430191eaf7))  - (goliatone)
+- **storage:** Serialize provider session lifecycle ([2a5cb56](https://github.com/goliatone/go-auth/commit/2a5cb56496fc57e60796c135b515699cf67a241a))  - (goliatone)
+- **audit:** Normalize provider session activity ([39b8f86](https://github.com/goliatone/go-auth/commit/39b8f8624e633263a1c7b047730ecf4f87da210d))  - (goliatone)
+- **session:** Recover remote revocation work ([5a23547](https://github.com/goliatone/go-auth/commit/5a23547c316a5fdd1aa7ca4ae9b55aa610a37064))  - (goliatone)
+- **session:** Require explicit deployment policy ([ae28676](https://github.com/goliatone/go-auth/commit/ae2867639cc84446224f0fb35b99eecc8ef418f2))  - (goliatone)
+- **migrations:** Preserve standalone rollback compatibility ([93b9c3b](https://github.com/goliatone/go-auth/commit/93b9c3b9f3efe7d1e29b9cf957485cb5af5316df))  - (goliatone)
+- **auth0:** Synchronize immutable provider profiles atomically ([1b4ceed](https://github.com/goliatone/go-auth/commit/1b4ceedaaae807783ad18f7f0ee94c92f58d6b28))  - (goliatone)
+- **jwt:** Enforce signing and token-use boundaries ([0015a3d](https://github.com/goliatone/go-auth/commit/0015a3d861b9e6887db34def2c248a82b61a2ba7))  - (goliatone)
+
+### <!-- 16 -->➕ Add
+
+- Go admin adapter ([f1a656e](https://github.com/goliatone/go-auth/commit/f1a656e388ecf44a3550162ffa8af1aee08a71e9))  - (goliatone)
+
+### <!-- 29 -->👷 CI/CD
+
+- **examples:** Align identity integration dependencies ([3413bf1](https://github.com/goliatone/go-auth/commit/3413bf149b8995590d329087c5c5efaf592d3863))  - (goliatone)
+- **featuregate:** Align adapter dependencies ([695c44d](https://github.com/goliatone/go-auth/commit/695c44d1e5ef959c05897f38a2470c1276ead39f))  - (goliatone)
+
+### <!-- 3 -->📚 Documentation
+
+- **release:** Document security remediation ([0937085](https://github.com/goliatone/go-auth/commit/09370854dfa96f239484e2a75622f2506b3ab935))  - (goliatone)
+- **release:** Document identity review remediation ([ca40161](https://github.com/goliatone/go-auth/commit/ca40161def97af1fd57ff25b81ee584b2b3ede83))  - (goliatone)
+- **release:** Document momentum identity migration ([77ddf9d](https://github.com/goliatone/go-auth/commit/77ddf9d6b00ea30d5e358bb7eb7468051945955d))  - (goliatone)
+- **featuregate:** Document adapter refactor ([eaa15b0](https://github.com/goliatone/go-auth/commit/eaa15b06872c940054aa275bcdc23f7d38cc7676))  - (goliatone)
+- Update changelog for v0.44.2 ([6108f16](https://github.com/goliatone/go-auth/commit/6108f16dac49b95d0a913effca282250a462a0ad))  - (goliatone)
+
+### <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([ee5bf30](https://github.com/goliatone/go-auth/commit/ee5bf307b80fc54c3e472bc691368467944f48f1))  - (goliatone)
+- Update tests ([15e4e9f](https://github.com/goliatone/go-auth/commit/15e4e9f5ddcc21fe00a5b4b9b37365c46577ac47))  - (goliatone)
+- Update docs ([2ae8154](https://github.com/goliatone/go-auth/commit/2ae8154da159f35c8b260342eec8167b5d77e286))  - (goliatone)
+- Update examples ([9a8356c](https://github.com/goliatone/go-auth/commit/9a8356c250c0f3a2edf948a61ccab8fa551e63a5))  - (goliatone)
+- **linter:** Update setup ([724345b](https://github.com/goliatone/go-auth/commit/724345bb6dfe412cfb36cff82c275f0ab075c503))  - (goliatone)
+- **linter:** Code quality ([9b22db5](https://github.com/goliatone/go-auth/commit/9b22db5ec403f90414a4b20656a661ab0aad0d4f))  - (goliatone)
+- **tasks:** Update release flow ([f987243](https://github.com/goliatone/go-auth/commit/f987243a2d43c7d053a74b5b4ab94194ed601b13))  - (goliatone)
 
 # [0.44.2](https://github.com/goliatone/go-auth/compare/v0.44.1...v0.44.2) - (2026-07-23)
 
@@ -1379,3 +1456,5 @@
 - Update docs ([f318a22](https://github.com/goliatone/go-auth/commit/f318a227761d745f576b627270e372a6a2f7fb59))  - (goliatone)
 - Update gitignore ([6c84ae5](https://github.com/goliatone/go-auth/commit/6c84ae5b46edee96d05d21ba7976465ec3e882e2))  - (goliatone)
 - Docs ([0eb291a](https://github.com/goliatone/go-auth/commit/0eb291ac1036213477de8918f521c558023715d9))  - (goliatone)
+
+

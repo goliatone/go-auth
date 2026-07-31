@@ -3,7 +3,7 @@ module github.com/goliatone/go-auth/adapters/featuregate
 go 1.26.0
 
 require (
-	github.com/goliatone/go-auth v0.44.2
+	github.com/goliatone/go-auth v0.45.0
 	github.com/goliatone/go-featuregate v0.6.1
 )
 
