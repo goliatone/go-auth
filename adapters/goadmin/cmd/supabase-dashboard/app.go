@@ -65,8 +65,8 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 	if err != nil {
 		return nil, fmt.Errorf("construct go-admin view engine: %w", err)
 	}
-	if err := quickstart.WithDefaultDashboardRenderer(adm, views, adminCfg); err != nil {
-		return nil, fmt.Errorf("register dashboard renderer: %w", err)
+	if rendererErr := quickstart.WithDefaultDashboardRenderer(adm, views, adminCfg); rendererErr != nil {
+		return nil, fmt.Errorf("register dashboard renderer: %w", rendererErr)
 	}
 	registerDashboard(adm, adminCfg, bunProviderIdentityCounter{db: store.DB})
 
@@ -79,6 +79,69 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 	}
 
 	providerConfig := newSupabaseProviderConfig(cfg)
+	browser, err := newBrowserAuthenticator(ctx, providerConfig, store, auther, authCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	setup, err := goadmin.SetupSSO(goadmin.QuickstartConfig{
+		Admin:      adm,
+		AuthConfig: authCfg,
+		AdminAuthConfig: &admin.AuthConfig{
+			LoginPath:    "/admin/login",
+			LogoutPath:   "/admin/logout",
+			RedirectPath: "/admin/dashboard",
+		},
+		Auther:             auther,
+		RouteAuthenticator: routeAuth,
+		Browser:            browser,
+		ProviderConfigs:    []oidc.ProviderConfig{providerConfig},
+		ProviderLoginURL:   goadmin.StaticProviderLoginURLBuilder("/admin/sso"),
+		HostPermissions: func(context.Context) ([]string, error) {
+			return []string{admin.PermAdminDashboardView}, nil
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("wire go-admin SSO: %w", err)
+	}
+
+	if err := adm.Initialize(r); err != nil {
+		return nil, fmt.Errorf("initialize go-admin: %w", err)
+	}
+	quickstart.NewStaticAssets(r, adminCfg, client.Assets())
+
+	if err := registerAuthUI(r, adminCfg, adm, setup, cfg.secureCookies()); err != nil {
+		return nil, err
+	}
+	registerHostRoutes(r)
+
+	ready = true
+	return newApplication(cfg, store, server, func(request *http.Request) (*http.Response, error) {
+		return server.WrappedRouter().Test(request, -1)
+	}), nil
+}
+
+func newApplication(
+	cfg runtimeConfig,
+	store persistenceRuntime,
+	server serverRuntime,
+	testRequest func(*http.Request) (*http.Response, error),
+) *application {
+	return &application{
+		config:      cfg,
+		persistence: store,
+		server:      server,
+		testRequest: testRequest,
+	}
+}
+
+func newBrowserAuthenticator(
+	ctx context.Context,
+	providerConfig oidc.ProviderConfig,
+	store persistenceRuntime,
+	auther *auth.Auther,
+	authCfg localAuthConfig,
+) (*oidc.BrowserAuthenticator, error) {
 	provider, err := oidc.NewProvider(ctx, providerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("discover Supabase OIDC provider: %w", err)
@@ -117,56 +180,29 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 	if err != nil {
 		return nil, fmt.Errorf("construct OIDC browser flow: %w", err)
 	}
+	return browser, nil
+}
 
-	setup, err := goadmin.SetupSSO(goadmin.QuickstartConfig{
-		Admin:      adm,
-		AuthConfig: authCfg,
-		AdminAuthConfig: &admin.AuthConfig{
-			LoginPath:    "/admin/login",
-			LogoutPath:   "/admin/logout",
-			RedirectPath: "/admin/dashboard",
-		},
-		Auther:             auther,
-		RouteAuthenticator: routeAuth,
-		Browser:            browser,
-		ProviderConfigs:    []oidc.ProviderConfig{providerConfig},
-		ProviderLoginURL:   goadmin.StaticProviderLoginURLBuilder("/admin/sso"),
-		HostPermissions: func(context.Context) ([]string, error) {
-			return []string{admin.PermAdminDashboardView}, nil
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("wire go-admin SSO: %w", err)
-	}
-
-	if err := adm.Initialize(r); err != nil {
-		return nil, fmt.Errorf("initialize go-admin: %w", err)
-	}
-	quickstart.NewStaticAssets(r, adminCfg, client.Assets())
-
-	authUIOptions := append([]quickstart.AuthUIOption{}, setup.AuthUIOptions...)
-	authUIOptions = append(authUIOptions,
+func registerAuthUI[T any](
+	r router.Router[T],
+	adminCfg admin.Config,
+	adm *admin.Admin,
+	setup goadmin.QuickstartResult,
+	secureCookies bool,
+) error {
+	options := append([]quickstart.AuthUIOption{}, setup.AuthUIOptions...)
+	options = append(options,
 		quickstart.WithAuthUIFeatureGate(adm.FeatureGate()),
 		quickstart.WithAuthUILogoutAuthenticator(setup.Authenticator),
 		quickstart.WithAuthUILoginRedirect("/admin/dashboard"),
 		quickstart.WithAuthUILogoutRedirect("/admin/login"),
 		quickstart.WithAuthUIAdminTheme(adm),
-		quickstart.WithAuthUICookie(sessionCookie(cfg.secureCookies())),
+		quickstart.WithAuthUICookie(sessionCookie(secureCookies)),
 	)
-	if err := quickstart.RegisterAuthUIRoutes(r, adminCfg, setup.RouteAuthenticator, authUIOptions...); err != nil {
-		return nil, fmt.Errorf("register go-admin auth UI: %w", err)
+	if err := quickstart.RegisterAuthUIRoutes(r, adminCfg, setup.RouteAuthenticator, options...); err != nil {
+		return fmt.Errorf("register go-admin auth UI: %w", err)
 	}
-	registerHostRoutes(r)
-
-	ready = true
-	return &application{
-		config:      cfg,
-		persistence: store,
-		server:      server,
-		testRequest: func(request *http.Request) (*http.Response, error) {
-			return server.WrappedRouter().Test(request, -1)
-		},
-	}, nil
+	return nil
 }
 
 func newAdminConfig() admin.Config {

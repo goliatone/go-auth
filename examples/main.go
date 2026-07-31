@@ -334,6 +334,7 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	}
 	vcfg.SetTemplateFunctions(templateFunctions)
 
+	vcfg.Debug = false
 	engine, err := router.InitializeViewEngine(vcfg, viewLogger)
 	if err != nil {
 		return err

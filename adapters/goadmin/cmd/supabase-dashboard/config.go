@@ -63,24 +63,9 @@ func loadRuntimeConfigFrom(getenv func(string) string) (runtimeConfig, error) {
 		return runtimeConfig{}, fmt.Errorf("SUPABASE_PROJECT_URL must be a project origin without a path")
 	}
 
-	clientID := strings.TrimSpace(getenv("SUPABASE_OAUTH_CLIENT_ID"))
-	if clientID == "" {
-		return runtimeConfig{}, fmt.Errorf("SUPABASE_OAUTH_CLIENT_ID is required")
-	}
-	clientSecret := auth.NewSecret(strings.TrimSpace(getenv("SUPABASE_OAUTH_CLIENT_SECRET")))
-	method, err := parseTokenEndpointAuthMethod(getenv("SUPABASE_OAUTH_CLIENT_AUTH_METHOD"))
+	clientID, clientSecret, method, err := loadProviderClientConfig(getenv)
 	if err != nil {
 		return runtimeConfig{}, err
-	}
-	switch method {
-	case oidc.TokenEndpointAuthNone:
-		if !clientSecret.IsZero() {
-			return runtimeConfig{}, fmt.Errorf("SUPABASE_OAUTH_CLIENT_SECRET must be empty when client auth method is none")
-		}
-	case oidc.TokenEndpointAuthClientSecretBasic, oidc.TokenEndpointAuthClientSecretPost:
-		if clientSecret.IsZero() {
-			return runtimeConfig{}, fmt.Errorf("SUPABASE_OAUTH_CLIENT_SECRET is required for confidential clients")
-		}
 	}
 
 	signingKey := auth.NewSecret(strings.TrimSpace(getenv("GOAUTH_SIGNING_KEY")))
@@ -88,16 +73,14 @@ func loadRuntimeConfigFrom(getenv func(string) string) (runtimeConfig, error) {
 		return runtimeConfig{}, fmt.Errorf("GOAUTH_SIGNING_KEY must be at least %d bytes", auth.MinimumHMACSigningKeyBytes)
 	}
 
-	algorithms := splitCSV(valueOrDefault(getenv("SUPABASE_ALLOWED_ALGORITHMS"), "ES256,RS256"))
-	for _, algorithm := range algorithms {
-		if algorithm != "ES256" && algorithm != "RS256" {
-			return runtimeConfig{}, fmt.Errorf("SUPABASE_ALLOWED_ALGORITHMS supports only ES256 and RS256")
-		}
+	algorithms, err := parseAllowedAlgorithms(getenv("SUPABASE_ALLOWED_ALGORITHMS"))
+	if err != nil {
+		return runtimeConfig{}, err
 	}
 	idAudience := splitCSV(valueOrDefault(getenv("SUPABASE_ID_TOKEN_AUDIENCE"), clientID))
 	accessAudience := splitCSV(valueOrDefault(getenv("SUPABASE_ACCESS_TOKEN_AUDIENCE"), defaultAccessAudience))
 	if len(idAudience) == 0 || len(accessAudience) == 0 {
-		return runtimeConfig{}, fmt.Errorf("Supabase ID-token and access-token audiences are required")
+		return runtimeConfig{}, fmt.Errorf("supabase ID-token and access-token audiences are required")
 	}
 
 	return runtimeConfig{
@@ -114,6 +97,41 @@ func loadRuntimeConfigFrom(getenv func(string) string) (runtimeConfig, error) {
 		AllowInsecureLoopback: allowInsecure,
 		SigningKey:            signingKey,
 	}, nil
+}
+
+func loadProviderClientConfig(
+	getenv func(string) string,
+) (string, auth.Secret, oidc.TokenEndpointAuthMethod, error) {
+	clientID := strings.TrimSpace(getenv("SUPABASE_OAUTH_CLIENT_ID"))
+	if clientID == "" {
+		return "", auth.Secret{}, "", fmt.Errorf("SUPABASE_OAUTH_CLIENT_ID is required")
+	}
+	clientSecret := auth.NewSecret(strings.TrimSpace(getenv("SUPABASE_OAUTH_CLIENT_SECRET")))
+	method, err := parseTokenEndpointAuthMethod(getenv("SUPABASE_OAUTH_CLIENT_AUTH_METHOD"))
+	if err != nil {
+		return "", auth.Secret{}, "", err
+	}
+	switch method {
+	case oidc.TokenEndpointAuthNone:
+		if !clientSecret.IsZero() {
+			return "", auth.Secret{}, "", fmt.Errorf("SUPABASE_OAUTH_CLIENT_SECRET must be empty when client auth method is none")
+		}
+	case oidc.TokenEndpointAuthClientSecretBasic, oidc.TokenEndpointAuthClientSecretPost:
+		if clientSecret.IsZero() {
+			return "", auth.Secret{}, "", fmt.Errorf("SUPABASE_OAUTH_CLIENT_SECRET is required for confidential clients")
+		}
+	}
+	return clientID, clientSecret, method, nil
+}
+
+func parseAllowedAlgorithms(raw string) ([]string, error) {
+	algorithms := splitCSV(valueOrDefault(raw, "ES256,RS256"))
+	for _, algorithm := range algorithms {
+		if algorithm != "ES256" && algorithm != "RS256" {
+			return nil, fmt.Errorf("SUPABASE_ALLOWED_ALGORITHMS supports only ES256 and RS256")
+		}
+	}
+	return algorithms, nil
 }
 
 func (c runtimeConfig) callbackURL() string {
@@ -219,4 +237,3 @@ func (localAuthConfig) GetAudience() []string           { return []string{"go-ad
 func (localAuthConfig) GetRejectedRouteKey() string     { return "go_admin_return_to" }
 func (localAuthConfig) GetRejectedRouteDefault() string { return "/admin/login" }
 func (localAuthConfig) tokenDuration() time.Duration    { return defaultTokenExpiration * time.Hour }
-func (localAuthConfig) extendedDuration() time.Duration { return 24 * time.Hour }
