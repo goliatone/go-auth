@@ -10,9 +10,9 @@ require (
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-config v0.14.0
 	github.com/goliatone/go-errors v0.12.0
-	github.com/goliatone/go-logger v0.9.0
+	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-persistence-bun v0.16.1
-	github.com/goliatone/go-router v0.61.2
+	github.com/goliatone/go-router v0.61.3
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18

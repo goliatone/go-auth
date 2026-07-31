@@ -11,10 +11,10 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-featuregate v0.6.1
-	github.com/goliatone/go-logger v0.9.0
+	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.16.1
-	github.com/goliatone/go-router v0.61.2
+	github.com/goliatone/go-router v0.61.3
 	github.com/goliatone/hashid v0.2.2
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9

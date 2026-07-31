@@ -4,11 +4,11 @@ go 1.26.5
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/goliatone/go-admin v0.124.1
-	github.com/goliatone/go-admin/quickstart v0.124.1
+	github.com/goliatone/go-admin v0.126.7
+	github.com/goliatone/go-admin/quickstart v0.126.7
 	github.com/goliatone/go-auth v0.44.2
 	github.com/goliatone/go-persistence-bun v0.16.1
-	github.com/goliatone/go-router v0.61.2
+	github.com/goliatone/go-router v0.61.3
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18
@@ -89,21 +89,21 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/goliatone/go-auth/adapters/featuregate v0.44.2 // indirect
-	github.com/goliatone/go-cms v0.60.2 // indirect
+	github.com/goliatone/go-cms v0.60.4 // indirect
 	github.com/goliatone/go-command v0.24.1 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-config v0.14.0 // indirect
 	github.com/goliatone/go-crud v0.25.0 // indirect
 	github.com/goliatone/go-crud/gql v0.25.0 // indirect
-	github.com/goliatone/go-dashboard v0.14.1 // indirect
+	github.com/goliatone/go-dashboard v0.15.4 // indirect
 	github.com/goliatone/go-errors v0.12.0 // indirect
 	github.com/goliatone/go-export v0.9.0 // indirect
 	github.com/goliatone/go-export/adapters/template/go-template v0.9.0 // indirect
 	github.com/goliatone/go-featuregate v0.6.1 // indirect
-	github.com/goliatone/go-formgen v0.31.0 // indirect
+	github.com/goliatone/go-formgen v0.32.4 // indirect
 	github.com/goliatone/go-i18n v0.5.0 // indirect
 	github.com/goliatone/go-job v0.19.0 // indirect
-	github.com/goliatone/go-logger v0.9.0 // indirect
+	github.com/goliatone/go-logger v0.10.1 // indirect
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-notifications v0.14.0 // indirect
 	github.com/goliatone/go-options v0.7.2 // indirect
@@ -114,7 +114,7 @@ require (
 	github.com/goliatone/go-search/adapters/goadmin v0.14.5 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/goliatone/go-template v0.3.1 // indirect
-	github.com/goliatone/go-theme v0.3.0 // indirect
+	github.com/goliatone/go-theme v0.5.2 // indirect
 	github.com/goliatone/go-uploader v0.4.0 // indirect
 	github.com/goliatone/go-urlkit v0.7.0 // indirect
 	github.com/goliatone/go-users v0.24.1 // indirect
@@ -155,8 +155,8 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/richardlehane/mscfb v1.0.4 // indirect
-	github.com/richardlehane/msoleps v1.0.3 // indirect
+	github.com/richardlehane/mscfb v1.0.7 // indirect
+	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
@@ -170,6 +170,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/traefik/yaegi v0.16.1 // indirect
 	github.com/uptrace/bun/dbfixture v1.2.18 // indirect
@@ -183,9 +184,9 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
-	github.com/xuri/efp v0.0.0-20231025114914-d1ff6096ae53 // indirect
-	github.com/xuri/excelize/v2 v2.8.1 // indirect
-	github.com/xuri/nfp v0.0.0-20230919160717-d98342af3f05 // indirect
+	github.com/xuri/efp v0.0.1 // indirect
+	github.com/xuri/excelize/v2 v2.11.0 // indirect
+	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yuin/goldmark v1.7.17 // indirect
 	go.beyondstorage.io/v5 v5.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
