@@ -43,8 +43,8 @@ func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
 				"kid": "test-key",
 				"use": "sig",
 				"alg": "RS256",
-				"n":   base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
-				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
+				"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+				"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes()),
 			}}})
 		default:
 			http.NotFound(w, r)
@@ -86,10 +86,13 @@ func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request %s: %v", target, err)
 		}
-		defer response.Body.Close()
-		body, err := io.ReadAll(response.Body)
-		if err != nil {
-			t.Fatalf("read %s response: %v", target, err)
+		body, readErr := io.ReadAll(response.Body)
+		closeErr := response.Body.Close()
+		if readErr != nil {
+			t.Fatalf("read %s response: %v", target, readErr)
+		}
+		if closeErr != nil {
+			t.Fatalf("close %s response: %v", target, closeErr)
 		}
 		if response.StatusCode != wantStatus {
 			t.Fatalf("%s status = %d, want %d; body=%s", target, response.StatusCode, wantStatus, body)

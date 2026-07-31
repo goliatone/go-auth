@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
 	"github.com/goliatone/go-admin/admin"
@@ -56,7 +57,7 @@ func TestSupabaseActionsUseSafeReadOnlyRoutes(t *testing.T) {
 		t.Fatalf("actions = %#v", value.Actions)
 	}
 	for _, action := range value.Actions {
-		if action.Method != "GET" {
+		if action.Method != http.MethodGet {
 			t.Fatalf("unsafe dashboard action = %#v", action)
 		}
 	}
