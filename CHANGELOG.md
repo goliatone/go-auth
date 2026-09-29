@@ -2,6 +2,17 @@
 
 # [Unreleased]
 
+# [0.45.1](https://github.com/goliatone/go-auth/compare/v0.45.0...v0.45.1) - (2026-09-29)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Test ([2397d3c](https://github.com/goliatone/go-auth/commit/2397d3c296557d049280d61e2fa8dc427fc58471))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([6bb09ca](https://github.com/goliatone/go-auth/commit/6bb09ca58a96d5928d268935e2564c4e7bd2931f))  - (goliatone)
+- Code quality ([4646d94](https://github.com/goliatone/go-auth/commit/4646d941c4dafc5e47ce4da45ab3a9e04eea0e87))  - (goliatone)
+
 # [0.45.0](https://github.com/goliatone/go-auth/compare/v0.44.2...v0.45.0) - (2026-07-31)
 
 ## Added
