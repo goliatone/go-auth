@@ -3,7 +3,6 @@ package supabaseexample
 import (
 	"context"
 	"net/http"
-	"time"
 
 	auth "github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth/provider/oidc"
@@ -125,7 +124,6 @@ func NewLifecycleCoordinator(
 		OperationStore:       store,
 		RequireDurable:       true,
 		RequirePermits:       true,
-		ResultTTL:            24 * time.Hour,
 	})
 }
 

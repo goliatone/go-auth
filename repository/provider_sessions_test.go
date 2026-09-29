@@ -504,7 +504,7 @@ func TestProviderSessionRepositoryFencesRemoteRevocationLeaseAndUsesDatabaseTime
 	claims, err := repo.ClaimRemoteRevocations(
 		context.Background(),
 		auth.ProviderRemoteRevocationClaimPolicy{
-			Now: now.Add(24 * time.Hour), WorkerID: "worker-1",
+			Now: now.Add(24 * time.Hour), WorkerID: "worker-1", //nolint:staticcheck // Deliberately inject a skewed legacy clock to prove it cannot control leases or retries.
 			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
 		},
 	)
@@ -519,7 +519,7 @@ func TestProviderSessionRepositoryFencesRemoteRevocationLeaseAndUsesDatabaseTime
 	competing, err := repo.ClaimRemoteRevocations(
 		context.Background(),
 		auth.ProviderRemoteRevocationClaimPolicy{
-			Now: now.Add(48 * time.Hour), WorkerID: "worker-2",
+			Now: now.Add(48 * time.Hour), WorkerID: "worker-2", //nolint:staticcheck // Deliberately inject a skewed legacy clock to prove it cannot control leases or retries.
 			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
 		},
 	)
@@ -557,7 +557,7 @@ func TestProviderSessionRepositoryFencesRemoteRevocationLeaseAndUsesDatabaseTime
 	reclaimed, err := repo.ClaimRemoteRevocations(
 		context.Background(),
 		auth.ProviderRemoteRevocationClaimPolicy{
-			Now: now.Add(-48 * time.Hour), WorkerID: "worker-2",
+			Now: now.Add(-48 * time.Hour), WorkerID: "worker-2", //nolint:staticcheck // Deliberately inject a skewed legacy clock to prove it cannot control leases or retries.
 			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
 		},
 	)
@@ -589,7 +589,7 @@ func TestProviderSessionRepositoryFencesRemoteRevocationLeaseAndUsesDatabaseTime
 	notDue, err := repo.ClaimRemoteRevocations(
 		context.Background(),
 		auth.ProviderRemoteRevocationClaimPolicy{
-			Now: now.Add(48 * time.Hour), WorkerID: "worker-3",
+			Now: now.Add(48 * time.Hour), WorkerID: "worker-3", //nolint:staticcheck // Deliberately inject a skewed legacy clock to prove it cannot control leases or retries.
 			Lease: 30 * time.Second, BatchSize: 1, MaxAttempts: 3,
 		},
 	)

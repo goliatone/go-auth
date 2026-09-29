@@ -1699,7 +1699,7 @@ func sessionFromModel(model *ProviderSessionModel) (auth.ProviderSession, error)
 		LastSeenAt:                  model.LastSeenAt.UTC(),
 		IdleExpiresAt:               model.IdleExpiresAt.UTC(),
 		MaxExpiresAt:                model.MaxExpiresAt.UTC(),
-		RevocationReason:            string(reason.Code),
+		RevocationReason:            string(reason.Code), //nolint:staticcheck // Populate the deprecated field for existing consumers with only the safe reason code.
 		RevocationReasonCode:        reason.Code,
 		RevocationReasonFingerprint: reason.DetailFingerprint,
 		RemoteRevocation: auth.ProviderRemoteRevocationOutcome{
