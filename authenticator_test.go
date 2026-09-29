@@ -896,3 +896,96 @@ func TestImpersonateWithResourceRoleProvider(t *testing.T) {
 		mockRoleProvider.AssertExpectations(t)
 	})
 }
+
+// Every Login exit must preserve the event contract consumed by audit adapters.
+func TestLoginActivityContractAllOutcomes(t *testing.T) {
+	const identifier = " Mixed.User@example.test\n"
+	const password = "never-include-this-password"
+	for _, tc := range []struct {
+		name    string
+		known   bool
+		success bool
+	}{
+		{"provider error", false, false}, {"nil identity", false, false},
+		{"typed nil identity", false, false}, {"inactive", true, false},
+		{"roles failure", true, false}, {"claims failure", true, false},
+		{"signing failure", true, false}, {"success", true, true}, {"sink failure", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			identity := &TestIdentity{id: uuid.New().String(), username: "audit-user", email: "verified@example.test", role: "member", status: auth.UserStatusActive}
+			if tc.name == "inactive" {
+				identity.status = auth.UserStatusDisabled
+			}
+			var result auth.Identity = identity
+			var providerErr error
+			switch tc.name {
+			case "provider error":
+				result = nil
+				providerErr = errors.New("verification failed")
+			case "nil identity":
+				result = nil
+			case "typed nil identity":
+				var typedNil *TestIdentity
+				result = typedNil
+			}
+			provider := new(MockIdentityProvider)
+			provider.On("VerifyIdentity", ctx, identifier, password).Return(result, providerErr).Once()
+			sink := new(MockActivitySink)
+			var events []auth.ActivityEvent
+			var sinkErr error
+			if tc.name == "sink failure" {
+				sinkErr = errors.New("audit unavailable")
+			}
+			sink.On("Record", mock.Anything, mock.Anything).Run(func(args mock.Arguments) { events = append(events, args.Get(1).(auth.ActivityEvent)) }).Return(sinkErr).Once()
+			auther := auth.NewAuthenticator(provider, newMockConfig()).WithActivitySink(sink)
+			if tc.name == "roles failure" {
+				roles := new(MockResourceRoleProvider)
+				roles.On("FindResourceRoles", ctx, identity).Return(nil, errors.New("roles unavailable")).Once()
+				auther.WithResourceRoleProvider(roles)
+			}
+			if tc.name == "claims failure" {
+				auther.WithClaimsDecorator(auth.ClaimsDecoratorFunc(func(context.Context, auth.Identity, *auth.JWTClaims) error { return errors.New("claims unavailable") }))
+			}
+			if tc.name == "signing failure" {
+				auther.WithTokenSizeGuardrails(64, 128)
+			}
+			token, err := auther.Login(ctx, identifier, password)
+			if tc.success {
+				require.NoError(t, err)
+				require.NotEmpty(t, token)
+			} else {
+				require.Error(t, err)
+				require.Empty(t, token)
+			}
+			require.Len(t, events, 1)
+			event := events[0]
+			wantType := auth.ActivityEventLoginFailure
+			if tc.success {
+				wantType = auth.ActivityEventLoginSuccess
+			}
+			require.Equal(t, wantType, event.EventType)
+			require.Equal(t, identifier, event.Metadata["identifier"], "submitted input is unverified and not normalized by auditing")
+			require.False(t, event.OccurredAt.IsZero())
+			if tc.known {
+				require.Equal(t, identity.ID(), event.Actor.ID)
+				require.Equal(t, identity.ID(), event.UserID)
+			} else {
+				require.Empty(t, event.Actor.ID)
+				require.Empty(t, event.UserID)
+				require.Equal(t, "unknown", event.Actor.Type)
+			}
+			for _, key := range []string{"password", "token", "access_token", "refresh_token"} {
+				require.NotContains(t, event.Metadata, key)
+			}
+			for _, value := range event.Metadata {
+				require.NotEqual(t, password, value)
+				if token != "" {
+					require.NotEqual(t, token, value)
+				}
+			}
+			sink.AssertExpectations(t)
+			provider.AssertExpectations(t)
+		})
+	}
+}

@@ -45,7 +45,11 @@ const (
 	ActivityEventEmergencyAccess          ActivityEventType = "auth.emergency_access"
 )
 
-// ActivityEvent captures audit-friendly information about an action.
+// ActivityEvent captures producer-side information about an action.
+// Metadata is not a persistence-safe payload: login events may include the raw,
+// unverified submitted identifier and provider error text. Consumers must apply
+// their own retention/redaction policy before storage, forwarding or display.
+// An attempted identifier must never be treated as verified actor identity.
 type ActivityEvent struct {
 	EventType  ActivityEventType
 	Actor      ActorRef
