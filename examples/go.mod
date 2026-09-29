@@ -11,7 +11,7 @@ require (
 	github.com/goliatone/go-config v0.14.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-logger v0.10.1
-	github.com/goliatone/go-persistence-bun v0.16.1
+	github.com/goliatone/go-persistence-bun v0.17.1
 	github.com/goliatone/go-router v0.61.3
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
@@ -66,7 +66,7 @@ require (
 	github.com/goliatone/go-print v0.4.1 // indirect
 	github.com/goliatone/go-repository-bun v0.16.1 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
-	github.com/goliatone/hashid v0.2.2 // indirect
+	github.com/goliatone/hashid v0.2.3 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/pprof v0.0.0-20251208000136-3d256cb9ff16 // indirect
