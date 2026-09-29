@@ -23,7 +23,7 @@ func TestNoLegacySelfRegistrationKey(t *testing.T) {
 		}
 		if d.IsDir() {
 			switch d.Name() {
-			case ".git", "vendor", "testdata":
+			case ".git", ".tmp", "vendor", "testdata":
 				return filepath.SkipDir
 			}
 			return nil
