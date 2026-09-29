@@ -88,9 +88,9 @@ func TestAdditionalAuthorizationParamsCannotOverrideProtocolFields(t *testing.T)
 }
 
 func TestTokenExchangeDoesNotFollowSecretBearingRedirect(t *testing.T) {
-	var targetCalls int32
+	var targetCalls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		atomic.AddInt32(&targetCalls, 1)
+		targetCalls.Add(1)
 		_, _ = io.ReadAll(request.Body)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -122,15 +122,15 @@ func TestTokenExchangeDoesNotFollowSecretBearingRedirect(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected redirecting token endpoint to fail")
 	}
-	if got := atomic.LoadInt32(&targetCalls); got != 0 {
+	if got := targetCalls.Load(); got != 0 {
 		t.Fatalf("redirect target received %d secret-bearing requests", got)
 	}
 }
 
 func TestUserInfoDoesNotFollowBearerRedirect(t *testing.T) {
-	var targetCalls int32
+	var targetCalls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&targetCalls, 1)
+		targetCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer target.Close()
@@ -150,15 +150,15 @@ func TestUserInfoDoesNotFollowBearerRedirect(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected redirecting UserInfo endpoint to fail")
 	}
-	if got := atomic.LoadInt32(&targetCalls); got != 0 {
+	if got := targetCalls.Load(); got != 0 {
 		t.Fatalf("redirect target received %d bearer requests", got)
 	}
 }
 
 func TestDiscoveryDoesNotFollowRedirect(t *testing.T) {
-	var targetCalls int32
+	var targetCalls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&targetCalls, 1)
+		targetCalls.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer target.Close()
@@ -179,15 +179,15 @@ func TestDiscoveryDoesNotFollowRedirect(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected redirecting discovery endpoint to fail")
 	}
-	if got := atomic.LoadInt32(&targetCalls); got != 0 {
+	if got := targetCalls.Load(); got != 0 {
 		t.Fatalf("redirect target received %d discovery requests", got)
 	}
 }
 
 func TestJWKSDoesNotFollowRedirect(t *testing.T) {
-	var targetCalls int32
+	var targetCalls atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&targetCalls, 1)
+		targetCalls.Add(1)
 		_, _ = w.Write([]byte(`{"keys":[]}`))
 	}))
 	defer target.Close()
@@ -205,7 +205,7 @@ func TestJWKSDoesNotFollowRedirect(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected redirecting JWKS endpoint to fail")
 	}
-	if got := atomic.LoadInt32(&targetCalls); got != 0 {
+	if got := targetCalls.Load(); got != 0 {
 		t.Fatalf("redirect target received %d JWKS requests", got)
 	}
 }

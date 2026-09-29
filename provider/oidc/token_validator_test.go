@@ -317,10 +317,10 @@ func TestUnknownKIDRefreshIsCoalescedAndRateLimited(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	trustedKey := mustRSAKey(t)
 	unknownKey := mustRSAKey(t)
-	var calls int32
+	var calls atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		atomic.AddInt32(&calls, 1)
+		calls.Add(1)
 		_ = json.NewEncoder(w).Encode(jwksDocument{Keys: []jwk{
 			rsaJWK("trusted", trustedKey.PublicKey, "RS256", "sig", nil),
 		}})
@@ -355,7 +355,7 @@ func TestUnknownKIDRefreshIsCoalescedAndRateLimited(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if got := atomic.LoadInt32(&calls); got != 2 {
+	if got := calls.Load(); got != 2 {
 		t.Fatalf("JWKS fetches = %d, want initial fetch plus one coalesced refresh", got)
 	}
 }

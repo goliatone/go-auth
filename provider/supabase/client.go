@@ -313,12 +313,12 @@ func (c *Client) doAttempt(
 	if err != nil {
 		if unsafeMutation(method, options) {
 			return responseEnvelope{
-					StatusCode: response.StatusCode,
-					Header:     response.Header.Clone(),
-				}, ambiguousProviderError(
-					firstNonEmpty(response.Header.Get("X-Request-ID"), options.RequestID),
-					err,
-				)
+				StatusCode: response.StatusCode,
+				Header:     response.Header.Clone(),
+			}, ambiguousProviderError(
+				firstNonEmpty(response.Header.Get("X-Request-ID"), options.RequestID),
+				err,
+			)
 		}
 		return responseEnvelope{}, err
 	}
