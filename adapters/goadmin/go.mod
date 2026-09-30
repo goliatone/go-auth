@@ -4,11 +4,11 @@ go 1.26.5
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/goliatone/go-admin v0.138.0
-	github.com/goliatone/go-admin/quickstart v0.138.0
-	github.com/goliatone/go-auth v0.45.0
+	github.com/goliatone/go-admin v0.138.1
+	github.com/goliatone/go-admin/quickstart v0.138.1
+	github.com/goliatone/go-auth v0.45.1
 	github.com/goliatone/go-persistence-bun v0.17.1
-	github.com/goliatone/go-router v0.61.3
+	github.com/goliatone/go-router v0.62.1
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18
@@ -26,7 +26,7 @@ require (
 	github.com/adrg/frontmatter v0.2.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
 	github.com/alecthomas/kong v1.14.0 // indirect
-	github.com/andybalholm/brotli v1.2.0 // indirect
+	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.41.5 // indirect
@@ -84,11 +84,11 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
 	github.com/gofiber/contrib/websocket v1.3.4 // indirect
-	github.com/gofiber/fiber/v2 v2.52.12 // indirect
+	github.com/gofiber/fiber/v2 v2.52.13 // indirect
 	github.com/gofiber/template v1.8.3 // indirect
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
-	github.com/goliatone/go-auth/adapters/featuregate v0.45.0 // indirect
+	github.com/goliatone/go-auth/adapters/featuregate v0.45.1 // indirect
 	github.com/goliatone/go-cms v0.60.7 // indirect
 	github.com/goliatone/go-command v0.24.2 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
@@ -117,17 +117,17 @@ require (
 	github.com/goliatone/go-theme v0.5.2 // indirect
 	github.com/goliatone/go-uploader v0.4.0 // indirect
 	github.com/goliatone/go-urlkit v0.7.0 // indirect
-	github.com/goliatone/go-users v0.25.0 // indirect
+	github.com/goliatone/go-users v0.26.1 // indirect
 	github.com/goliatone/hashid v0.2.3 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/pprof v0.0.0-20251208000136-3d256cb9ff16 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jszwec/s3fs/v2 v2.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/knadh/koanf/maps v0.1.1 // indirect
 	github.com/knadh/koanf/parsers/json v0.1.0 // indirect
 	github.com/knadh/koanf/parsers/toml v0.1.0 // indirect
@@ -179,7 +179,7 @@ require (
 	github.com/uptrace/bun/extra/bunotel v1.2.18 // indirect
 	github.com/uptrace/opentelemetry-go-extra/otelsql v0.3.2 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.69.0 // indirect
+	github.com/valyala/fasthttp v1.70.0 // indirect
 	github.com/viccon/sturdyc v1.1.5 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
