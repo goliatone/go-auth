@@ -35,6 +35,19 @@ jwtMiddleware := jwtware.New(jwtware.Config{
 })
 ```
 
+## Authorization freshness
+
+JWT validation and actor enrichment establish a request identity. They do not
+prove the current account state, provider-session authorization fence, assurance
+level, or permission version required by a sensitive operation. Compose
+`auth.AuthorizationFreshnessGuard` and its authoritative resolvers with the
+host's explicit operation policy when those guarantees are needed. Inspect
+`authorization_freshness.go`, `freshness_policy.go`, and `freshness_invalidation.go`.
+
+Validation listeners observe token validation; do not emit a new login-success
+event on every authenticated request. A host may emit its own distinct
+session-validation event through `ActivitySink.Record`.
+
 ## Token Validation Listeners
 
 Set `jwtware.Config.ValidationListeners` (or use `RouteAuthenticator.WithValidationListeners`) to register callbacks that fire immediately after token validation succeeds and before authorization checks run. Listeners receive the active `router.Context` plus the validated `AuthClaims`, enabling side effects such as:
@@ -55,8 +68,8 @@ Return `nil` to continue the request, or an `error` to short-circuit through the
 actorAudit := func(ctx router.Context, claims jwtware.AuthClaims) error {
     stdCtx := auth.WithClaimsContext(ctx.Context(), claims.(auth.AuthClaims))
     if actor, ok := auth.ActorFromContext(stdCtx); ok {
-        activitySink.Emit(ctx.Context(), auth.ActivityEvent{
-            EventType: auth.ActivityEventLoginSuccess,
+        activitySink.Record(ctx.Context(), auth.ActivityEvent{
+            EventType: auth.ActivityEventType("session.validated"),
             Actor:     auth.ActorRef{ID: actor.ActorID, Type: actor.Role},
         })
     }

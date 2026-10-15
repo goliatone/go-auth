@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	TextCodeIdentityProviderRequired    = "IDENTITY_PROVIDER_REQUIRED"
 	TextCodeInvalidCreds                = "INVALID_CREDENTIALS" // #nosec G101 -- Error text code, not a credential.
 	TextCodeTooManyAttempts             = "TOO_MANY_ATTEMPTS"
 	TextCodeSessionNotFound             = "SESSION_NOT_FOUND"
@@ -44,6 +45,13 @@ const (
 	TextCodeEmergencyAccessDenied       = "EMERGENCY_ACCESS_DENIED"
 	TextCodeEmergencyAccessUnavailable  = "EMERGENCY_ACCESS_UNAVAILABLE"
 )
+
+// ErrIdentityProviderRequired indicates missing authenticator configuration.
+// NewAuthenticator remains compatible with token-validation-only callers;
+// credential operations require a non-nil IdentityProvider.
+var ErrIdentityProviderRequired = errors.New("identity provider is required", errors.CategoryInternal).
+	WithCode(errors.CodeInternal).
+	WithTextCode(TextCodeIdentityProviderRequired)
 
 // ErrIdentityNotFound is returned when an identity cannot be found.
 var ErrIdentityNotFound = errors.New("identity not found", errors.CategoryNotFound).

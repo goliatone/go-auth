@@ -16,6 +16,40 @@ A Go authentication library providing JWT based authentication, password managem
 - OAuth2 social login (GitHub, Google) with account linking
 - Customizable identity providers and role providers
 - Store backed permission resolver cache with pluggable backends
+- OIDC/provider sessions, lifecycle coordination, assurance/freshness and audit hooks
+
+## Package and documentation map
+
+Use Go 1.26.0 or newer as required by `go.mod`.
+
+| Package/module | Ownership | Guide |
+| --- | --- | --- |
+| Root `auth`, `repository`, `middleware` | Local tokens/passwords, account state, controllers, actor context, permission/freshness contracts and storage | Sections below; [middleware](docs/MIDDLEWARE.md) |
+| `social` | Provider OAuth account links in `social_accounts` | [Social login](docs/SOCIAL_LOGIN.md) |
+| `provider/oidc` | Browser OIDC, immutable provider identity linking and local-token/provider-session callback modes | [OIDC](docs/OIDC.md) |
+| `provider/auth0` | Auth0 JWT validation and optional identity mirroring | [Auth0](docs/AUTH0.md) |
+| `provider/supabase` | Supabase identity, session/factor and lifecycle capability adapters | [Supabase](docs/SUPABASE.md) |
+| `activitymap` | Producer event normalization; downstream disclosure/retention remains host-owned | [Activity mapping](docs/ACTIVITY_MAPPING.md) |
+| `adapters/featuregate` | Separate module mapping actor context into feature claims/permissions | [Featuregate adapter](adapters/featuregate/README.md) |
+| `adapters/goadmin` | Separate module mounting browser SSO and account-link/logout UI routes | [Admin adapter](adapters/goadmin/README.md) |
+
+The root module does not import go-admin. Install optional adapter modules only
+when those integrations are needed; check their own `go.mod` and release tags.
+`examples` is a separate runnable-example module.
+
+Provider sessions are server-side records with encrypted token material and
+opaque browser handoffs. OIDC state/nonce/PKCE, lifecycle fences and operations,
+refresh/revocation and identity binding have explicit storage/policy contracts;
+configuring an external token validator alone does not assemble this runtime.
+The OIDC and Supabase guides describe callback modes and migration requirements.
+
+JWT validity also does not prove current authorization. Sensitive operations
+can compose `AuthorizationFreshnessGuard` with authoritative session/account,
+assurance and permission-version resolvers, invalidation and explicit operation
+policy. Hosts own step-up delivery and dependency-outage decisions. See
+`authorization_freshness.go`, `freshness_policy.go`, and
+`freshness_invalidation.go`; local passwords and external provider sessions use
+separate credential lifecycles.
 
 ## Installation
 
@@ -27,16 +61,20 @@ go get github.com/goliatone/go-auth
 
 ### Basic Authentication Setup
 
+Supply a tracker implementing both `UserTracker` and
+`AtomicLoginAttemptTracker`; password verification requires atomic attempt
+reservation. `RepositoryManager.Users()` exposes additional query arguments and needs
+a small adapter rather than being passed directly. See the tracker adapter in
+[the runnable example](examples/main.go) for Bun wiring.
+
 ```go
 package main
 
 import (
     "context"
     "fmt"
-    "log"
 
     "github.com/goliatone/go-auth"
-    repo "github.com/goliatone/go-auth/repository"
 )
 
 type AppAuthConfig struct {
@@ -65,12 +103,11 @@ func (c AppAuthConfig) GetAudience() []string           { return c.Audience }
 func (c AppAuthConfig) GetRejectedRouteKey() string     { return c.RejectedRouteKey }
 func (c AppAuthConfig) GetRejectedRouteDefault() string { return c.RejectedRouteDefault }
 
-func main() {
-    // Create repository manager
-    repoManager := repo.NewRepositoryManager(bunDB)
-
-    // Create user provider
-    userProvider := auth.NewUserProvider(repoManager.Users())
+func authenticateExample(tracker interface {
+    auth.UserTracker
+    auth.AtomicLoginAttemptTracker
+}) error {
+    userProvider := auth.NewUserProvider(tracker)
 
     // Any struct that satisfies auth.Config works.
     config := AppAuthConfig{
@@ -92,16 +129,17 @@ func main() {
     // Login user
     token, err := authenticator.Login(context.Background(), "user@example.com", "password")
     if err != nil {
-        log.Fatal(err)
+        return err
     }
 
     // Validate token and get session
     session, err := authenticator.SessionFromToken(token)
     if err != nil {
-        log.Fatal(err)
+        return err
     }
 
     fmt.Printf("User ID: %s\n", session.GetUserID())
+    return nil
 }
 ```
 
@@ -354,19 +392,20 @@ import (
 )
 
 func main() {
-    app := router.New()
+    server := router.NewFiberAdapter()
+    app := server.Router()
 
-    // HMAC-signed tokens; no backing store required
-    app.Use(csrf.New(csrf.Config{
-        SecureKey: []byte("your-32-byte-secret"),
-    }))
+    // HMAC-signed tokens; a random key is generated once for this middleware.
+    app.Use(csrf.New())
 
     app.Post("/submit", func(ctx router.Context) error {
         // Token checked automatically
         return ctx.SendStatus(router.StatusNoContent)
     })
 
-    app.Listen(":8080")
+    if err := server.Serve(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -588,12 +627,16 @@ Defaults:
 - `object_id`: `event.UserID`
 - `actor_id`: `event.Actor.ID -> event.UserID -> "system"`
 
-Normalized metadata preserves `event.Metadata` and adds:
+For ordinary events, normalized metadata is shallow-cloned from `event.Metadata`
+and enriched with:
 
 - `actor_type` (from `event.Actor.Type`, when available)
 - `from_status` / `to_status` for lifecycle transitions
 
-See `docs/ACTIVITY_MAPPING.md` for additional adapter guidance.
+Provider lifecycle/session events use restricted projections and identity
+fingerprints. Ordinary metadata can still contain submitted identifiers and
+provider errors; apply host disclosure/retention policy before persistence.
+See [activity mapping](docs/ACTIVITY_MAPPING.md) for adapter guidance.
 
 The same sink can forward events to a SQL table, queue, or logging pipeline. Refer to `examples/extensions/extensions.go` for a Postgres-based implementation and batching hints.
 
@@ -981,7 +1024,8 @@ See `docs/AUTH0.md` for schema details and sync wiring.
 - `auth.GetCoreMigrationsFS()` for core auth schema (`users`, `password_reset`,
   `user_status`).
 - `auth.GetAuthExtrasMigrationsFS()` for optional extras
-  (`social_accounts`, `user_identifiers`, `users.external_id*`).
+  (`social_accounts`, `user_identifiers`, `users.external_id*`, OIDC state, provider
+  sessions/tokens/fences, and lifecycle operations).
 - `auth.GetMigrationsFS()` for the full migration tree.
 
 Register core first, then extras when both are used.
@@ -1062,126 +1106,65 @@ func requireAdminRole(c router.Context) error {
 
 ### WebSocket Authentication
 
-The library provides seamless WebSocket authentication integration with `go-router` through the `WSTokenValidator` interface:
-
-#### Basic WebSocket Setup
+`auth.NewWSTokenValidator` adapts a `TokenValidator` to go-router's
+`WSTokenValidator`. `Auther.NewWSAuthMiddleware` returns the high-level
+`router.WebSocketMiddleware` shape (`WSHandler` to `WSHandler`). Register the
+wrapped handler through `router.NewWSHandler`; there is no `router.WS` method
+or `*router.WSContext` type.
 
 ```go
-// Create authenticator (same as HTTP setup)
-authenticator := auth.NewAuthenticator(userProvider, config)
-
-// Create WebSocket authentication middleware using go-auth
-wsAuthMiddleware := authenticator.NewWSAuthMiddleware()
-
-// Apply to WebSocket routes
-router.WS("/chat", chatHandler, wsAuthMiddleware)
+func registerChat[T any](routes router.Router[T], authenticator *auth.Auther) {
+    protected := authenticator.NewWSAuthMiddleware()
+    routes.Get("/chat", router.NewWSHandler(protected(
+        func(ctx context.Context, client router.WSClient) error {
+            claims, ok := auth.WSAuthClaimsFromContext(ctx)
+            if !ok || !claims.CanRead("chat:messages") {
+                return client.Close(1008, "Unauthorized")
+            }
+            return client.SendJSON(map[string]string{"user_id": claims.UserID()})
+        },
+    )))
+}
 ```
 
-#### Custom WebSocket Configuration
+For custom extraction/failure handling, pass `router.WSAuthConfig`:
 
 ```go
-// Custom WebSocket auth configuration
 wsConfig := router.WSAuthConfig{
-    TokenExtractor: func(req *http.Request) (string, error) {
-        // Extract token from custom header
-        token := req.Header.Get("X-Auth-Token")
-        if token == "" {
-            return "", errors.New("missing auth token")
-        }
+    TokenExtractor: func(ctx context.Context, client router.WSClient) (string, error) {
+        token := client.Conn().Header("X-Auth-Token")
+        if token == "" { return "", errors.New("missing auth token") }
         return token, nil
     },
-    // Optional: custom error handling
-    ErrorHandler: func(ctx *router.WSContext, err error) {
-        ctx.WriteMessage(websocket.TextMessage, []byte(`{"error": "authentication failed"}`))
-        ctx.Close()
+    OnAuthFailure: func(ctx context.Context, client router.WSClient, err error) error {
+        return client.Close(1008, "Authentication failed")
     },
 }
-
-wsAuthMiddleware := authenticator.NewWSAuthMiddleware(wsConfig)
-router.WS("/secure-chat", secureHandler, wsAuthMiddleware)
+protected := authenticator.NewWSAuthMiddleware(wsConfig)
 ```
 
-#### Using Authentication in WebSocket Handlers
+Default extraction checks token query parameters, then the Authorization header;
+cookie extraction requires `EnableTokenCookie`. Hosts choose the transport and
+avoid exposing token-bearing URLs in logs. Authentication here runs in the
+high-level connection handler. Use package-managed HTTP/pre-upgrade admission
+when a rejection must carry an HTTP status before the upgrade.
 
-```go
-func chatHandler(ctx *router.WSContext) error {
-    // Get authenticated user claims
-    claims, ok := auth.WSAuthClaimsFromContext(ctx.Context())
-    if !ok {
-        return errors.New("no authentication claims found")
-    }
-
-    userID := claims.UserID()
-    userRole := claims.Role()
-
-    // Use resource-level permissions
-    canModerate := claims.CanEdit("chat:moderation")
-    canBroadcast := claims.CanCreate("chat:announcements")
-
-    // Your WebSocket logic here
-    for {
-        messageType, message, err := ctx.ReadMessage()
-        if err != nil {
-            break
-        }
-
-        // Process message based on user permissions
-        if canModerate && isModerateCommand(message) {
-            handleModerationCommand(message, userID)
-        } else {
-            handleRegularMessage(message, userID)
-        }
-    }
-
-    return nil
-}
-```
-
-#### Advanced WebSocket Authentication
-
-For more complex scenarios, you can create a custom token validator:
-
-```go
-// Custom validator for additional WebSocket-specific logic
-type CustomWSValidator struct {
-    tokenService auth.TokenService
-    logger       Logger
-}
-
-func (v *CustomWSValidator) Validate(tokenString string) (router.WSAuthClaims, error) {
-    // Use go-auth token service for validation
-    claims, err := v.tokenService.Validate(tokenString)
-    if err != nil {
-        v.logger.Error("WebSocket token validation failed", "error", err)
-        return nil, err
-    }
-
-    // Additional WebSocket-specific validation
-    if !claims.CanRead("websocket:access") {
-        return nil, errors.New("insufficient permissions for WebSocket access")
-    }
-
-    // Return adapter for go-router compatibility
-    return &auth.WSAuthClaimsAdapter{Claims: claims}, nil
-}
-
-// Use custom validator
-validator := &CustomWSValidator{
-    tokenService: authenticator.TokenService(),
-    logger:       logger,
-}
-
-wsConfig := router.WSAuthConfig{TokenValidator: validator}
-wsAuth := router.NewWSAuth(wsConfig)
-```
+For a custom validator, return claims through
+`auth.NewWSTokenValidator(customTokenValidator)` rather than constructing
+`WSAuthClaimsAdapter` directly: its wrapped claims are private. Use the
+low-level `router.WebSocketContext` API only when the application owns the
+read/write loop. See `websocket_adapter.go` and go-router's WebSocket guides.
 
 ## Command Handlers
 
-The library includes command handlers for common operations:
+The library includes command handlers for common operations. `resetDelivery`
+below is a host-provided `auth.PasswordResetDelivery` that sends the opaque
+credential through a trusted channel; reset credentials are not returned in
+command responses. Configure feature gates through `WithFeatureGate` when used.
 
 ```go
 // Register user
-registerUser := auth.RegisterUserHandler{repo: repositoryManager}
+registerUser := auth.NewRegisterUserHandler(repositoryManager)
 err := registerUser.Execute(ctx, auth.RegisterUserMessage{
     FirstName: "John",
     LastName:  "Doe",
@@ -1190,7 +1173,7 @@ err := registerUser.Execute(ctx, auth.RegisterUserMessage{
 })
 
 // Initialize password reset
-initReset := auth.InitializePasswordResetHandler{repo: repositoryManager}
+initReset := auth.NewInitializePasswordResetHandler(repositoryManager).WithDelivery(resetDelivery)
 err := initReset.Execute(ctx, auth.InitializePasswordResetMessage{
     Email: "user@example.com",
     Stage: "show-reset",

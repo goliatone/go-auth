@@ -294,4 +294,4 @@ All helper functions are designed to be safe:
 
 ## Integration Examples
 
-See the complete working example in [`examples/template_integration_example.go`](examples/template_integration_example.go).
+See the [runnable application](../examples/README.md) and [view wiring](../examples/main.go).

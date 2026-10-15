@@ -310,8 +310,8 @@ data := auth.TemplateHelpersWithRouter(ctx, "current_user")
 
 ## Examples
 
-See complete working examples in:
-- [`examples/template_integration_example.go`](examples/template_integration_example.go)
+See template wiring and helper usage in:
+- [runnable application](../examples/README.md) and [view wiring](../examples/main.go)
 - [`TEMPLATE_INTEGRATION.md`](TEMPLATE_INTEGRATION.md)
 
 ## Security Notes

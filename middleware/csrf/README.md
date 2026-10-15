@@ -24,12 +24,15 @@ import (
 )
 
 func main() {
-    app := router.New()
+    server := router.NewFiberAdapter()
+    app := server.Router()
 
-    // Add CSRF middlware
+    // Add CSRF middleware
     app.Use(csrf.New())
 
-    app.Listen(":8080")
+    if err := server.Serve(":8080"); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -243,29 +246,41 @@ The middleware automatically generates storage keys based on available context:
 ## Testing
 
 ```go
-func TestCSRFProtection(t *testing.T) {
-    app := router.New()
-    app.Use(csrf.New())
+import (
+    "io"
+    "net/http/httptest"
+    "net/url"
+    "strings"
+    "testing"
 
+    "github.com/goliatone/go-auth/middleware/csrf"
+    "github.com/goliatone/go-router"
+)
+
+func TestCSRFProtection(t *testing.T) {
+    server := router.NewFiberAdapter()
+    app := server.Router()
+    app.Use(csrf.New())
+    app.Get("/test", func(ctx router.Context) error {
+        return ctx.SendString(ctx.Locals(csrf.DefaultContextKey).(string))
+    })
     app.Post("/test", func(ctx router.Context) error {
         return ctx.SendString("OK")
     })
+    fiberApp := server.WrappedRouter() // seals registration; register both routes first
 
-    // Get token first
-    req := httptest.NewRequest("GET", "/test", nil)
-    resp, _ := app.Test(req)
+    resp, err := fiberApp.Test(httptest.NewRequest("GET", "/test", nil))
+    if err != nil { t.Fatal(err) }
+    body, err := io.ReadAll(resp.Body)
+    resp.Body.Close()
+    if err != nil { t.Fatal(err) }
 
-    // Extract token from response...
-    token := extractTokenFromResponse(resp)
-
-    // Use token in POST request
-    form := url.Values{}
-    form.Add("_token", token)
-
-    req = httptest.NewRequest("POST", "/test", strings.NewReader(form.Encode()))
+    form := url.Values{"_token": {string(body)}}
+    req := httptest.NewRequest("POST", "/test", strings.NewReader(form.Encode()))
     req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-    resp, _ = app.Test(req)
-    assert.Equal(t, 200, resp.StatusCode)
+    resp, err = fiberApp.Test(req)
+    if err != nil { t.Fatal(err) }
+    defer resp.Body.Close()
+    if resp.StatusCode != 200 { t.Fatalf("status = %d", resp.StatusCode) }
 }
 ```

@@ -33,7 +33,17 @@ import "github.com/goliatone/go-auth/activitymap"
 
 ## Metadata behavior
 
-`Normalize` clones `event.Metadata` and never mutates the source event map.
+`Normalize` shallow-clones ordinary event metadata and never mutates the source event
+map. Provider-session/lifecycle events use restricted metadata projections and
+fingerprint identity fields before output. This normalizer is not a general
+secret/PII sanitizer for ordinary events: login events can carry raw unverified
+submitted identifiers and provider error text. Apply the host's allowlist,
+redaction and retention policy before storing or forwarding ordinary metadata.
+
+For a go-users audit feed, use `go-users/adapter/goauth.NewActivitySink` with a
+trusted exact tenant/org scope and anonymous actor UUID, followed by a host-owned
+`activity.RecordPolicy`. Failed-login identifier retention requires an explicit
+opt-in at both boundaries; attempted input never establishes actor identity.
 
 It also enriches metadata with:
 

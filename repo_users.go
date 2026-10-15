@@ -1,10 +1,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"net/mail"
+	"reflect"
 	"strings"
 	"time"
 
@@ -379,18 +381,38 @@ func (a *users) UpdateStatus(ctx context.Context, id uuid.UUID, status UserStatu
 }
 
 func (a *users) UpdateStatusTx(ctx context.Context, tx bun.IDB, id uuid.UUID, status UserStatus, opts ...StatusUpdateOption) (*User, error) {
-	record := &User{
-		ID:     id,
-		Status: status,
-	}
-
-	for _, opt := range opts {
-		if opt != nil {
-			opt(record)
+	record := &User{ID: id, Status: status}
+	columns := []string{"status"}
+	if len(opts) > 0 {
+		// Options may explicitly clear any writable field. Read current values
+		// so omitted fields stay untouched, and compare their SQL values before
+		// and after callbacks (including in-place metadata/timestamp mutations).
+		var err error
+		record, err = a.GetByIDTx(ctx, tx, id.String())
+		if err != nil {
+			return nil, err
+		}
+		fields := a.db.Table(reflect.TypeFor[User]()).DataFields
+		value := reflect.ValueOf(record).Elem()
+		before := make([][]byte, len(fields))
+		for i, field := range fields {
+			before[i] = field.AppendValue(a.db.QueryGen(), nil, value)
+		}
+		record.Status = status
+		for _, opt := range opts {
+			if opt != nil {
+				opt(record)
+			}
+		}
+		// Options cannot retarget the status mutation's primary key.
+		record.ID = id
+		for i, field := range fields {
+			if field.Name != "status" && !bytes.Equal(before[i], field.AppendValue(a.db.QueryGen(), nil, value)) {
+				columns = append(columns, field.Name)
+			}
 		}
 	}
-
-	return a.UpdateTx(ctx, tx, record, repository.UpdateByID(id.String()))
+	return a.UpdateTx(ctx, tx, record, repository.UpdateByID(id.String()), repository.UpdateColumns(columns...))
 }
 
 func (a *users) GetOrRegisterTx(ctx context.Context, tx bun.IDB, record *User) (*User, error) {

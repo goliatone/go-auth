@@ -207,10 +207,16 @@ func (r *CompositeAccountStateResolver) ResolveCurrentAccountState(
 		}
 		observation.Source = source.Name
 		if observation.ObservedAt.IsZero() {
-			observation.ObservedAt = now
+			observation.ObservedAt = r.now()
 		}
 		resolution.Sources = append(resolution.Sources, observation)
-		if observation.ObservedAt.After(now) {
+	}
+	// A source may timestamp evidence while reading it. Evaluate against
+	// completion time, including time spent reading later sources.
+	now = r.now()
+	for _, observation := range resolution.Sources {
+		if observation.ObservedAt.After(now) ||
+			(request.MaximumStaleness > 0 && now.Sub(observation.ObservedAt) > request.MaximumStaleness) {
 			resolution.Unavailable = true
 			resolution.InvalidEvidence = true
 			continue
@@ -310,6 +316,7 @@ func (r *CompositeAccountStateResolver) loadCache(key string, now time.Time, max
 	}
 	if !now.Before(entry.expiresAt) ||
 		entry.resolution.ObservedAt.IsZero() ||
+		entry.resolution.ObservedAt.After(now) ||
 		now.Sub(entry.resolution.ObservedAt) > maximumStaleness {
 		r.mu.Lock()
 		if current, exists := r.cache[key]; exists && current.expiresAt.Equal(entry.expiresAt) {

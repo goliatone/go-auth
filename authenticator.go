@@ -26,7 +26,9 @@ type Auther struct {
 	tokenHardLimitBytes     int
 }
 
-// NewAuthenticator returns a new Authenticator
+// NewAuthenticator returns a new Authenticator. A nil or typed-nil provider
+// supports token-validation-only use; Login and Impersonate return
+// ErrIdentityProviderRequired until a valid provider is configured.
 func NewAuthenticator(provider IdentityProvider, opts Config) *Auther {
 	loggerProvider, logger := ResolveLogger("auth", nil, nil)
 	tokenWarnThresholdBytes := DefaultTokenWarnThresholdBytes
@@ -111,6 +113,9 @@ func (s *Auther) TokenService() TokenService {
 }
 
 func (s *Auther) Login(ctx context.Context, identifier, password string) (string, error) {
+	if isNilIdentityProvider(s.provider) {
+		return "", ErrIdentityProviderRequired
+	}
 	var err error
 	var identity Identity
 
@@ -171,6 +176,9 @@ func (s *Auther) Login(ctx context.Context, identifier, password string) (string
 }
 
 func (s *Auther) Impersonate(ctx context.Context, identifier string) (string, error) {
+	if isNilIdentityProvider(s.provider) {
+		return "", ErrIdentityProviderRequired
+	}
 	var err error
 	var identity Identity
 
@@ -231,6 +239,9 @@ func (s *Auther) Impersonate(ctx context.Context, identifier string) (string, er
 }
 
 func (s *Auther) IdentityFromSession(ctx context.Context, session Session) (Identity, error) {
+	if isNilIdentityProvider(s.provider) {
+		return nil, ErrIdentityProviderRequired
+	}
 	identity, err := s.provider.FindIdentityByIdentifier(ctx, session.GetUserID())
 
 	if err != nil {
@@ -371,4 +382,19 @@ func (s *Auther) rebuildTokenService() {
 		s.loggerProvider.GetLogger("auth.token_service"),
 		WithTokenSizeGuardrails(s.tokenWarnThresholdBytes, s.tokenHardLimitBytes),
 	)
+}
+
+// A provider can be an interface holding a nil pointer, map, slice or function.
+// Do not reject valid zero-valued providers with non-nilable concrete types.
+func isNilIdentityProvider(provider IdentityProvider) bool {
+	if provider == nil {
+		return true
+	}
+	value := reflect.ValueOf(provider)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
