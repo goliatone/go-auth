@@ -253,6 +253,7 @@ func TestSessionFromToken(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("Valid token", func(t *testing.T) {
+		mockProvider.On("FindIdentityByIdentifier", mock.Anything, userID).Return(TestIdentity{id: userID, role: "admin"}, nil).Once()
 		session, err := authenticator.SessionFromToken(tokenString)
 
 		assert.NoError(t, err)
@@ -607,6 +608,7 @@ func TestClaimsDecoratorIntegration(t *testing.T) {
 	assert.Equal(t, "acme", jwtClaims.Metadata["tenant"])
 	assert.Equal(t, "editor", jwtClaims.Resources["project:alpha"])
 
+	mockProvider.On("FindIdentityByIdentifier", ctx, identity.ID()).Return(identity, nil).Once()
 	session, err := authenticator.SessionFromToken(token)
 	require.NoError(t, err)
 	metadata, ok := session.GetData()["metadata"].(map[string]any)

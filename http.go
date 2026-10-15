@@ -218,6 +218,17 @@ func (a *RouteAuthenticator) ProtectedRoute(cfg Config, errorHandler func(router
 		ContextEnricher: ContextEnricherAdapter,
 	}
 
+	// Check current account state after token validation and before host listeners
+	// or handlers. Keep standalone TokenService validation provider-independent.
+	if auther, ok := a.auth.(*Auther); ok && !isNilIdentityProvider(auther.provider) {
+		RegisterValidationListeners(&jwtConfig, func(c router.Context, claims jwtware.AuthClaims) error {
+			if claims == nil {
+				return ErrUnableToParseData
+			}
+			return auther.validateSessionIdentity(c.Context(), claims.UserID())
+		})
+	}
+
 	if len(a.validationListeners) > 0 {
 		RegisterValidationListeners(&jwtConfig, a.validationListeners...)
 	}
