@@ -2,6 +2,18 @@
 
 # [Unreleased]
 
+# [0.45.2](https://github.com/goliatone/go-auth/compare/v0.45.1...v0.45.2) - (2026-10-15)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Error handling for missing identity and account state ([8b109b7](https://github.com/goliatone/go-auth/commit/8b109b7da575a3641052dfb2f35dfaa44e417822))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([952a403](https://github.com/goliatone/go-auth/commit/952a40324548d3fba19cc34ba1dc8316821b0268))  - (goliatone)
+- Update deps ([3e0a449](https://github.com/goliatone/go-auth/commit/3e0a449868cabf73af89188ad16ca8e29e88f238))  - (goliatone)
+- Code quality ([c8246f8](https://github.com/goliatone/go-auth/commit/c8246f8b0d431b366e2daeb1f1a1ec0fd0d35d88))  - (goliatone)
+
 # [0.45.1](https://github.com/goliatone/go-auth/compare/v0.45.0...v0.45.1) - (2026-09-29)
 
 ## <!-- 1 -->🐛 Bug Fixes
