@@ -252,7 +252,16 @@ func (s *Auther) IdentityFromSession(ctx context.Context, session Session) (Iden
 	return identity, nil
 }
 
+// SessionFromToken validates a session token and, when a provider is configured,
+// checks that its current identity still exists and is active. For request-scoped
+// cancellation, use SessionFromTokenContext.
 func (s Auther) SessionFromToken(raw string) (Session, error) {
+	return s.SessionFromTokenContext(context.Background(), raw)
+}
+
+// SessionFromTokenContext validates a token before checking current account state.
+// Authenticators without an identity provider retain token-validation-only mode.
+func (s Auther) SessionFromTokenContext(ctx context.Context, raw string) (Session, error) {
 	validator := s.tokenValidator
 	if validator == nil {
 		validator = s.tokenService
@@ -279,7 +288,35 @@ func (s Auther) SessionFromToken(raw string) (Session, error) {
 		return nil, err
 	}
 
+	if err := s.validateSessionIdentity(ctx, session.GetUserID()); err != nil {
+		return nil, err
+	}
 	return session, nil
+}
+
+// validateSessionIdentity is shared with HTTP validation. Provider lookups must
+// use the signed user ID, and failures must never fall back to token-only mode.
+func (s Auther) validateSessionIdentity(ctx context.Context, userID string) error {
+	if isNilIdentityProvider(s.provider) {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if userID == "" {
+		return ErrIdentityNotFound
+	}
+	identity, err := s.provider.FindIdentityByIdentifier(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if _, err := EnsureIdentityActive(identity); err != nil {
+		return err
+	}
+	if identity.ID() != userID {
+		return ErrIdentityNotFound
+	}
+	return nil
 }
 
 // generateJWT generates a JWT token using structured claims with resource-specific roles

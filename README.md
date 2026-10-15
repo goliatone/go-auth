@@ -43,6 +43,14 @@ refresh/revocation and identity binding have explicit storage/policy contracts;
 configuring an external token validator alone does not assemble this runtime.
 The OIDC and Supabase guides describe callback modes and migration requirements.
 
+When an `IdentityProvider` is configured, `SessionFromToken` and the HTTP
+protected-route middleware re-read the signed user ID and reject inactive,
+missing or mismatched identities and provider lookup errors. This adds one
+identity lookup per successfully validated token. Use
+`SessionFromTokenContext(ctx, token)` to pass request cancellation to that lookup.
+A nil or typed-nil provider keeps token-validation-only behavior; low-level
+`TokenService.Validate` remains a cryptographic check.
+
 JWT validity also does not prove current authorization. Sensitive operations
 can compose `AuthorizationFreshnessGuard` with authoritative session/account,
 assurance and permission-version resolvers, invalidation and explicit operation
