@@ -2,6 +2,12 @@
 
 # [Unreleased]
 
+# [0.45.3](https://github.com/goliatone/go-auth/compare/v0.45.2...v0.45.3) - (2026-10-15)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Check current accoutn state after token validation ([a25ba30](https://github.com/goliatone/go-auth/commit/a25ba3076ccc4f9898dab5fc5e4fa0b954c4163b))  - (goliatone)
+
 # [0.45.2](https://github.com/goliatone/go-auth/compare/v0.45.1...v0.45.2) - (2026-10-15)
 
 ## <!-- 1 -->🐛 Bug Fixes
