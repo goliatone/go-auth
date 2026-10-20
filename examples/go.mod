@@ -6,13 +6,13 @@ require (
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/gofiber/fiber/v2 v2.52.13
-	github.com/goliatone/go-auth v0.0.0-00010101000000-000000000000
+	github.com/goliatone/go-auth v0.45.3
 	github.com/goliatone/go-composite-fs v0.3.0
-	github.com/goliatone/go-config v0.14.0
+	github.com/goliatone/go-config v0.15.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-persistence-bun v0.17.1
-	github.com/goliatone/go-router v0.62.1
+	github.com/goliatone/go-router v0.62.5
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18
@@ -64,7 +64,7 @@ require (
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goliatone/go-options v0.7.1 // indirect
 	github.com/goliatone/go-print v0.4.1 // indirect
-	github.com/goliatone/go-repository-bun v0.16.1 // indirect
+	github.com/goliatone/go-repository-bun v0.16.2 // indirect
 	github.com/goliatone/go-slug v0.1.0 // indirect
 	github.com/goliatone/hashid v0.2.3 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
@@ -127,13 +127,13 @@ require (
 	go.opentelemetry.io/otel v1.40.0 // indirect
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.29.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2 // indirect

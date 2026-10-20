@@ -13,18 +13,18 @@ require (
 	github.com/goliatone/go-featuregate v0.6.1
 	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-print v0.4.1
-	github.com/goliatone/go-repository-bun v0.16.1
-	github.com/goliatone/go-router v0.62.1
+	github.com/goliatone/go-repository-bun v0.16.2
+	github.com/goliatone/go-router v0.62.5
 	github.com/goliatone/hashid v0.2.3
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/stretchr/testify v1.11.1
-	github.com/uptrace/bun v1.2.16
+	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.16
 	github.com/uptrace/bun/dialect/sqlitedialect v1.2.16
-	golang.org/x/crypto v0.53.0
-	golang.org/x/sync v0.21.0
+	golang.org/x/crypto v0.56.0
+	golang.org/x/sync v0.22.0
 	gopkg.in/square/go-jose.v2 v2.6.0
 )
 
@@ -80,10 +80,10 @@ require (
 	github.com/valyala/fasthttp v1.70.0 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/oauth2 v0.29.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
