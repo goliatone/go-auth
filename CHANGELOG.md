@@ -2,6 +2,13 @@
 
 # [Unreleased]
 
+# [0.45.4](https://github.com/goliatone/go-auth/compare/v0.45.3...v0.45.4) - (2026-10-20)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update gitignore ([aba7da3](https://github.com/goliatone/go-auth/commit/aba7da3930a6053af6a857003f778686bfac38d5))  - (goliatone)
+- Update deps ([53bd073](https://github.com/goliatone/go-auth/commit/53bd0735cea486330c707f42c0489eb3b23a640b))  - (goliatone)
+
 # [0.45.3](https://github.com/goliatone/go-auth/compare/v0.45.2...v0.45.3) - (2026-10-15)
 
 ## <!-- 1 -->🐛 Bug Fixes
