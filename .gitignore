@@ -54,3 +54,7 @@ node_modules/
 go.work
 .tmp
 **.db
+evidence
+.claude/
+.codex/
+.ctx/
