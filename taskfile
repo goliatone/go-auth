@@ -231,6 +231,8 @@ function _go:module_dirs {
     find . -mindepth 2 -name go.mod \
         -not -path './.git/*' \
         -not -path './.tmp/*' \
+        -not -path './.ctx/*' \
+        -not -path './evidence/*' \
         -not -path './vendor/*' \
         -print \
         | sed 's#/go\.mod$##' \
@@ -281,6 +283,8 @@ function _go:files {
         -not -path './.git/*' \
         -not -path './.gocache/*' \
         -not -path './.tmp/*' \
+        -not -path './.ctx/*' \
+        -not -path './evidence/*' \
         -not -path './node_modules/*' \
         | sort
 }

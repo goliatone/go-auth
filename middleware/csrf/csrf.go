@@ -487,6 +487,12 @@ func initializeSecureKey(current []byte, storage Storage) []byte {
 
 // CSRFTemplateHelpers returns template helper functions for CSRF protection
 func CSRFTemplateHelpers() map[string]any {
+	return CSRFTemplateHelpersWithFactory(getTemplateHelperFactory())
+}
+
+// CSRFTemplateHelpersWithFactory builds helpers for one renderer without changing
+// the default factory. A nil factory returns the static placeholder strings.
+func CSRFTemplateHelpersWithFactory(factory TemplateHelperFactory) map[string]any {
 	base := map[string]string{
 		"csrf_token":       "",
 		"csrf_field":       `<input type="hidden" name="` + DefaultFormFieldName + `" value="">`,
@@ -495,7 +501,7 @@ func CSRFTemplateHelpers() map[string]any {
 	}
 
 	result := make(map[string]any, len(base))
-	if factory := getTemplateHelperFactory(); factory != nil {
+	if factory != nil {
 		for key, value := range base {
 			result[key] = factory(key, value)
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -81,7 +82,7 @@ func newExampleAuthTestApp(t *testing.T) *App {
 func performAuthRequest(t *testing.T, app *App, request *http.Request) authTestResponse {
 	t.Helper()
 
-	response, err := app.srv.WrappedRouter().Test(request, -1)
+	response, err := app.srv.WrappedRouter().Test(request, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	body, err := io.ReadAll(response.Body)
 	require.NoError(t, err)

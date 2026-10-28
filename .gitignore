@@ -55,6 +55,10 @@ go.work
 .tmp
 **.db
 evidence
+# Track the Go module boundary, keeping archived payloads ignored.
+!/evidence/
+/evidence/*
+!/evidence/go.mod
 .claude/
 .codex/
 .ctx/

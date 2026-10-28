@@ -34,6 +34,10 @@ func init() {
 //	{{ csrf_field }}
 //	{{ csrf_token }}
 func TemplateHelpers() map[string]any {
+	return templateHelpers(csrf.CSRFTemplateHelpers())
+}
+
+func templateHelpers(csrfHelpers map[string]any) map[string]any {
 	helpers := map[string]any{
 		// Authentication helper functions
 		"is_authenticated": isAuthenticated,
@@ -55,7 +59,7 @@ func TemplateHelpers() map[string]any {
 	}
 
 	// add CSRF template helpers
-	maps.Copy(helpers, csrf.CSRFTemplateHelpers())
+	maps.Copy(helpers, csrfHelpers)
 
 	return helpers
 }
@@ -71,7 +75,11 @@ func resolveTemplateHelperValue(execCtx *pongo2.ExecutionContext, key, fallback 
 		return fallback
 	}
 
-	if helpers, ok := execCtx.Public[csrf.DefaultTemplateHelpersKey].(map[string]any); ok && helpers != nil {
+	return resolveTemplateHelperData(execCtx.Public, key, fallback)
+}
+
+func resolveTemplateHelperData(data map[string]any, key, fallback string) string {
+	if helpers, ok := data[csrf.DefaultTemplateHelpersKey].(map[string]any); ok && helpers != nil {
 		if value, exists := helpers[key]; exists {
 			switch typed := value.(type) {
 			case string:

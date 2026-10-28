@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -54,7 +55,7 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 		return nil, fmt.Errorf("construct go-admin: %w", err)
 	}
 
-	views, err := quickstart.NewViewEngine(
+	views, err := quickstart.NewFiberV3ViewEngine(
 		client.FS(),
 		quickstart.WithViewTemplateFuncs(quickstart.DefaultTemplateFuncs(
 			quickstart.WithTemplateURLResolver(adm.URLs()),
@@ -65,12 +66,12 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 	if err != nil {
 		return nil, fmt.Errorf("construct go-admin view engine: %w", err)
 	}
-	if rendererErr := quickstart.WithDefaultDashboardRenderer(adm, views, adminCfg); rendererErr != nil {
+	if rendererErr := quickstart.WithDefaultFiberV3DashboardRenderer(adm, views, adminCfg); rendererErr != nil {
 		return nil, fmt.Errorf("register dashboard renderer: %w", rendererErr)
 	}
 	registerDashboard(adm, adminCfg, bunProviderIdentityCounter{db: store.DB})
 
-	server, r := quickstart.NewFiberServer(views, adminCfg, adm, true)
+	server, r := quickstart.NewFiberV3Server(views, adminCfg, adm, true, func(cfg *quickstart.FiberV3ServerConfig) { cfg.Config.DisableHeadAutoRegister = true })
 	authCfg := cfg.authConfig()
 	auther := auth.NewAuthenticator(auth.NewUserProvider(userTracker{users: store.Users}), authCfg)
 	routeAuth, err := newRouteAuthenticator(auther, authCfg, cfg.secureCookies())
@@ -117,7 +118,7 @@ func buildApplication(ctx context.Context, cfg runtimeConfig) (*application, err
 
 	ready = true
 	return newApplication(cfg, store, server, func(request *http.Request) (*http.Response, error) {
-		return server.WrappedRouter().Test(request, -1)
+		return server.WrappedRouter().Test(request, fiber.TestConfig{Timeout: 0})
 	}), nil
 }
 

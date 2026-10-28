@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	stdErrors "errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -17,7 +18,7 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/go-ozzo/ozzo-validation/v4/is"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth-examples/config"
 	csfmw "github.com/goliatone/go-auth/middleware/csrf"
@@ -187,11 +188,9 @@ func main() {
 
 	ProtectedRoutes(app)
 
-	if err := app.srv.Serve(":8572"); err != nil {
+	if err := serveUntilSignal(app.srv, ":8572"); err != nil {
 		exitStartup(startupFailure("http.server.serve", startupCodeHTTPServerServe, err))
 	}
-
-	WaitExitSignal()
 
 }
 
@@ -328,25 +327,25 @@ func WithHTTPServer(ctx context.Context, app *App) error {
 	vcfg.SetTemplatesFS([]fs.FS{templatesFS})
 
 	// Keep every generated asset URL on the same configured namespace.
-	templateFunctions := auth.TemplateHelpers()
+	templateFunctions := auth.TemplateHelpersForPongo2V7()
 	templateFunctions["asset_url"] = func(name string) string {
 		return assetURL(assetPrefix, name)
 	}
 	vcfg.SetTemplateFunctions(templateFunctions)
 
 	vcfg.Debug = false
-	engine, err := router.InitializeViewEngine(vcfg, viewLogger)
+	engine, err := router.InitializeFiberV3ViewEngine(vcfg, viewLogger)
 	if err != nil {
 		return err
 	}
 
-	srv := router.NewFiberAdapter(func(a *fiber.App) *fiber.App {
-		return router.DefaultFiberOptions(fiber.New(fiber.Config{
-			UnescapePath:      true,
-			EnablePrintRoutes: true,
-			StrictRouting:     false,
-			PassLocalsToViews: true,
-			Views:             engine,
+	srv := router.NewFiberV3AdapterWithConfig(router.FiberV3AdapterConfig{ListenConfig: fiber.ListenConfig{EnablePrintRoutes: true}}, func(a *fiber.App) *fiber.App {
+		return router.DefaultFiberV3Options(fiber.New(fiber.Config{
+			UnescapePath:            true,
+			DisableHeadAutoRegister: true,
+			StrictRouting:           false,
+			PassLocalsToViews:       true,
+			Views:                   auth.NewTemplateViews(engine),
 		}))
 	})
 
@@ -766,5 +765,26 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 			"record": NewUserDTO(user),
 			// current_user automatically injected by JWT middleware
 		})
+	}
+}
+
+func serveUntilSignal(server router.Server[*fiber.App], address string) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	served := make(chan error, 1)
+	go func() { served <- server.Serve(address) }()
+	select {
+	case err := <-served:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := server.Shutdown(shutdownCtx)
+	select {
+	case serveErr := <-served:
+		return stdErrors.Join(err, serveErr)
+	case <-shutdownCtx.Done():
+		return stdErrors.Join(err, shutdownCtx.Err())
 	}
 }
