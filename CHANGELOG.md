@@ -2,6 +2,12 @@
 
 # [Unreleased]
 
+# [0.45.5](https://github.com/goliatone/go-auth/compare/v0.45.4...v0.45.5) - (2026-10-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Layout ([dcb2665](https://github.com/goliatone/go-auth/commit/dcb26658592e86ae70ba9825fd38b921aa197c69))  - (goliatone)
+
 # [0.45.4](https://github.com/goliatone/go-auth/compare/v0.45.3...v0.45.4) - (2026-10-20)
 
 ## <!-- 7 -->⚙️ Miscellaneous Tasks
