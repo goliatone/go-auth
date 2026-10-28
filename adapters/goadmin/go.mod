@@ -7,9 +7,10 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/goliatone/go-admin v0.142.0
 	github.com/goliatone/go-admin/quickstart v0.142.0
-	github.com/goliatone/go-auth v0.45.4
+	github.com/goliatone/go-auth v0.45.5
+	github.com/goliatone/go-command v0.24.3
 	github.com/goliatone/go-persistence-bun v0.17.1
-	github.com/goliatone/go-router v0.63.1
+	github.com/goliatone/go-router v0.63.2
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.12.1
 	github.com/uptrace/bun v1.2.18
@@ -92,9 +93,8 @@ require (
 	github.com/gofiber/template/v2 v2.1.4 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/gofiber/utils/v2 v2.6.2 // indirect
-	github.com/goliatone/go-auth/adapters/featuregate v0.45.4 // indirect
+	github.com/goliatone/go-auth/adapters/featuregate v0.45.5 // indirect
 	github.com/goliatone/go-cms v0.60.7 // indirect
-	github.com/goliatone/go-command v0.24.3 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-config v0.14.0 // indirect
 	github.com/goliatone/go-crud v0.27.0 // indirect

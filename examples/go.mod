@@ -6,13 +6,13 @@ require (
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/gofiber/fiber/v3 v3.6.1
-	github.com/goliatone/go-auth v0.45.4
+	github.com/goliatone/go-auth v0.45.5
 	github.com/goliatone/go-composite-fs v0.3.0
 	github.com/goliatone/go-config v0.15.0
 	github.com/goliatone/go-errors v0.12.0
 	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-persistence-bun v0.17.1
-	github.com/goliatone/go-router v0.63.1
+	github.com/goliatone/go-router v0.63.2
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.12.1
 	github.com/uptrace/bun v1.2.18

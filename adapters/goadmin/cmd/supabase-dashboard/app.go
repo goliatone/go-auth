@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/gofiber/fiber/v3"
 	"log/slog"
@@ -253,6 +252,14 @@ func newRouteAuthenticator(auther *auth.Auther, cfg localAuthConfig, secure bool
 	if err != nil {
 		return nil, fmt.Errorf("construct go-auth HTTP authenticator: %w", err)
 	}
+	routeAuth.AuthErrorHandler = func(c router.Context, _ error) error {
+		routeAuth.SetRedirect(c)
+		status := http.StatusSeeOther
+		if c.Method() == http.MethodGet {
+			status = http.StatusFound
+		}
+		return c.Redirect(cfg.GetRejectedRouteDefault(), status)
+	}
 	return routeAuth, nil
 }
 
@@ -293,10 +300,12 @@ func (a *application) Close(ctx context.Context) error {
 	if a == nil {
 		return nil
 	}
-	var errs []error
 	if a.server != nil {
-		errs = append(errs, a.server.Shutdown(ctx))
+		if err := a.server.Shutdown(ctx); err != nil {
+			// A deadline can leave ordinary requests running. Retain their
+			// database until a later shutdown attempt confirms the drain.
+			return err
+		}
 	}
-	errs = append(errs, a.persistence.Close())
-	return errors.Join(errs...)
+	return a.persistence.Close()
 }

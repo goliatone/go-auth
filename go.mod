@@ -17,7 +17,7 @@ require (
 	github.com/goliatone/go-logger v0.10.1
 	github.com/goliatone/go-print v0.4.1
 	github.com/goliatone/go-repository-bun v0.16.2
-	github.com/goliatone/go-router v0.63.1
+	github.com/goliatone/go-router v0.63.2
 	github.com/goliatone/hashid v0.2.3
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9

@@ -771,6 +771,10 @@ func ProfileUpdate(app *App) func(c router.Context) error {
 func serveUntilSignal(server router.Server[*fiber.App], address string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	return serveUntilContext(ctx, server, address, 5*time.Second)
+}
+
+func serveUntilContext(ctx context.Context, server router.Server[*fiber.App], address string, shutdownTimeout time.Duration) error {
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(address) }()
 	select {
@@ -778,7 +782,7 @@ func serveUntilSignal(server router.Server[*fiber.App], address string) error {
 		return err
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	err := server.Shutdown(shutdownCtx)
 	select {

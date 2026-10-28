@@ -17,9 +17,19 @@ import (
 
 	auth "github.com/goliatone/go-auth"
 	"github.com/goliatone/go-auth/provider/oidc"
+	"github.com/goliatone/go-command/registry"
 )
 
-func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
+func newFixtureApplication(t *testing.T) *application {
+	t.Helper()
+	if err := registry.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := registry.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("generate RSA key: %v", err)
@@ -50,7 +60,7 @@ func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	defer provider.Close()
+	t.Cleanup(provider.Close)
 
 	projectURL, err := parseApplicationURL(provider.URL, true)
 	if err != nil {
@@ -80,6 +90,16 @@ func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
 		t.Fatalf("buildApplication: %v", err)
 	}
 
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = app.Close(ctx)
+	})
+	return app
+}
+
+func TestBuildApplicationInitializesAdminAndOIDCRoutes(t *testing.T) {
+	app := newFixtureApplication(t)
 	assertResponse := func(target string, wantStatus int, wantBody, forbiddenBody string) {
 		t.Helper()
 		response, err := app.testRequest(httptest.NewRequest(http.MethodGet, target, nil))

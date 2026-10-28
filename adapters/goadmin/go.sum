@@ -184,8 +184,8 @@ github.com/goliatone/go-admin v0.142.0 h1:8tf5pA65kJ7UiPj34rnRKIaBCyLgIS1Dl9d/3f
 github.com/goliatone/go-admin v0.142.0/go.mod h1:a4ii2gEC3VAt5npNj2hxqe/jRtBDm1L/zgr2BXWWaRU=
 github.com/goliatone/go-admin/quickstart v0.142.0 h1:abR8Menk2/fxjptRD6jyY8RK43/Hz4mNaBg+BdKxdG8=
 github.com/goliatone/go-admin/quickstart v0.142.0/go.mod h1:bcZ2Jm/qvEFswIl0zLON5kxysagP44cknwr1rgX2vEM=
-github.com/goliatone/go-auth/adapters/featuregate v0.45.4 h1:Zu58+Ietm+tJTuQpz2sIbQeFMAwpiIn6UZZv3AO6BVU=
-github.com/goliatone/go-auth/adapters/featuregate v0.45.4/go.mod h1:JL1PQ1749amiiLeSY/DpIyv2CNVPiLFSVjESvADaDwQ=
+github.com/goliatone/go-auth/adapters/featuregate v0.45.5 h1:KW4ZEDR/f1n0UiSBPtGhy9KxE7lsOxBMXcm3XARnvac=
+github.com/goliatone/go-auth/adapters/featuregate v0.45.5/go.mod h1:KT76vS3/TZO3pVwExnqvTmfpJHgO1I341AkLAL90Lg4=
 github.com/goliatone/go-cache v0.3.1 h1:I3AijvmWPWCcwe60iDPYgg3BnaE3N+EaefJigs4z5xE=
 github.com/goliatone/go-cache v0.3.1/go.mod h1:/Sjv3+lO0mwZ1oDxUhjKbTyz2n3I5ZJHcTFq5yGV0c0=
 github.com/goliatone/go-cms v0.60.7 h1:nAHwOhjjNs6uzKjSjvOWCwFBTaOLf0nm/UTCRyvs1r4=
@@ -232,8 +232,8 @@ github.com/goliatone/go-repository-bun v0.16.2 h1:tZ6NOI7iJoDvgpTCJtUDyG/kwgMPDn
 github.com/goliatone/go-repository-bun v0.16.2/go.mod h1:tCjJI6WF6wgpFMMUT9jxgEtuzXFde3MJ2WCLtBBglRA=
 github.com/goliatone/go-repository-cache v0.7.3 h1:kF/2Cwld6S4C9CUfyL7fCZK/Lb8Jer+mqOqKJimYfLA=
 github.com/goliatone/go-repository-cache v0.7.3/go.mod h1:FDqEzFEYBfRHmAbHYafKEC5VAo4oVCdD6CeZ292giLw=
-github.com/goliatone/go-router v0.63.1 h1:huQeW+dZxg5bhYU9OPA/bvNrATO1yP2OT9ukFEOEBb4=
-github.com/goliatone/go-router v0.63.1/go.mod h1:JnIcrc8T05lQwDvu/Kbx8CG/cUoN4h6YrTVSgzZur8A=
+github.com/goliatone/go-router v0.63.2 h1:Lj6lFv5f+yzIIwcvlnUttjTVx8TEfa29Vu6mHukzF6U=
+github.com/goliatone/go-router v0.63.2/go.mod h1:puV0F7LSyo5tsUMFoDCPuIVYUnVgHB3+vOARMUmPfFY=
 github.com/goliatone/go-search v0.14.5 h1:rTI9QcaEpAFiG+u20Mwc+CoeU3S9KcKUg5sxlDpNXcg=
 github.com/goliatone/go-search v0.14.5/go.mod h1:MhNvJD7TjSbwbPOP7zq08mODM62V9tYFsCcE+MO3Qms=
 github.com/goliatone/go-search/adapters/goadmin v0.14.5 h1:Rvihq31AI31p+3GxDRTAkZSawoX6Pr3be/qFPP9inTs=
