@@ -2,6 +2,12 @@
 
 # [Unreleased]
 
+# [0.45.6](https://github.com/goliatone/go-auth/compare/v0.45.5...v0.45.6) - (2026-10-28)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Supabase shutdown ([9c81eff](https://github.com/goliatone/go-auth/commit/9c81eff8a0b693f5d2864b3bc12e44ae24239879))  - (goliatone)
+
 # [0.45.5](https://github.com/goliatone/go-auth/compare/v0.45.4...v0.45.5) - (2026-10-28)
 
 ## <!-- 1 -->🐛 Bug Fixes
