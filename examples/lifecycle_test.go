@@ -80,7 +80,12 @@ func TestHostLifecycle(t *testing.T) {
 			for {
 				resp, err := client.Get("http://" + address + "/__lifecycle/ready")
 				if err == nil {
+					// Drain the readiness response so the client reuses this connection.
+					_, readErr := io.Copy(io.Discard, resp.Body)
 					_ = resp.Body.Close()
+					if readErr != nil {
+						t.Fatal(readErr)
+					}
 					break
 				}
 				if time.Now().After(deadline) {

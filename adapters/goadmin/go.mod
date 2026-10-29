@@ -7,10 +7,10 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/goliatone/go-admin v0.142.0
 	github.com/goliatone/go-admin/quickstart v0.142.0
-	github.com/goliatone/go-auth v0.45.5
+	github.com/goliatone/go-auth v0.45.6
 	github.com/goliatone/go-command v0.24.3
 	github.com/goliatone/go-persistence-bun v0.17.1
-	github.com/goliatone/go-router v0.63.2
+	github.com/goliatone/go-router v0.63.3
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.12.1
 	github.com/uptrace/bun v1.2.18
@@ -97,7 +97,7 @@ require (
 	github.com/goliatone/go-cms v0.60.7 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-config v0.14.0 // indirect
-	github.com/goliatone/go-crud v0.27.0 // indirect
+	github.com/goliatone/go-crud v0.27.1 // indirect
 	github.com/goliatone/go-crud/gql v0.27.0 // indirect
 	github.com/goliatone/go-dashboard v0.15.8 // indirect
 	github.com/goliatone/go-errors v0.12.0 // indirect
@@ -121,7 +121,7 @@ require (
 	github.com/goliatone/go-theme v0.5.2 // indirect
 	github.com/goliatone/go-uploader v0.4.0 // indirect
 	github.com/goliatone/go-urlkit v0.7.0 // indirect
-	github.com/goliatone/go-users v0.27.3 // indirect
+	github.com/goliatone/go-users v0.27.4 // indirect
 	github.com/goliatone/hashid v0.2.3 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.30.0 // indirect

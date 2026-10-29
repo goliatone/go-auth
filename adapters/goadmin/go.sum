@@ -196,8 +196,8 @@ github.com/goliatone/go-composite-fs v0.3.0 h1:dM/iD097b7FWyMVduGpS9HK3Swig7FVNU
 github.com/goliatone/go-composite-fs v0.3.0/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
 github.com/goliatone/go-config v0.14.0 h1:Um9pgwtCjsMqH5DXA4dWZoi0AsgqqkfFk4QyHBEiS90=
 github.com/goliatone/go-config v0.14.0/go.mod h1:usSyDTEZyFKP//uJJmNmPCoH4XwhQZZmD3dJtgLrh9c=
-github.com/goliatone/go-crud v0.27.0 h1:5/PrFf6QJDbJmYZSwBu3ZpgaTTclcZ4GLH/b9TMC7eA=
-github.com/goliatone/go-crud v0.27.0/go.mod h1:xVw3+uy73UvsdNoGO7B1+GjGCcUIeTCDmcfAOqbtTSk=
+github.com/goliatone/go-crud v0.27.1 h1:Ui7QyPAfmKg+mGPhT8yCRfHeOfOw0ORnvZseq+5SgiQ=
+github.com/goliatone/go-crud v0.27.1/go.mod h1:8kc7z5vWNKFduxfrAhPUlUVEFd03jC3E1+WD/Vj/FZY=
 github.com/goliatone/go-crud/gql v0.27.0 h1:JDmN//MrGRc1EMnF8kE3WKD5mKFj7CAwtqIl3tHDVeY=
 github.com/goliatone/go-crud/gql v0.27.0/go.mod h1:tlSzHD3JX8F2AmqiXyNrUe1n2etz9Cc+IexPCe2LV/s=
 github.com/goliatone/go-dashboard v0.15.8 h1:lhXf8TAZGbK08LMq/gfe1I711fSMo0GaKu8wHwhc5sA=
@@ -232,8 +232,8 @@ github.com/goliatone/go-repository-bun v0.16.2 h1:tZ6NOI7iJoDvgpTCJtUDyG/kwgMPDn
 github.com/goliatone/go-repository-bun v0.16.2/go.mod h1:tCjJI6WF6wgpFMMUT9jxgEtuzXFde3MJ2WCLtBBglRA=
 github.com/goliatone/go-repository-cache v0.7.3 h1:kF/2Cwld6S4C9CUfyL7fCZK/Lb8Jer+mqOqKJimYfLA=
 github.com/goliatone/go-repository-cache v0.7.3/go.mod h1:FDqEzFEYBfRHmAbHYafKEC5VAo4oVCdD6CeZ292giLw=
-github.com/goliatone/go-router v0.63.2 h1:Lj6lFv5f+yzIIwcvlnUttjTVx8TEfa29Vu6mHukzF6U=
-github.com/goliatone/go-router v0.63.2/go.mod h1:puV0F7LSyo5tsUMFoDCPuIVYUnVgHB3+vOARMUmPfFY=
+github.com/goliatone/go-router v0.63.3 h1:nvny/OdTofhymMmWUbJT19unbAPj/H+hj+MNYsbpomQ=
+github.com/goliatone/go-router v0.63.3/go.mod h1:7jFF8yLINw/i9Yh+8hL5594D1dESSxRkMIw6Ho7zLmE=
 github.com/goliatone/go-search v0.14.5 h1:rTI9QcaEpAFiG+u20Mwc+CoeU3S9KcKUg5sxlDpNXcg=
 github.com/goliatone/go-search v0.14.5/go.mod h1:MhNvJD7TjSbwbPOP7zq08mODM62V9tYFsCcE+MO3Qms=
 github.com/goliatone/go-search/adapters/goadmin v0.14.5 h1:Rvihq31AI31p+3GxDRTAkZSawoX6Pr3be/qFPP9inTs=
@@ -248,8 +248,8 @@ github.com/goliatone/go-uploader v0.4.0 h1:fo4K1J8juZ2LoG31hlwS3OjmFYqt2I+qUhiOZ
 github.com/goliatone/go-uploader v0.4.0/go.mod h1:D4PFxAypbnZ3EAuRbk0sjPAwEmMxf+7b1eZ4U6TAync=
 github.com/goliatone/go-urlkit v0.7.0 h1:wc2JR4xLnft7Vne4LbNw/oLQdFHQkuIgoEU0Hi7NczI=
 github.com/goliatone/go-urlkit v0.7.0/go.mod h1:QVCju3Z9io9mX+t2D7RCp+ja9PYrLNJoucWc124siFQ=
-github.com/goliatone/go-users v0.27.3 h1:b6QE3m3bNdF9kYNQ2LTao1rzwodwsYQWvEQXBFz2des=
-github.com/goliatone/go-users v0.27.3/go.mod h1:rid1pWxxVGjFo8sn+5yqAnUdnCgATwk+mKfxQ5bY5Fg=
+github.com/goliatone/go-users v0.27.4 h1:Y37pasB/RPLh90r+Z1EZ+qhzGqVJvCswHh6CTMzMu5s=
+github.com/goliatone/go-users v0.27.4/go.mod h1:ipS9qqsggk8XL7gQS8n3BdmVuEQvGtWnv8ETvukxNsY=
 github.com/goliatone/hashid v0.2.3 h1:Mu67feoP4iyAIajLx8JfqtIrbRURHnFO+hGJ3kZa+fc=
 github.com/goliatone/hashid v0.2.3/go.mod h1:jgEJQBDWz7OSe4uWCcsu5rkb4HtKTNvgF4Wl3NPfC6E=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=

@@ -64,8 +64,8 @@ github.com/gofiber/utils/v2 v2.6.2 h1:+tX8EPc/WO4f8DiV1W3gGWPJvGdHFW3qLIR2ws06At
 github.com/gofiber/utils/v2 v2.6.2/go.mod h1:8ey6lqPABeSEhqoxsh/5dMyUOMHB/rkPagXlKWvL67o=
 github.com/golang-jwt/jwt/v5 v5.3.0 h1:pv4AsKCKKZuqlgs5sUmn4x8UlGa0kEVt/puTpKx9vvo=
 github.com/golang-jwt/jwt/v5 v5.3.0/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
-github.com/goliatone/go-auth v0.45.5 h1:LO8pQmeAcZgqxN4eJOo+peAuh5utGRGV2RBp94cmGmk=
-github.com/goliatone/go-auth v0.45.5/go.mod h1:+9DCfhtWmM0ttDo/o1bQE9Mz2cH9ik0VFIZqv9gZpWk=
+github.com/goliatone/go-auth v0.45.6 h1:b1MJ4v3jEVlnNYvGIvGddrpAb346Ueas+y+hazANd/Y=
+github.com/goliatone/go-auth v0.45.6/go.mod h1:KDVgYLeiQxAzYQ/pGUo6y5btNhTR5+AozAl5Tti027c=
 github.com/goliatone/go-composite-fs v0.3.0 h1:dM/iD097b7FWyMVduGpS9HK3Swig7FVNUWfIUs/hp7o=
 github.com/goliatone/go-composite-fs v0.3.0/go.mod h1:soZ1AneoCf50zh28NYag/HozxlvqgvmePsZo2tv1TRk=
 github.com/goliatone/go-errors v0.12.0 h1:FI3FHJe+sogfD+MZJqx8OVGDJqav5PNq1xi1UAXjBwk=
@@ -80,8 +80,8 @@ github.com/goliatone/go-print v0.4.1 h1:rRcmZOWd27gq25Ays0nRu09tAH6wgTdfshE4rPpN
 github.com/goliatone/go-print v0.4.1/go.mod h1:hx13/Im2TeOYwwBwj/ImfjneDQ0MyN0ybfrgHripAus=
 github.com/goliatone/go-repository-bun v0.16.2 h1:tZ6NOI7iJoDvgpTCJtUDyG/kwgMPDnMao9ascQPOdqw=
 github.com/goliatone/go-repository-bun v0.16.2/go.mod h1:tCjJI6WF6wgpFMMUT9jxgEtuzXFde3MJ2WCLtBBglRA=
-github.com/goliatone/go-router v0.63.1 h1:huQeW+dZxg5bhYU9OPA/bvNrATO1yP2OT9ukFEOEBb4=
-github.com/goliatone/go-router v0.63.1/go.mod h1:JnIcrc8T05lQwDvu/Kbx8CG/cUoN4h6YrTVSgzZur8A=
+github.com/goliatone/go-router v0.63.3 h1:nvny/OdTofhymMmWUbJT19unbAPj/H+hj+MNYsbpomQ=
+github.com/goliatone/go-router v0.63.3/go.mod h1:7jFF8yLINw/i9Yh+8hL5594D1dESSxRkMIw6Ho7zLmE=
 github.com/goliatone/go-slug v0.1.0 h1:0APBcu2X9MWF2t6X3LN55XfQ47zf4FUzDmXYJ1YraAk=
 github.com/goliatone/go-slug v0.1.0/go.mod h1:8lXx322OHfQQzdrwikY2uqhQVmH3IVNGiVxn9kPmX1w=
 github.com/goliatone/hashid v0.2.3 h1:Mu67feoP4iyAIajLx8JfqtIrbRURHnFO+hGJ3kZa+fc=
