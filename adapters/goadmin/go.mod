@@ -5,8 +5,8 @@ go 1.26.5
 require (
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/goliatone/go-admin v0.142.0
-	github.com/goliatone/go-admin/quickstart v0.142.0
+	github.com/goliatone/go-admin v0.142.1
+	github.com/goliatone/go-admin/quickstart v0.142.1
 	github.com/goliatone/go-auth v0.45.6
 	github.com/goliatone/go-command v0.24.3
 	github.com/goliatone/go-persistence-bun v0.17.1
@@ -93,23 +93,23 @@ require (
 	github.com/gofiber/template/v2 v2.1.4 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/gofiber/utils/v2 v2.6.2 // indirect
-	github.com/goliatone/go-auth/adapters/featuregate v0.45.5 // indirect
+	github.com/goliatone/go-auth/adapters/featuregate v0.45.6 // indirect
 	github.com/goliatone/go-cms v0.60.7 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
-	github.com/goliatone/go-config v0.14.0 // indirect
+	github.com/goliatone/go-config v0.15.0 // indirect
 	github.com/goliatone/go-crud v0.27.1 // indirect
-	github.com/goliatone/go-crud/gql v0.27.0 // indirect
+	github.com/goliatone/go-crud/gql v0.27.1 // indirect
 	github.com/goliatone/go-dashboard v0.15.8 // indirect
 	github.com/goliatone/go-errors v0.12.0 // indirect
-	github.com/goliatone/go-export v0.11.1 // indirect
-	github.com/goliatone/go-export/adapters/template/go-template v0.11.1 // indirect
+	github.com/goliatone/go-export v0.11.2 // indirect
+	github.com/goliatone/go-export/adapters/template/go-template v0.11.2 // indirect
 	github.com/goliatone/go-featuregate v0.6.1 // indirect
 	github.com/goliatone/go-formgen v0.35.1 // indirect
 	github.com/goliatone/go-i18n v0.5.0 // indirect
 	github.com/goliatone/go-job v0.20.0 // indirect
 	github.com/goliatone/go-logger v0.10.1 // indirect
 	github.com/goliatone/go-masker v0.2.0 // indirect
-	github.com/goliatone/go-notifications v0.16.2 // indirect
+	github.com/goliatone/go-notifications v0.16.4 // indirect
 	github.com/goliatone/go-options v0.7.2 // indirect
 	github.com/goliatone/go-print v0.4.1 // indirect
 	github.com/goliatone/go-repository-bun v0.16.2 // indirect
@@ -121,7 +121,7 @@ require (
 	github.com/goliatone/go-theme v0.5.2 // indirect
 	github.com/goliatone/go-uploader v0.4.0 // indirect
 	github.com/goliatone/go-urlkit v0.7.0 // indirect
-	github.com/goliatone/go-users v0.27.4 // indirect
+	github.com/goliatone/go-users v0.27.5 // indirect
 	github.com/goliatone/hashid v0.2.3 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/google/cel-go v0.30.0 // indirect
@@ -201,7 +201,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/net v0.61.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
