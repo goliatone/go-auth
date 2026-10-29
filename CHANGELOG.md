@@ -2,6 +2,12 @@
 
 # [Unreleased]
 
+# [0.45.7](https://github.com/goliatone/go-auth/compare/v0.45.6...v0.45.7) - (2026-10-29)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([be59f65](https://github.com/goliatone/go-auth/commit/be59f65afd4820c3eac9769d06128937556b7ccc))  - (goliatone)
+
 # [0.45.6](https://github.com/goliatone/go-auth/compare/v0.45.5...v0.45.6) - (2026-10-28)
 
 ## <!-- 1 -->🐛 Bug Fixes
